@@ -24,8 +24,12 @@ validador *confere*.
   arquivos inteiros → ~40% menos token; variantes "MCP-native" chegam a 84–88% menos tokens de leitura.
 - **Ferramentas Rust**: ripgrep ~2,6× mais rápido que grep (5–20× em bases grandes, até 100× com
   `.gitignore`); fd ~2,5× mais que find. Respeitam `.gitignore` → output menor e mais focado (menos token).
-  (Nota: o Grep do Claude Code é construído sobre ripgrep; em abr/2026 passou a ugrep + bfs em builds nativos.)
+  (Nota: o Grep do Claude Code é construído sobre ripgrep; versões recentes migraram parte para ugrep/bfs — detalhe sujeito a versão.)
 - Greps "token-aware" (ex.: rustygrep `--llm`) comprimem a saída 60–95%.
+
+> ⚠️ Os **múltiplos exatos** (3.400 vs 412.000; -58,6%; 60–95%) são de **medições específicas de
+> blogs** (ilustrativos, possível cherry-pick). O **argumento qualitativo é robusto** (busca
+> estrutural/semântica >> grep+read para símbolos); **medir no nosso caso** antes de citar número (Trilha L).
 
 ## Regra de roteamento de busca (determinismo + token)
 

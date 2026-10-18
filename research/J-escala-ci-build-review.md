@@ -15,6 +15,8 @@ escalonamento** evitam fila infinita, desperdício de CI e sobrecarga de revisor
 - **Merge queue** (GitHub Merge Queue 2026): **batch de N PRs usa 1 run de CI** → custo por PR
   mergeado cai ~N-vezes; testa o estado real pós-merge. Monorepo é quem mais ganha (mudança em lib
   compartilhada quebra downstream).
+  > Ressalva: o ganho ~N× é **otimista** — falha/flaky força re-split e re-run (corrói o ganho); e os
+  > 50–70% / ~N× são **faixas relatadas por terceiros** (Mergify/SitePoint), a validar no nosso caso.
 - **Build só do afetado**: path filters + grafo (Nx/Turborepo/Bazel) + cache; reduzir matrix.
 
 ## 2. Carga de testes
@@ -56,7 +58,8 @@ senão dois agentes mexem na mesma área e o código "se cruza".
 ## Recomendação
 Merge queue com batching + test impact analysis (two-step CI) + quarentena de flaky como base
 determinística; WIP limit + backpressure no orquestrador; scheduling ciente de dependência com
-`blocked by`; conflito sempre para gate humano.
+`blocked by`; conflito sempre para gate humano. O **custo de LLM do review (Trilha D) NÃO batcheia**
+como o CI → entra no **modelo de custo da Trilha L**, não só a economia de CI.
 
 ## Perguntas em aberto
 - [ ] Stack do `roboto` define a ferramenta de impacto (Nx/Turborepo/Bazel/ts-morph)? (amarra Trilha E/K)

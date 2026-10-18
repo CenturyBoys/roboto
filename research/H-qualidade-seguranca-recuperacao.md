@@ -27,6 +27,9 @@ e I (escada de validação).
 - Loop de medição: golden set de falhas → graders confiáveis → judge calibrado → CI gate que
   barra regressão. Ferramentas: DeepEval, Promptfoo.
 
+> ⚠️ Os números (60–70%, 85–90%, 50/150–200) são **heurísticas iniciais de blogs**, a calibrar com
+> dados próprios — não são targets fixos nem fonte primária.
+
 ## 2. Segurança do fleet
 
 - **Prompt injection = risco #1 (OWASP) e NÃO resolvido em 2026** — crítico para agente que executa
@@ -63,6 +66,8 @@ e I (escada de validação).
   estado, rationale de decisão e eventos de rollback.
 - **Cuidado**: rollback tem superfície de ataque própria (ACRFence — semantic rollback attacks;
   "Safe to Resume?" — rollback quebrando continuidade). Rollback é mecanismo de segurança, não bala de prata.
+- **Default decidido**: mecanismo padrão = **`git revert` + reabrir issue** (determinista, git-first,
+  Trilha G); checkpoint/time-travel sofisticado só como **exceção** justificada.
 - Amarra com dead-letter + replay da orquestração (Trilha B) e com `git revert`/reabrir issue (Trilha A).
 
 ## 5. Observabilidade e custo (serve o objetivo de token)

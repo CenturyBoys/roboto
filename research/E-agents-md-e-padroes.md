@@ -36,6 +36,9 @@ decisões de arquitetura que o agente não consegue inferir · implementações 
 **< 500 linhas**, sweet spot **200–500** — o arquivo entra no contexto a cada ação; token importa.
 Monorepo: múltiplos `AGENTS.md` por nível, o **mais próximo vence**.
 
+> Cross-link Trilha F/C/L: se o AGENTS.md inteiro entra **a cada ação**, 200–500 linhas é **custo de
+> token fixo** → contabilizar no orçamento (Trilha L) ou aplicar carregamento progressivo (seções sob demanda).
+
 ### Regra de decisão
 "Se o agente precisa disso para escrever código **correto**, está no AGENTS.md." Nada além disso.
 
@@ -43,7 +46,7 @@ Monorepo: múltiplos `AGENTS.md` por nível, o **mais próximo vence**.
 Atualizado **no mesmo PR** que muda a convenção → entra na **DoD** (Trilha A). Liga à fase
 *Constitution* do Spec Kit (Trilha A).
 
-## Naming vs comentários — hipótese do dono VALIDADA
+## Naming vs comentários — hipótese do dono SUPORTADA (fontes fracas)
 
 Hierarquia de clareza (pesquisa 2026): **naming 1º, estrutura 2º, comentário por último.** Nomes
 bons + funções focadas carregam a maior parte da clareza.
@@ -56,6 +59,10 @@ bons + funções focadas carregam a maior parte da clareza.
 - **Comentário bom = PORQUÊ, não O QUÊ.** Comentário desatualizado é **pior que nenhum** (mente).
 - Copilot, sem prompt explícito, usa nomes genéricos (`temp/val/res`) e pula type hints → nosso
   AGENTS.md precisa **mandar** nomes semânticos + tipos.
+
+> ⚠️ Postura cética: a evidência (HackerNoon + 1 arXiv) é **fraca** para "validado". Contra-argumento:
+> em código denso/algorítmico, comentário-o-quê pode ajudar. Tratar como **suportado pela literatura
+> disponível**, não comprovado.
 
 ### Regras de padrão que isso gera (para o AGENTS.md)
 - [ ] Identificadores **descritivos e semânticos**; proibir `temp/val/res/data/foo`.

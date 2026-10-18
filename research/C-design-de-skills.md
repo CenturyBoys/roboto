@@ -21,6 +21,9 @@ Pasta auto-contida: **`SKILL.md`** (frontmatter YAML obrigatório: `name` + `des
 > 20 skills instaladas NÃO custam 20 conjuntos de instrução upfront. É o mecanismo central de
 > economia de token do fleet (amarra com Trilha F).
 
+> ⚠️ Os limites (~50–100 tokens/skill no Tier 1; ≤5000 tokens no Tier 2) são **diretriz das best
+> practices da plataforma / heurística de projeto**, não limite técnico rígido.
+
 ## Granularidade
 
 - **"A skill tem que caber na sua cabeça"**: se precisa de mais que um parágrafo de doc, provavelmente
@@ -51,6 +54,10 @@ isolada) + MCP tools (operações pontuais)`. Cada um dos 9 agentes é um papel 
 - **Testes**: `write-tests`, `expand-coverage`
 - **Segurança**: `triage-advisory` (ambiente/feed), `triage-scan-findings`
 - **Docs**: `sync-docs`, `detect-doc-drift`
+- **SRE/Incidente**: `triage-incident`, `correlate-signals` (ambiente/alerta; entra quando houver produção)
+
+> Alinhamento com a Trilha 0 (9 agentes): aqui **Arquitetura está fundida com Planejamento** e
+> **SRE/Incidente** entra quando houver software em produção — decisão explícita, não omissão.
 
 Cada skill: `description` afiada, `scripts/` para as partes determinísticas (ferramentificação),
 `references/` carregados sob demanda, **versionada** e **testada contra tasks reais** (insumo de evals, Trilha H).
@@ -68,7 +75,8 @@ Amarra com a Trilha H (segurança do próprio fleet).
 ## Perguntas em aberto
 - [ ] MVP de skills cobre quais passos primeiro? (sugestão: `refine-issue` + `validate-readiness`
       + `implement-issue` + `open-pr` + `review-pr`).
-- [ ] Onde as skills vivem (repo `roboto` em `.claude/skills/`? plugin? compartilhadas entre agentes)?
+- [ ] **Onde as skills vivem** — decisão de **segurança** (afeta supply chain / CompoSkill), não detalhe:
+      proposta inicial `.claude/skills/` no `roboto`, versionadas e **revisadas por composição**; plugin depois.
 - [ ] Política de versionamento e teste de skill antes de "instalar" no fleet.
 
 ---

@@ -42,10 +42,17 @@ Começar com **GitHub Actions disparando um self-hosted runner no nosso containe
 ganha o wiring de eventos nativo + o runtime controlado que já queremos. Webhook server fica como
 evolução se estourarmos os limites do Actions (tarefas muito longas / orquestração complexa).
 
+> **Modelo de runner**: usar **ephemeral/JIT runners** (registram just-in-time por job e se
+> desregistram) — é o que casa o Actions com o container 1-por-task da Trilha K. Alternativa: runner
+> persistente que **spawna** containers efêmeros (dois níveis). O "efêmero por task" exige um desses
+> desenhos explícitos, não o runner persistente padrão.
+
 ## Regras de confiabilidade (determinismo primeiro — quase tudo sem LLM)
 
 Entrega é **at-least-once** (webhook/queue reentregam) → efeitos precisam ser **idempotentes**:
-- [ ] **Idempotency key** = `X-GitHub-Delivery` (event id); grava antes de processar; se já visto, descarta.
+- [ ] **Idempotency key por arquitetura**: no **webhook server**, `X-GitHub-Delivery`; no **GitHub
+      Actions** (a recomendação) não há esse header → usar `head_sha` + tipo de evento + nº da issue/PR.
+      Grava antes de processar; se já visto, descarta.
 - [ ] **Enfileirar** tarefas longas (não processar inline no handler de 10s).
 - [ ] **Retry com backoff exponencial** + **dead-letter** com contexto + **replay** após fix.
 - [ ] **Concurrency group** por issue/PR para serializar.
@@ -53,7 +60,9 @@ Entrega é **at-least-once** (webhook/queue reentregam) → efeitos precisam ser
 ## Prevenção de loop infinito (ponto levantado pelo dono)
 
 Ação do bot **não pode** re-disparar o bot:
-- [ ] **Filtrar por actor**: ignorar eventos originados pelo nosso machine-user/bot.
+- [ ] **Filtrar por actor com exceções**: ignorar eventos do bot **exceto** os que alimentam o loop
+      desejado (bot commita → CI → bot corrige). Distinguir "loop desejado (bounded pelo contador)" de
+      "loop infinito" por tipo de evento — não um filtro-por-actor cego (que mataria o loop fix→review).
 - [ ] **Gate de confiança**: automação só para autores/labels confiáveis (crítico em repo público —
       conteúdo de PR não confiável pode tentar **prompt injection**; ver Trilha H e o case da Microsoft).
 - [ ] **Loop breaker**: contador máximo de iterações por issue/PR (o loop de definição e o

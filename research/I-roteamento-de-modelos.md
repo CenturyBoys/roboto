@@ -14,6 +14,9 @@ roteamos, e por qual substrato?
 2. **Decisão estruturada barata — Jev / System One (TypeSafe).** Para o que não vira código:
    "o PR cumpre o DoD?", gate de prontidão (Trilha A), scoring de review (Trilha D). Saída type-safe
    (0% erro de estrutura, não alucina) + **confiança calibrada**. Input ~$0.042/M, output grátis.
+   > O **degrau 2 é uma interface** (classificador estruturado com confiança calibrada); **Jev é uma
+   > implementação plugável**, com um judge frontier barato como fallback testado — não casar a
+   > arquitetura com um produto único.
 3. **Frontier tiered — Haiku → Sonnet → Opus.** Só quando há raciocínio/geração de verdade;
    right-size por etapa (refinar vs arquitetar vs implementar vs revisar).
 

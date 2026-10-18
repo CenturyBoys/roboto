@@ -56,6 +56,9 @@ Para um **fleet** (onde o dev é também agente e o overload trava a pipeline, T
    loop fix→review (Trilha B).
 7. **Feedback loop**: trackear accept/dismiss de cada comentário → afina prompts/thresholds
    (vira insumo de evals, Trilha H).
+8. **Tiering do próprio review** (coerente com right-sizing, Trilha I): PR pequeno/baixo risco → 1
+   passagem barata; PR grande/sensível → pipeline multi-agente completo. Define o gatilho de "quando
+   NÃO rodar o pipeline pesado" por tamanho/risco do diff — evita o review custar mais que o patch.
 
 ## Impacto em token
 - `diff + snippets` em vez de repo inteiro.

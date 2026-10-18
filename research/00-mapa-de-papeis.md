@@ -24,9 +24,9 @@ a orquestração (Trilha B) e as skills (Trilha C).
 - SDLC agêntico já cobre todo o ciclo (requisitos → arquitetura → código → review → testes →
   docs → produção); o humano sobe para arquitetura, validação, segurança e governança, e
   orquestra **fleets** de agentes sob controle humano. ([Forrester], [PwC], [CIO])
-- **SRE/DevOps**: 2026 foi o ponto de virada — Azure SRE Agent e AWS DevOps Agent em GA (mar/2026),
-  Gartner publicou Market Guide da categoria (jan/2026); MTTR caindo 40–60%. Diagnóstico de
-  incidente virou caso real de agente. ([Gartner via Sherlocks], [beri.net])
+- **SRE/DevOps**: 2026 é **relatado** como ponto de virada — Azure SRE Agent e AWS DevOps Agent em
+  GA, Gartner com Market Guide da categoria; **MTTR -40–60% (número de blog, não fonte primária →
+  indicativo, a verificar)**. Diagnóstico de incidente virou caso real de agente. ([Sherlocks], [beri.net])
 - **Segurança**: triagem agêntica de CVE é padrão estabelecido — **diversificar feeds** (NVD,
   GHSA, OSV, CISA Vulnrichment), priorizar por **exploitabilidade** (não só CVSS), e manter um
   **inventário programaticamente consultável** ("quais dos nossos sistemas são afetados por este
@@ -74,10 +74,16 @@ Agentes dedicados (LLM onde há julgamento/geração):
 Dissolvidos em processo/determinístico (**sem** agente dedicado): **DBA** (schema→código),
 **deploy/release mechanics**, **gate de QA** (CI como juiz), **grande parte de DevOps** (IaC/pipeline).
 
+**Orquestrador / Dispatcher** (peça central das Trilhas B/C/J/F, antes ausente deste mapa): decisão
+= **majoritariamente processo determinístico** (fila, WIP, idempotência, dispatch por evento,
+scheduling ciente de dependência), com LLM só onde há roteamento ambíguo. **Não é um dos 9 agentes
+de domínio** — é a camada que os coordena e mantém o contexto global. Gatilho: reativo a evento.
+
 ## Perguntas em aberto (para o dono decidir)
 
-- [ ] Começamos com o fleet completo (9 agentes) ou um MVP? Sugestão de MVP: Planejamento +
-      Implementação + Review + Segurança(ambiente) — cobre o loop issue→PR→review com segurança proativa.
+- **DECIDIDO: fleet completo** (dono, 2026-10-18). Ordem de construção segue o grafo de dependência
+      mínimo: **Refinamento → Planejamento → Implementação → Review** formam o loop issue→PR→review
+      (núcleo); Segurança(ambiente) e Docs são laterais; SRE/Incidente depende de haver produção.
 - [ ] Agente de Arquitetura e Refinamento podem ser **um só** ("agente de upstream/produto")? Ou separados?
 - [ ] SRE/Incidente entra no escopo inicial ou só depois de termos software em produção?
 - [ ] Onde ficam os gates humanos exatos (priorização, merge, decisão arquitetural)? → detalhar na Trilha H.

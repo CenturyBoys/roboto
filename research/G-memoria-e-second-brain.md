@@ -33,8 +33,12 @@ Auditabilidade: markdown = alta (legível, versionável); vector DB = moderada (
 | **Letta** (MemGPT) | runtime onde o LLM gerencia a própria memória via tools | long-running | OS-inspired |
 | **LangMem** | — | stacks LangChain | — |
 
+> ⚠️ Os scores (LongMemEval 49% vs 63,8%, ~48K stars) e nomes (HERMES, memweave, VibeMemBench)
+> **não foram verificados em fonte primária** → não rankear vendors com base neles. A recomendação
+> markdown-first se sustenta **pelo princípio de determinismo**, independente dos números.
+
 Critério de adoção: só escalar para um desses se **raciocínio temporal** ou **escala cross-session**
-provar que arquivos+índice derivado não bastam. Se precisar, **Zep** lidera em acurácia.
+provar que arquivos+índice derivado não bastam. Se precisar, **Zep** lidera em acurácia (a verificar).
 
 ## Específico de agente de código
 
@@ -42,6 +46,21 @@ Codebase já é um estado grande, estruturado, versionado, **com rollback** — 
 **respeitar o git**. Coerência cross-session exige guardar: convenções do projeto, fixes anteriores,
 estrutura do código. No nosso fleet isso mora em: **issue** (estado/trabalho, Trilha A), **repo**
 (código/ADRs/AGENTS.md), **`.md` de memória** (fatos/decisões).
+
+## Esboço de formato de memória (proposta inicial)
+
+Arquivos `.md` curtos e bounded, **um fato/decisão por arquivo**, frontmatter mínimo:
+
+```
+---
+tipo: decisão | fato | handoff
+data: <AAAA-MM-DD>
+ref: <issue/PR/épico>
+---
+<conteúdo curto; links [[outro-fato]]>
+```
+
+Indexados por FTS5 (derivado, rebuildável). Vivem no `roboto` (ex.: `memory/`). Provisório, a refinar.
 
 ## Recomendação
 

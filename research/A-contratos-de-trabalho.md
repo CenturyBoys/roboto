@@ -86,6 +86,9 @@ backlog → refining → ready → planned → in_progress → in_review → ver
 | qualquer → blocked | dependência não satisfeita | — |
 | verifying/in_review → rejected/reopened | falha de gate | volta a planned/in_progress |
 
+- **Estado de falha do loop**: se o loop de definição excede **N iterações** (loop breaker, Trilha B),
+  a issue vai para `blocked` + escala ao humano — não fica em loop infinito.
+
 Representação no GitHub: estados como **status field do Projects** (ou labels), transições
 disparadas por eventos (Trilha B). O **merge do PR** fecha a issue (`Closes #n`).
 
@@ -108,6 +111,10 @@ os dois é o erro central que o gate previne.
 2. **Classificador estruturado barato (Jev / Trilha I)**: retorna `{tipo, bem_definida: bool,
    confiança, lacunas[]}`. Confiança calibrada vira threshold.
 3. **Escala a frontier** só se a confiança for baixa.
+
+> **Independência do validador**: o validador da DoR (checklist + Jev) é **independente** do agente de
+> Refinamento — quem escreve a spec não valida a própria prontidão ("quem gera não valida"). A garantia
+> dura é o **checklist determinístico**; o Jev é apoio, não a independência em si.
 
 ### Loop de definição (quando não está pronta)
 
@@ -142,6 +149,8 @@ a gente compõe:
 
 > **Fontes verificadas (auditoria rodada-01, out/2026)**: ClarifyCodeBench (arXiv 2607.00711) e
 > Ambig-SWE (arXiv 2502.13069) existem e conferem; Ambig-SWE reporta até **+74%** com interação.
+> Os demais arXiv citados (2605.25284, 2603.26233, 2606.03135, 2607.25152) **não foram verificados
+> individualmente** — tratados como indicativos até conferência.
 
 ## Impacto em token
 

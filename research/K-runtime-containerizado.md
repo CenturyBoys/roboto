@@ -30,8 +30,9 @@ Imagem oficial do Playwright quando o agente precisa de navegação/login web (e
 ## Credenciais e secrets (crítico — amarra Trilha H)
 
 Padrão moderno = **runtime injection**: o pipeline pede a credencial **no momento do uso**, recebe
-um valor **curto** e usa só naquele passo. Okta: **-92% de roubo de credencial** com token de
-**300s** vs. sessão de 24h. Regras: service account por estágio; secret escopado ao ambiente
+um valor **curto** e usa só naquele passo. Okta relata **-92% de roubo** com token de **300s** vs. 24h
+(número de vendor, **ilustrativo** — o argumento vale por least-privilege/blast-radius mesmo sem ele).
+Regras: service account por estágio; secret escopado ao ambiente
 (secret de prod só a partir do branch de prod); **identidade curta por agente** (certs tipo
 Teleport), nunca API key longa; token **task-scoped e time-boxed** (minutos/horas).
 
@@ -46,8 +47,10 @@ Teleport), nunca API key longa; token **task-scoped e time-boxed** (minutos/hora
 > injeção runtime de credencial curta** (Vault/OpenBao ou token OIDC) para o que é sensível.
 
 ## Efemeridade vs. cache
-Container descartável por task (segurança) **vs.** warm para cache (ex.: índice do code-intel ~23×).
-Resolver por tipo: efêmero para execução; camada/volume de cache reaproveitável para índices.
+Container descartável por task (segurança) **vs.** warm para cache (ex.: índice do code-intel ~23×,
+número sem fonte primária → **ilustrativo**). Resolver por tipo: efêmero para execução; cache de
+índices **read-only / por-projeto-confiável / assinado**, **nunca compartilhado entre tasks de código
+não-confiável** (senão fura o isolamento — vetor de envenenamento de cache; usar gVisor/Firecracker nesse caminho).
 
 ## Recomendação
 Container **não-root, efêmero, 1 por task + git worktree**, `--read-only` + `--cap-drop=ALL` +
@@ -56,7 +59,9 @@ Playwright via imagem oficial sob demanda; secrets por **injeção runtime de cr
 (Vault/OpenBao), SOPS/Ansible Vault só para config estática. É onde vive o runner da Trilha B.
 
 ## Perguntas em aberto
-- [ ] gVisor/Firecracker desde o MVP, ou container padrão basta no começo (repo nosso, confiável)?
+- [ ] Isolamento: **separar "código nosso" de "PR de terceiro"**. Como `roboto` é público e aceita PR
+      externo, o caminho de **PR externo exige isolamento forte (gVisor/Firecracker) — não é opcional-MVP**;
+      container padrão só para código confiável nosso.
 - [ ] Vault/OpenBao agora, ou tokens OIDC curtos do próprio GitHub bastam no início?
 - [ ] Estratégia de cache warm (code-intel) sem furar o isolamento efêmero.
 - [ ] Validadores determinísticos de acesso/infra (SSL/disco/conectividade) como pré-condição do container.
