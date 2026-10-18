@@ -1,158 +1,243 @@
-# Arquitetura — Vistas C4
+# Arquitetura — Vistas C4 + Sequências
 
-> Fase: PESQUISA. Vistas **estruturais no padrão C4** (Context → Container → Component). Os
-> diagramas de **processo/estado** (fluxo do SDLC, máquina de estados, escada) vivem em
-> [`SYNTHESIS.md`](SYNTHESIS.md) — **complementares**, não C4.
->
-> **Rev. 2** — corrigida após a auditoria `audit/architecture-c4` (`research/audits/auditoria-c4.md`,
-> PR #19): agentes viraram **componentes dentro do runner** (não contêiner irmão); caminho de **PR
-> externo não-confiável** com isolamento forte; feeds/ambiente, Telegram≠observabilidade, estado
-> durável do orquestrador, fallback do gateway e rótulos de tecnologia ajustados.
+> Fase: PESQUISA. **Rev. 3** — diagramas **divididos em vistas menores** (menos poluição) e
+> acrescidos de **sequências** (fluxo + pontos de decisão). Correções da auditoria (PR #19) mantidas.
+> Diagramas de processo macro: [`SYNTHESIS.md`](SYNTHESIS.md).
 
-## C4 Nível 1 — Contexto do sistema
+Como ler: **C4** mostra *estrutura* (quem é quem) em 3 níveis; **Sequência** mostra *comportamento*
+(ordem + decisões). Cada diagrama é pequeno e focado de propósito.
+
+---
+
+## C4 Nível 1 — Contexto (quem fala com quem)
 
 ```mermaid
 C4Context
-  title Continuous Development — Nivel 1: Contexto
-  Person(dono, "Dono / Revisor", "Aprova gates, prioriza, revisa")
-  Person_Ext(contrib, "Contribuidor externo", "Abre PR no repo publico (nao-confiavel)")
-  System(cd, "Continuous Development", "Fleet de agentes que cobre o SDLC")
-  System_Ext(gh, "GitHub", "Issues, PR, CI/Actions — fonte da verdade")
-  System_Ext(orr, "OpenRouter", "Provedor de inferencia / substrato: Claude, chineses, Jev")
-  System_Ext(tg, "Telegram", "Notificacao e aprovacao HITL (atalho)")
-  System_Ext(feeds, "Feeds de seguranca", "CVE / GHSA / OSV (gatilho ambiente)")
-  Rel(dono, gh, "Revisa/aprova (canal canonico)")
-  Rel(dono, tg, "Recebe alertas / aprova (revalidado no servidor)")
-  Rel(contrib, gh, "Abre PR (nao-confiavel)")
-  Rel(cd, gh, "Le/abre issues, abre PR, le CI")
-  Rel(cd, orr, "Chama modelos via gateway (right-sizing)")
-  Rel(cd, tg, "Notifica / pede aprovacao")
-  Rel(feeds, cd, "Alimenta agente de seguranca (ambiente)")
+  title Nivel 1 — Contexto
+  Person(dono, "Dono / Revisor")
+  Person_Ext(contrib, "Contribuidor externo", "PR nao-confiavel")
+  System(cd, "Continuous Development", "Fleet de agentes do SDLC")
+  System_Ext(gh, "GitHub")
+  System_Ext(orr, "OpenRouter", "substrato de modelos")
+  System_Ext(tg, "Telegram")
+  System_Ext(feeds, "Feeds de seguranca")
+  Rel(dono, gh, "aprova (canonico)")
+  Rel(dono, tg, "alertas / aprova")
+  Rel(contrib, gh, "abre PR")
+  Rel(cd, gh, "issues / PR / CI")
+  Rel(cd, orr, "inferencia")
+  Rel(cd, tg, "notifica")
+  Rel(feeds, cd, "ambiente")
 ```
 
-> Nota (Trilha I): o externo é **OpenRouter como substrato/provedor** — a palavra "gateway" fica
-> reservada ao **contêiner interno** (interface trocável). Jev também tem **API direta** (fallback).
+---
 
-## C4 Nível 2 — Contêineres
+## C4 Nível 2 — Contêineres (em 3 fatias focadas)
+
+### 2a · Entrada e orquestração
 
 ```mermaid
 C4Container
-  title Continuous Development — Nivel 2: Conteineres
-  Person(dono, "Dono / Revisor")
-  Person_Ext(contrib, "Contribuidor externo")
+  title Nivel 2a — Entrada e orquestracao
   System_Ext(gh, "GitHub")
-  System_Ext(orr, "OpenRouter (substrato)")
-  System_Ext(feeds, "Feeds de seguranca")
-  System_Ext(direct, "APIs diretas / LiteLLM / Jev direto", "fallback do gateway")
+  System_Ext(feeds, "Feeds")
+  Container_Boundary(cd, "Continuous Development") {
+    Container(orch, "Orquestrador", "fila / worker", "dispatch, WIP, idempotencia, dependencias")
+    Container(runnerT, "Runner confiavel", "container efemero", "codigo nosso")
+    Container(runnerU, "Runner isolado", "microVM gVisor", "PR externo")
+    ContainerDb(state, "Estado / journal", "store durable", "checkpoint fora do container")
+  }
+  Rel(gh, orch, "webhook (reativo)")
+  Rel(feeds, orch, "schedule (ambiente)")
+  Rel(orch, runnerT, "job confiavel")
+  Rel(orch, runnerU, "PR externo")
+  Rel(orch, state, "checkpoint / resume")
+```
+
+### 2b · Execução e modelos
+
+```mermaid
+C4Container
+  title Nivel 2b — Execucao e modelos
+  System_Ext(gh, "GitHub")
+  System_Ext(orr, "OpenRouter")
+  System_Ext(direct, "APIs diretas / Jev direto", "fallback")
+  Container_Boundary(cd, "Continuous Development") {
+    Container(runner, "Runner + agente", "container efemero", "hospeda agentes (N3)")
+    Container(gw, "Gateway de modelos", "interface / roteador", "escada de validacao")
+    ContainerDb(mem, "Memoria / indice", "md+git + FTS5")
+    ContainerDb(secrets, "Secrets", "Vault / OpenBao")
+  }
+  Rel(runner, gw, "inferencia")
+  Rel(gw, orr, "HTTPS")
+  Rel(gw, direct, "fallback")
+  Rel(runner, mem, "le / escreve")
+  Rel(runner, gh, "abre PR / comenta")
+  Rel(secrets, runner, "credencial curta")
+```
+
+### 2c · Humano e observabilidade
+
+```mermaid
+C4Container
+  title Nivel 2c — Humano e observabilidade
+  Person(dono, "Dono / Revisor")
   System_Ext(tg, "Telegram")
   Container_Boundary(cd, "Continuous Development") {
-    Container(orch, "Orquestrador / Dispatcher", "Python + fila/worker", "determinismo: dispatch reativo (evento) e ambiente (feed/schedule); WIP, idempotencia, grafo de dependencias")
-    Container(runnerT, "Runner confiavel + agente", "container efemero + git worktree", "codigo NOSSO; 1 por task; hospeda os agentes (Nivel 3)")
-    Container(runnerU, "Runner isolado + agente", "microVM gVisor/Firecracker", "PR externo NAO-confiavel; isolamento forte — nao-opcional (K)")
-    Container(gw, "Gateway de modelos", "interface/roteador", "escada de validacao; OpenRouter = 1 implementacao + fallback")
-    Container(tgbot, "Bot/Notificador Telegram", "Telegram Bot API", "comunicacao + gatilho de conveniencia; autoridade revalidada no servidor")
-    Container(obs, "Observabilidade (monitor)", "plataforma decidida na H", "duracao/custo/erros/traces; CONSUMIDA, nao inventada aqui")
-    ContainerDb(mem, "Memoria / indice", "markdown+git + FTS5", "fonte da verdade + busca derivada")
-    ContainerDb(state, "Estado / run journal", "store externo (durable)", "checkpoint/resume FORA do container efemero (M)")
-    ContainerDb(secrets, "Secret store", "Vault / OpenBao", "credenciais curtas, injecao runtime")
+    Container(runner, "Runner + agente", "", "emite sinais")
+    Container(obs, "Observabilidade", "plataforma da Trilha H", "duracao / custo / erros")
+    Container(tgbot, "Bot Telegram", "Bot API", "notifica + atalho de aprovacao")
   }
-  Rel(dono, gh, "Revisa/aprova (canonico)")
-  Rel(dono, tgbot, "Alertas / atalho de aprovacao")
-  Rel(contrib, gh, "Abre PR")
-  Rel(gh, orch, "Webhooks / eventos (reativo)")
-  Rel(feeds, orch, "schedule / feed (ambiente)")
-  Rel(orch, runnerT, "Dispara job confiavel (JIT)")
-  Rel(orch, runnerU, "Dispara PR externo (isolado)")
-  Rel(orch, state, "Persiste estado / checkpoint (fora do container)")
-  Rel(runnerT, gw, "Pede inferencia")
-  Rel(runnerU, gw, "Pede inferencia")
-  Rel(gw, orr, "HTTPS")
-  Rel(gw, direct, "Fallback")
-  Rel(runnerT, mem, "Le/escreve estado")
-  Rel(runnerT, gh, "Abre PR / comenta")
-  Rel(secrets, runnerT, "Injeta credencial curta")
-  Rel(runnerT, obs, "Emite traces / custo")
-  Rel(tgbot, dono, "Notifica / coleta aprovacao")
+  Rel(runner, obs, "traces / custo")
+  Rel(runner, tgbot, "pede aprovacao / avisa")
+  Rel(tgbot, tg, "via Bot API")
+  Rel(tg, dono, "Approve / Deny")
+  Rel(obs, dono, "dashboard")
 ```
+
+---
 
 ## C4 Nível 3 — Componentes (zoom no agente, dentro do runner)
 
 ```mermaid
 C4Component
-  title Agente (dentro do Runner) — Nivel 3: Componentes
-  System_Ext(ci, "CI (GitHub Actions)", "tier 1: checks deterministicos — SEM LLM")
-  Container(gw, "Gateway de modelos", "tier 2/3: Jev / chineses / Claude")
-  ContainerDb(mem, "Memoria / indice")
-  Container_Boundary(agent, "Agente (processo no runner)") {
-    Component(skill, "Skills", "SKILL.md + scripts", "procedimento por etapa; progressive disclosure")
-    Component(tier, "Decisor de tier", "cliente da escada", "decide e DELEGA: tier 1 -> CI; tier 2/3 -> Gateway")
-    Component(tools, "Camada de tools", "MCP / CLI", "code-intel (semantico), gh, ripgrep")
-    Component(memc, "Cliente de memoria", "", "issue + .md + indice FTS5")
-    Component(gwc, "Cliente do gateway", "", "fala com a interface de modelos")
+  title Nivel 3 — Agente (dentro do runner)
+  System_Ext(ci, "CI", "tier 1: checks — sem LLM")
+  Container(gw, "Gateway", "tier 2/3")
+  ContainerDb(mem, "Memoria")
+  Container_Boundary(agent, "Agente") {
+    Component(skill, "Skills", "SKILL.md")
+    Component(tier, "Decisor de tier", "delega, nao executa")
+    Component(tools, "Tools", "code-intel / gh")
+    Component(memc, "Cli. memoria", "")
+    Component(gwc, "Cli. gateway", "")
   }
-  Rel(skill, tier, "pede decisao de tier")
-  Rel(tier, ci, "tier 1: delega check deterministico (lint/test/build)")
-  Rel(tier, gwc, "tier 2/3: judge (Jev) / generate")
-  Rel(gwc, gw, "chama via interface")
-  Rel(skill, tools, "usa (edicao semantica, git, gh)")
-  Rel(skill, memc, "le/escreve estado")
-  Rel(memc, mem, "le/escreve .md + consulta FTS5")
+  Rel(skill, tier, "decide tier")
+  Rel(tier, ci, "tier 1: delega CI")
+  Rel(tier, gwc, "tier 2/3")
+  Rel(gwc, gw, "chama")
+  Rel(skill, tools, "usa")
+  Rel(skill, memc, "estado")
+  Rel(memc, mem, "le/escreve")
 ```
 
-> **Determinismo primeiro**: o **tier 1 é o CI (externo)**, não lógica do agente; o **tier 3 vai pelo
-> Gateway (externo)**. O componente interno só **decide o tier e delega** — não "roda os próprios checks".
+> **Determinismo primeiro**: tier 1 = **CI externo**; tier 3 = **Gateway externo**. O decisor só
+> **delega** — não roda os próprios checks.
 
-## Nível 4 (Code) → Esboços ilustrativos das peças
+---
 
-> ⚠️ **Esboços** para comunicar o desenho — **não é código de produção** (fase de pesquisa).
+## Sequências (comportamento + decisões)
 
-### Peça: Gateway de modelos + escada (a "peça da LLM")
-```ts
-// A interface do gateway cobre SÓ o que usa modelo. O tier 1 (determinístico) NÃO é do gateway.
-interface ModelGateway {
-  judge(task): { verdict: "deny"|"ask"|"allow"; confidence: number };   // Jev / jev-guard
-  generate(task, model: string): { text: string; confidence?: number };
-}
+### S1 · Issue → PR → merge (com gates)
 
-async function routed(task): Result {
-  if (task.isDeterministic) return ci.run(task);            // tier 1 — CI EXTERNO, sem LLM (não é do gateway)
-  if (task.kind === "decision") return gateway.judge(task); // tier 2 — Jev barato, confiança calibrada
-  const cheap = await gateway.generate(task, pickCheapModel(task)); // tier 3a — chinês/aberto
-  return cheap.confidence! >= THRESHOLD ? cheap
-       : gateway.generate(task, FRONTIER);                  // tier 3b — Claude só se difícil/baixa confiança
-}
-// OpenRouter é UMA implementação de ModelGateway; fallback: APIs diretas / LiteLLM self-host / Jev direto.
+```mermaid
+sequenceDiagram
+  autonumber
+  actor Dono
+  participant GH as GitHub
+  participant Orq as Orquestrador
+  participant Ag as Agente
+  participant CI
+  Dono->>GH: abre issue
+  GH->>Orq: evento
+  Orq->>Ag: Refinamento (DoR)
+  alt falta definicao
+    Ag-->>GH: pede clarificacao (loop)
+  else pronta
+    Orq->>Ag: Planejamento + Implementacao
+    Ag->>GH: abre PR
+    GH->>CI: checks tier 1 (sem LLM)
+    Orq->>Ag: Review (agente != autor)
+    alt DoD ok + gate humano
+      Dono->>GH: aprova merge
+    else falha de gate
+      Orq->>Ag: volta a Implementacao
+    end
+  end
 ```
 
-### Peça: Gatilho (GitHub Actions → runner JIT) — anti-loop correto (Trilha B)
-```yaml
-# .github/workflows/agent.yml  (esboço)
-on:
-  issues: { types: [opened, edited] }
-  pull_request: { types: [synchronize] }   # loop DESEJADO fix->review
-jobs:
-  agent:
-    # B: NÃO é filtro-por-actor cego. Ignora eventos do bot EXCETO os que alimentam o loop
-    # desejado (bot commita -> CI -> bot corrige); + loop breaker bounded por issue/PR.
-    if: ${{ github.actor != 'roboto-bot' || github.event.action == 'synchronize' }}
-    runs-on: [self-hosted, roboto-ephemeral]       # runner JIT -> container 1-por-task (K)
-    steps:
-      - run: assert-loop-budget --key "${{ github.event.issue.number }}" --max 5   # loop breaker (B)
-      - uses: ./.github/actions/run-agent
-        with: { agent: refinamento, then: validate-readiness }   # gate de prontidão (A)
+### S2 · Gate de aprovação (Jev + Telegram, revalidado no servidor)
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Ag as Agente
+  participant Pol as Politica (Jev)
+  participant St as Estado (issue)
+  participant TG as Bot Telegram
+  actor Dono
+  Ag->>Pol: acao proposta
+  Pol-->>Ag: deny | ask | allow (+confianca)
+  alt allow e confianca alta
+    Ag->>Ag: executa
+  else ask ou confianca baixa
+    Ag->>St: PENDING_APPROVAL
+    Ag->>TG: notifica (IDs+resumo, sem codigo)
+    TG->>Dono: Approve/Deny
+    Dono->>TG: toque
+    TG->>St: registra decisao
+    St->>Ag: revalida no servidor (acao == aprovado)
+  end
 ```
 
-### Peça: Gate de aprovação (Jev + humano; GitHub canônico, Telegram notifica)
-```ts
-const v = gateway.judge({ action, context });   // deny | ask | allow + confidence
-if (v.verdict === "deny") return abort(v);
-if (v.verdict === "ask" || v.confidence < HUMAN_THRESHOLD) {
-  persistState("PENDING_APPROVAL");              // estado na issue (A) / store durável (M), não no chat
-  notifyTelegram(idsResumoSemCodigo);            // dados mínimos (M); canal canônico = GitHub
-  await waitApprovalRevalidatedServerSide();     // autoridade verificada no servidor (M/H)
-}
+### S3 · Checkpoint / resume pós-falha (resume ≠ rollback)
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Orq as Orquestrador
+  participant R as Runner efemero
+  participant St as Estado/journal (externo)
+  Orq->>R: dispara task
+  R->>St: checkpoint (progresso)
+  R--xOrq: crash
+  Orq->>St: le ultimo checkpoint verificado
+  Orq->>R: novo container retoma (resume)
+  note over Orq,St: desfazer efeitos = rollback (git revert + reabrir issue, Trilha H)
 ```
 
 ---
-Referências de trilha: estrutura em 0/B/C/I/K; gates/observabilidade em H/M; custo em L; memória em G.
-Diagramas de processo/estado: `SYNTHESIS.md`. Auditoria desta vista: `research/audits/auditoria-c4.md` (PR #19).
+
+## Esboços de implementação (ilustrativos, não-produção)
+
+<details><summary>Gateway + escada · gatilho anti-loop · gate de aprovação (clique para abrir)</summary>
+
+```ts
+// Gateway cobre SÓ o que usa modelo; tier 1 (determinístico) NÃO é do gateway.
+interface ModelGateway {
+  judge(task): { verdict: "deny"|"ask"|"allow"; confidence: number };   // Jev
+  generate(task, model: string): { text: string; confidence?: number };
+}
+async function routed(task) {
+  if (task.isDeterministic) return ci.run(task);                   // tier 1 — CI externo, sem LLM
+  if (task.kind === "decision") return gateway.judge(task);        // tier 2 — Jev
+  const cheap = await gateway.generate(task, pickCheapModel(task)); // tier 3a — chinês/aberto
+  return cheap.confidence! >= T ? cheap : gateway.generate(task, FRONTIER); // tier 3b — Claude
+}
+```
+
+```yaml
+# anti-loop CORRETO (Trilha B): filtro por actor COM exceções + loop breaker — não filtro cego
+on: { issues: { types: [opened, edited] }, pull_request: { types: [synchronize] } }
+jobs:
+  agent:
+    if: ${{ github.actor != 'roboto-bot' || github.event.action == 'synchronize' }}  # preserva fix->review
+    runs-on: [self-hosted, roboto-ephemeral]
+    steps:
+      - run: assert-loop-budget --key "${{ github.event.issue.number }}" --max 5     # loop breaker
+      - uses: ./.github/actions/run-agent
+```
+
+```ts
+const v = gateway.judge({ action, context });
+if (v.verdict === "deny") return abort(v);
+if (v.verdict === "ask" || v.confidence < HUMAN_THRESHOLD) {
+  persistState("PENDING_APPROVAL");            // estado na issue (A), não no chat
+  notifyTelegram(idsResumoSemCodigo);          // dados mínimos (M); gate canônico = GitHub
+  await waitApprovalRevalidatedServerSide();   // autoridade no servidor (M/H)
+}
+```
+</details>
+
+---
+Estrutura: 0/B/C/I/K · gates/observabilidade: H/M · custo: L · memória: G. Auditoria: `research/audits/auditoria-c4.md` (PR #19).
