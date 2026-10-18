@@ -1,6 +1,9 @@
 # Trilha L — Modelo de custo do fleet
 
 > Status: RASCUNHO PARA REVISÃO (criada na remediação da auditoria rodada-01, 2026-10-18)
+>
+> ✅ **Decidido** (ver `DECISOES-A-FECHAR.md`): **teto global R$550/mês + alerta 80%**, barato-primeiro;
+> budget por issue após a 1ª medição (D6).
 
 ## Por que existe
 

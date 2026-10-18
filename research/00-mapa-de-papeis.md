@@ -1,6 +1,10 @@
 # Trilha 0 — Mapa de papéis → agentes
 
 > Status: RASCUNHO PARA REVISÃO (executado 2026-10-18)
+>
+> ✅ **Decidido** (ver `DECISOES-A-FECHAR.md`): MVP = núcleo Refinamento+Implementação+Review+CI (D2);
+> **nova classe — persona sênior persistente consultiva** por empresa/projeto (sob demanda + memória,
+> execução nos efêmeros) (D18); 1 instância por empresa (D17).
 
 ## Pergunta
 

@@ -1,6 +1,9 @@
 # Trilha H — Qualidade, segurança, evals, gates e recuperação
 
 > Status: RASCUNHO PARA REVISÃO (executado 2026-10-18)
+>
+> ✅ **Decidido** (ver `DECISOES-A-FECHAR.md`): gate humano em merge/deploy/credencial/arquitetura/
+> conflito/destrutivo (D7); observabilidade em **Docker (ambiente de dev inteiro) + checks periódicos** (D3).
 
 > 🧩 Auditoria `llm_call`, versão de prompt por run e resume de estado verificado: ver
 > [`DESIGN-nucleo.md`](DESIGN-nucleo.md).

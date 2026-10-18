@@ -1,6 +1,9 @@
 # Trilha F — Economia de token, ferramentas e ferramentificação
 
 > Status: RASCUNHO PARA REVISÃO (executado 2026-10-18)
+>
+> ✅ **Decidido** (ver `DECISOES-A-FECHAR.md`): **data-gateway de leitura (MCP)** read-only curado
+> para dados/APIs da empresa — é ferramenta (como o code-intel), nunca query livre (D19).
 
 ## Pergunta
 

@@ -1,6 +1,9 @@
 # Trilha I — Roteamento de modelos (right-sizing)
 
 > Status: RASCUNHO PARA REVISÃO (executado 2026-10-18)
+>
+> ✅ **Decidido** (ver `DECISOES-A-FECHAR.md`): substrato **OpenRouter**; mix inicial = 1 modelo
+> chinês/aberto barato + **Claude frontier** + **Jev**; **pinar por medição** (D16).
 
 ## Pergunta
 

@@ -1,6 +1,9 @@
 # Trilha A — Contratos de trabalho (épico / issue / DoR / DoD / estados)
 
 > Status: RASCUNHO PARA REVISÃO (executado 2026-10-18)
+>
+> ✅ **Decidido** (ver `DECISOES-A-FECHAR.md`): issue types + sub-issues nativos; **Projects fora** no
+> MVP (estado via labels) (D12); usar **ideias do Spec Kit** sem acoplar à ferramenta (D13).
 
 ## Pergunta
 

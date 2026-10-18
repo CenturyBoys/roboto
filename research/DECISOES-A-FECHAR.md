@@ -151,27 +151,27 @@ Legenda da decisão: ⬜ em aberto · ✅ aceita a proposta · ✏️ outra (ano
 ### D12 · Issue types + sub-issues nativos vs labels; Projects dentro ou fora
 - **Proposta:** **issue types + sub-issues nativos** do GitHub; **Projects fora** no MVP (estado via
   labels/status), reavaliar como visualização depois.
-- **Decisão:** ⬜
+- **Decisão:** ✅ issue types + sub-issues nativos; Projects fora no MVP (estado via labels).
 
 ### D13 · Adotar GitHub Spec Kit como ferramenta de spec?
 - **Pontos de vista:** *Sim* (padrão pronto Constitution→…→Implement, menos reinvenção) · *Não*
   (nossa DoR/DoD já cobre; menos dependência).
 - **Proposta:** **usar as ideias do Spec Kit** (spec versionada = issue), **sem acoplar à ferramenta** no MVP.
-- **Decisão:** ⬜
+- **Decisão:** ✅ usar as ideias (spec versionada = issue), sem acoplar à ferramenta no MVP.
 
 ### D14 · Onde as skills vivem + versionamento
 - **Proposta:** `.claude/skills/` no `roboto`, **versionadas e revisadas por composição** (CompoSkill);
   plugin/compartilhamento depois.
-- **Decisão:** ⬜
+- **Decisão:** ✅ `.claude/skills/` no `roboto`, versionadas e revisadas por composição.
 
 ### D15 · Canal canônico de aprovação
 - **Proposta:** **GitHub é o canônico** (review/estado da issue); **Telegram = atalho revalidado no servidor**.
-- **Decisão:** ⬜
+- **Decisão:** ✅ GitHub canônico; Telegram = atalho revalidado no servidor.
 
 ### D16 · Mix de modelos por etapa (provedor barato inicial)
 - **Proposta:** começar com **1 modelo chinês/aberto barato** (ex.: um de coding forte) para geração +
   **Claude frontier** no difícil + **Jev** no judge; **pinar por medição** (não por leaderboard).
-- **Decisão:** ⬜ (ou deixar 100% para "medir no build")
+- **Decisão:** ✅ começar com 1 modelo chinês/aberto barato + Claude frontier + Jev; **pinar por medição**.
 
 ---
 

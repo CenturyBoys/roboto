@@ -1,6 +1,10 @@
 # Trilha M — Observabilidade operacional, comunicação (Telegram) e continuidade
 
 > Status: RASCUNHO PARA REVISÃO (criada 2026-10-18; reescrita após auditoria `audit/trilha-m` / PR #18)
+>
+> ✅ **Decidido** (ver `DECISOES-A-FECHAR.md`): **Telegram no MVP** (refinamento conversacional →
+> materializa issue) (D2); **GitHub = canal canônico de gate**, Telegram = atalho revalidado (D15);
+> **checkpoint leve** issue+git+journal (D5).
 
 > 🧩 Checkpoint/resume (estado no banco) e efeitos via outbox: ver [`DESIGN-nucleo.md`](DESIGN-nucleo.md).
 

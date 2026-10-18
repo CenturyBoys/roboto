@@ -1,6 +1,9 @@
 # Trilha E — AGENTS.md e padrões de código
 
 > Status: RASCUNHO PARA REVISÃO (executado 2026-10-18)
+>
+> ✅ **Decidido** (ver `DECISOES-A-FECHAR.md`): stack **Python · async · containerizado**, **retorno
+> estilo `Result<Ok,Error>`** (ok/erro explícito, sem exceção para fluxo) — vira regra no `AGENTS.md` (D1).
 
 ## Pergunta
 

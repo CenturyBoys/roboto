@@ -1,6 +1,10 @@
 # Trilha K — Runtime containerizado
 
 > Status: RASCUNHO PARA REVISÃO (executado 2026-10-18)
+>
+> ✅ **Decidido** (ver `DECISOES-A-FECHAR.md`): secrets = **ansible-vault** (1 var no GitHub
+> `ANSIBLE_VAULT_PASSWORD`) (D4); **Docker · 1 instância por empresa · N repos via GitHub App** (D17);
+> observabilidade em Docker (D3).
 
 ## Pergunta
 

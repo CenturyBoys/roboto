@@ -1,6 +1,9 @@
 # Trilha C — Design de skills
 
 > Status: RASCUNHO PARA REVISÃO (executado 2026-10-18)
+>
+> ✅ **Decidido** (ver `DECISOES-A-FECHAR.md`): skills em `.claude/skills/` no `roboto`, versionadas
+> e revisadas por composição (D14).
 
 ## Pergunta
 
