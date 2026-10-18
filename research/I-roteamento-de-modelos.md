@@ -54,6 +54,40 @@ roteamos, e por qual substrato?
 O score do Jev define um **threshold de escalonamento**: abaixo do limiar → escala para modelo
 maior ou para humano. Conecta com os gates da Trilha H e o gate de prontidão da Trilha A.
 
+## Mapa modelo → tarefa (por benchmark)
+
+> ⚠️ **Disciplina de fontes.** Leaderboards públicos de 2026 trazem números conflitantes e até
+> modelos de nomes "futuros"/não verificáveis. O que vale aqui é **o conjunto de benchmarks por tipo
+> de tarefa** + **candidatos por tier**; os números são **indicativos**, a confirmar no nosso golden
+> set (Trilha H) antes de pinar qualquer modelo. Para Claude, a fonte autoritativa é a skill
+> `claude-api` (Opus 4.8 / Sonnet 4.6 / Haiku 4.5 / Fable 5) — ignorar alegações de "Opus 5" etc. até verificar.
+
+### Benchmark por tipo de tarefa
+| Tarefa (agente) | Benchmarks de referência |
+|-----------------|--------------------------|
+| Implementação / coding | **SWE-bench Verified**, **SWE-bench Pro**, LiveCodeBench, Aider polyglot, Terminal-Bench |
+| Agêntico long-horizon | SWE-bench Pro, Terminal-Bench, RoadmapBench / DeepSWE |
+| Planejamento / raciocínio | ARC-AGI-2, GPQA, suites de reasoning |
+| Review / bug-finding | CodeJudgeBench (LLM-as-judge) + estudos de FP da Trilha D (QASecClaw, Sifting the Noise) |
+| Refinamento / clarificação | ClarifyCodeBench, Ambig-SWE (Trilha A), IFEval-style |
+| Guardrail / classificação | não é benchmark gerativo → acurácia + confiança calibrada no **nosso** golden set (Jev) |
+
+### Candidatos por tier (indicativo, a validar)
+| Tier | Candidatos | Nota |
+|------|------------|------|
+| Geração barata (OpenRouter, chineses/abertos) | DeepSeek (V3.x+), Qwen3-Coder, GLM (4.6/4.7), Kimi | fortes em coding; flash tiers ~$0,15–0,60/MTok → workhorse de implementação/testes |
+| Frontier (Claude via OpenRouter) | Opus 4.8 (hardest), Sonnet 4.6 (balance), Haiku 4.5 (barato) | raciocínio difícil, arquitetura, review sensível |
+| Judge / guardrail | Jev / System One | DoD, gate de prontidão, scoring de review (deny/ask/allow) |
+
+Relato de mercado (indicativo): modelos chineses abertos entregam SWE-bench competitivo a custo de
+saída muito menor — é o que justifica reservar Claude só para o topo.
+
+### Como validamos (não pinar por leaderboard)
+1. Montar um **golden set por tipo de tarefa** (Trilha H) a partir de issues/PRs reais.
+2. Rodar os candidatos de cada tier nesse set; medir **qualidade E custo/latência** (Trilha L).
+3. Pinar o **modelo mais barato que passa o limiar de qualidade** da etapa (right-sizing).
+4. **Re-rodar periodicamente** — o ranking vira rápido; o mapa é **vivo**, não fixo.
+
 ## Riscos
 - **Jev é vendor novo e vira dependência transversal (A/D/H/I)** → **isolar atrás de uma interface/
   adapter trocável**, manter fallback (judge frontier barato) e **validar nos nossos casos antes de
@@ -86,3 +120,7 @@ estruturadas + **`jev-guard`** como guardrail de tool call, com fallback de judg
 - [TypeSafe AI Releases Jev — MarkTechPost](https://www.marktechpost.com/2026/09/19/typesafe-ai-releases-jev/)
 - [Jev API: Pricing and Use Cases — apimaster](https://apimaster.ai/blog/jev-api)
 - [How to Use Jev: practical guide (jev-guard deny/ask/allow) — dev.to](https://dev.to/valyuai/how-to-use-jev-a-practical-guide-to-typesafes-system-one-model-g5e)
+- [SWE-bench Verified Leaderboard & Methodology — vals.ai](https://www.vals.ai/benchmarks/swebench) *(indicativo)*
+- [The Open Weight Models that Matter, June 2026 — OpenRouter](https://openrouter.ai/blog/insights/the-open-weight-models-that-matter-june-2026/) *(indicativo)*
+- [Best Chinese LLMs 2026: DeepSeek, Qwen, GLM, Kimi — YottaLabs](https://www.yottalabs.ai/post/best-chinese-llm-models-2026-deepseek-qwen-glm-kimi-compared) *(indicativo)*
+- [CodeJudgeBench: Benchmarking LLM-as-a-Judge for Coding Tasks (arXiv 2507.10535)](https://arxiv.org/abs/2507.10535)
