@@ -13,6 +13,7 @@ em vez de sessões gigantes de contexto.
 > as trilhas sem substituí-las. Comece por lá para o panorama; use as trilhas abaixo para o detalhe.
 > 🧱 Vistas estruturais em **padrão C4** + esboços de implementação: [`ARCHITECTURE-C4.md`](ARCHITECTURE-C4.md).
 > ✅ **Revisão final / prontidão para implementar:** [`READINESS.md`](READINESS.md) — o que está sólido, lacunas, decisões-fundação e ordem do MVP.
+> 🟦 **Decisões a fechar (proposta + pontos de vista p/ o dono verificar):** [`DECISOES-A-FECHAR.md`](DECISOES-A-FECHAR.md).
 
 ## Trilhas
 
