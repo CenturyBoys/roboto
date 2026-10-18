@@ -80,6 +80,21 @@ Legenda da decisão: ⬜ em aberto · ✅ aceita a proposta · ✏️ outra (ano
   **vault por empresa** (D4) e teto (L) por tenant.
 - **Decisão:** ⬜
 
+### D18 · Agente(s) sênior persistente(s) — persona consultiva por empresa/projeto *(interpretação a confirmar)*
+- **Ideia (do dono):** além dos agentes efêmeros por task, um **"engenheiro sênior"** por
+  empresa/projeto — persona **conversável** (via Telegram), **responsável por entregas**, com quem o
+  humano **tira dúvidas e planeja**, e que **persiste** (lembra do contexto da empresa/projetos).
+- **Reconciliação / pontos de vista:**
+  - *Persistência = memória + identidade, instanciada SOB DEMANDA* (não processo sempre-ligado):
+    mantém determinismo-primeiro + runtime efêmero (K); a "permanência" vem da **memória durável
+    (G)** + persona versionada; ele é "acordado" quando você fala. **(recomendado)**
+  - *Processo sempre-ligado*: presença contínua, mas custo de idle + estado vivo fora da issue (pior).
+- **Proposta:** nova **classe de agente (Trilha 0)** — **persona consultiva persistente**
+  (on-demand + memória), acessível pela porta Telegram (M), escopada por empresa/projeto (D17).
+  Planejamento/arquitetura/refino conversam por ela; **execução segue nos agentes efêmeros**;
+  verdade continua na issue/repo.
+- **Decisão:** ⬜ (confirmar a interpretação antes de propagar)
+
 ---
 
 ## §2 · Design a escrever (proposta — eu redijo como extensão das trilhas)
