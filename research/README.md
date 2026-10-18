@@ -9,6 +9,9 @@ ciclo de vida de desenvolvimento de software, usando o **GitHub** como substrato
 Objetivo de primeira classe em todas as trilhas: **economia de token** e sessões curtas
 em vez de sessões gigantes de contexto.
 
+> 📄 **Visão de conjunto (com diagramas):** [`SYNTHESIS.md`](SYNTHESIS.md) — sintetiza e amarra todas
+> as trilhas sem substituí-las. Comece por lá para o panorama; use as trilhas abaixo para o detalhe.
+
 ## Trilhas
 
 | # | Trilha | Pergunta central | Depende de |
