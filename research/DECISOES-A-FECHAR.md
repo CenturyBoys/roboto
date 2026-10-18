@@ -67,6 +67,19 @@ Legenda da decisão: ⬜ em aberto · ✅ aceita a proposta · ✏️ outra (ano
   (jev-guard), com amostragem dos `allow` de baixo risco.
 - **Decisão:** ⬜
 
+### D17 · Tenancy e empacotamento (multi-empresa, N repos) — Docker image
+- **Pergunta:** o `roboto` é empacotado como **Docker image** e sobe **uma instância por empresa**,
+  atendendo **N repos** daquela empresa?
+- **Pontos de vista:** *Uma instância por empresa (single-tenant por deploy)* → isolamento forte de
+  dados/segredos/orçamento, casa com jurisdição/sensibilidade (I/H); custo = mais deploys · *Multi-tenant
+  compartilhado* → menos infra, mas isolamento só lógico e risco de vazamento entre empresas (pior).
+  Acesso a N repos: *GitHub App* (instala na org, webhooks de todos, token por-repo escopo mínimo) vs
+  *machine-user/PAT* (não escala para muitos repos).
+- **Proposta:** **Sim, Docker image(s); uma instância por empresa; um orquestrador atende N repos via
+  GitHub App.** Estado keyed por `repo+issue`; **WIP e orçamento por-repo e por-empresa**. Config,
+  **vault por empresa** (D4) e teto (L) por tenant.
+- **Decisão:** ⬜
+
 ---
 
 ## §2 · Design a escrever (proposta — eu redijo como extensão das trilhas)
