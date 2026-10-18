@@ -16,28 +16,35 @@ Legenda da decisão: ⬜ em aberto · ✅ aceita a proposta · ✏️ outra (ano
   no front e back) · *Poliglota* (orquestrador numa, bot noutra — mais superfície).
 - **Proposta:** **Python** para orquestrador + agentes + gateway + bot (um runtime só); TS só se/quando
   surgir front dedicado.
-- **Decisão:** ⬜
+- **Decisão:** ✅ **Python total**, **async**, **containerizado**, e **retorno estilo Rust
+  `Result<Ok, Error>`** — ok/erro explícito no retorno, **não exceções para fluxo de controle**
+  (vira convenção no E/`AGENTS.md`).
 
 ### D2 · Escopo e ordem do MVP
 - **Pontos de vista:** *Loop núcleo primeiro* (Refinamento→Implementação→Review+CI) entrega valor cedo
   e valida o circuito · *Fleet completo de uma vez* cobre tudo mas atrasa o primeiro valor e multiplica decisões.
 - **Proposta:** MVP = **Refinamento (+gate de prontidão) · Implementação · Review (≠autor) · CI**;
   depois **Planejamento**; **Segurança(ambiente)** e **Docs** em seguida; **SRE/Incidente** só com produção.
-- **Decisão:** ⬜
+- **Decisão:** ✅ MVP = loop núcleo **com Telegram desde já**: **Refinamento conversacional via
+  Telegram** (refino pelo chat → materializa a issue) · Implementação · Review(≠autor) · CI.
+  Planejamento/Segurança/Docs depois.
 
 ### D3 · Plataforma de observabilidade
 - **Pontos de vista:** *GitHub + logs estruturados* (zero custo, mas sem trace de LLM/custo) ·
   *Self-host (Langfuse/Phoenix)* (trace+custo de LLM, dado em casa, algum ops) · *SaaS* (rápido, mas
   custo recorrente + código/trace em terceiro).
 - **Proposta:** **GitHub + logs + self-host leve (Langfuse/Phoenix)** para trace/custo de LLM; evitar SaaS no início.
-- **Decisão:** ⬜
+- **Decisão:** ✅ **Subir um Docker com o ambiente de dev inteiro** (self-host) rodando a
+  observabilidade, com **checks periódicos** (health + métricas em periodicidade). SaaS fica fora.
 
 ### D4 · Secrets
 - **Pontos de vista:** *OIDC curto do GitHub Actions* (sem segredo longo guardado; simples) ·
   *Vault/OpenBao* (secrets dinâmicos/rotação; mais poderoso, mais ops) · *SOPS* (config cifrada no git).
 - **Proposta:** **OIDC curto + secret store mínimo** no MVP; **Vault/OpenBao** só quando houver
   vários segredos de vida longa; SOPS para config estática.
-- **Decisão:** ⬜
+- **Decisão:** ✅ **Ansible + ansible-vault** para senhas; **uma única variável no GitHub** (a senha
+  do vault, como secret `ANSIBLE_VAULT_PASSWORD`). Local: a senha fica em **`.ansible.vault_pass`
+  (gitignored)**. Arquivo + `.gitignore` criados agora; falta setar o secret no GitHub.
 
 ### D5 · Checkpoint / continuidade
 - **Pontos de vista:** *Leve* (issue + git worktree + run journal) — simples, determinístico, cobre

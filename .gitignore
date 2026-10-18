@@ -1,0 +1,15 @@
+# segredos — nunca versionar
+.ansible.vault_pass
+*.vault_pass
+.env
+*.env
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.mypy_cache/
+.pytest_cache/
+
+# scratch/local
+*.log
