@@ -1,241 +1,263 @@
-# Arquitetura — Vistas C4 + Sequências
+# Continuous Development · Diagramas C4
 
-> Fase: PESQUISA. **Rev. 5** — **fundo bege + caixas claras com texto escuro** (legível em tema
-> claro ou escuro); tipo codificado pela **cor da borda**: azul = nosso · verde-água = armazenamento ·
-> cinza = externo · vermelho = não-confiável (isolamento forte). Correções da auditoria (PR #19) mantidas.
+Diagramas em Mermaid, versionados — o estado atual do desenho. **Não é a fonte da verdade da
+arquitetura**: em divergência, as **trilhas de pesquisa** (`research/*.md`) vencem para desenho e o
+futuro `AGENTS.md`/código vence para implementação. Mudança de arquitetura começa no texto; o
+diagrama acompanha.
 
----
+Níveis C4: **contexto, contêineres, componentes** (do agente e do orquestrador), mais um
+**deployment** e os **fluxos em sequência** — que é onde moram as decisões que um diagrama de caixas
+não mostra.
 
-## C4 Nível 1 — Contexto
-
-```mermaid
-%%{init: {'theme':'base', 'themeVariables': {'background':'#FBF3DE'}}}%%
-C4Context
-  title Nivel 1 — Contexto
-  Person(dono, "Dono / Revisor")
-  Person_Ext(contrib, "Contribuidor externo", "PR nao-confiavel")
-  System(cd, "Continuous Development", "Fleet de agentes do SDLC")
-  System_Ext(gh, "GitHub")
-  System_Ext(orr, "OpenRouter", "substrato de modelos")
-  System_Ext(tg, "Telegram", "porta de conversa + notificacao")
-  System_Ext(feeds, "Feeds de seguranca")
-  Rel(dono, gh, "aprova (canonico)")
-  Rel(dono, tg, "alertas / aprova")
-  Rel(contrib, gh, "abre PR")
-  Rel(cd, gh, "issues / PR / CI")
-  Rel(cd, orr, "inferencia")
-  Rel(cd, tg, "notifica")
-  Rel(feeds, cd, "ambiente")
-  UpdateElementStyle(dono, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#08427B")
-  UpdateElementStyle(contrib, $bgColor="#FCE9E7", $fontColor="#1A1A1A", $borderColor="#C0392B")
-  UpdateElementStyle(cd, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
-  UpdateElementStyle(gh, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#8A8A8A")
-  UpdateElementStyle(orr, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#8A8A8A")
-  UpdateElementStyle(tg, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#8A8A8A")
-  UpdateElementStyle(feeds, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#8A8A8A")
-  UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
-```
+> **Como ler os diagramas de caixa.** Os níveis são C4, mas o desenho usa **`flowchart`, não a
+> notação `C4Container` do mermaid** — de propósito: o renderizador C4 do mermaid *não faz layout*
+> (distribui numa grade fixa, e com descrição de mais de poucas palavras as caixas se sobrepõem e o
+> texto sai de dentro). O flowchart passa pelo **dagre**, que posiciona de verdade — e é legível em
+> tema claro ou escuro sem fundo colorido. Convenções: **contorno tracejado = fora do roboto**
+> (externo); **contorno grosso = ponto sensível/novo** (ex.: runner isolado, o gateway, a porta
+> única). Formas: `(["ator"])` pessoa · `[["sistema externo"]]` · `[("armazenamento")]`.
 
 ---
 
-## C4 Nível 2 — Contêineres (3 fatias)
+## Nível 1 · Contexto
 
-### 2a · Entrada e orquestração
 ```mermaid
-%%{init: {'theme':'base', 'themeVariables': {'background':'#FBF3DE'}}}%%
-C4Container
-  title Nivel 2a — Entrada e orquestracao
-  System_Ext(gh, "GitHub")
-  System_Ext(feeds, "Feeds")
-  Container_Boundary(cd, "Continuous Development") {
-    Container(orch, "Orquestrador", "fila / worker", "dispatch, WIP, idempotencia, dependencias")
-    Container(runnerT, "Runner confiavel", "container efemero", "codigo nosso")
-    Container(runnerU, "Runner isolado", "microVM gVisor", "PR externo")
-    ContainerDb(state, "Estado / journal", "store durable", "checkpoint fora do container")
-  }
-  Rel(gh, orch, "webhook (reativo)")
-  Rel(feeds, orch, "schedule (ambiente)")
-  Rel(orch, runnerT, "job confiavel")
-  Rel(orch, runnerU, "PR externo")
-  Rel(orch, state, "checkpoint / resume")
-  UpdateElementStyle(gh, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#8A8A8A")
-  UpdateElementStyle(feeds, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#8A8A8A")
-  UpdateElementStyle(orch, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
-  UpdateElementStyle(runnerT, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
-  UpdateElementStyle(runnerU, $bgColor="#FCE9E7", $fontColor="#1A1A1A", $borderColor="#C0392B")
-  UpdateElementStyle(state, $bgColor="#EAF4F1", $fontColor="#1A1A1A", $borderColor="#2E7D6F")
-  UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
+flowchart LR
+  dono(["Dono / Revisor"])
+  contrib(["Contribuidor externo<br/><i>PR nao-confiavel</i>"])
+
+  subgraph cd["Continuous Development · roboto"]
+    direction TB
+    orch["Orquestrador<br/><i>dispatch determinista</i>"]
+    runner["Runners<br/><i>container efemero · 1 por task</i>"]
+    gw["Gateway de modelos<br/><i>interface · escada</i>"]
+    mem[("Memoria<br/><i>md+git + indice</i>")]
+    obs["Observabilidade"]
+  end
+
+  gh[["GitHub<br/><i>issues · PR · CI</i>"]]
+  orr[["OpenRouter<br/><i>Claude · chineses · Jev</i>"]]
+  tg[["Telegram<br/><i>porta de conversa + aviso</i>"]]
+  feeds[["Feeds<br/><i>CVE / GHSA / OSV</i>"]]
+
+  dono -- "aprova (canonico)" --> gh
+  dono -- "conversa · refina · aprova" --> tg
+  contrib -- "abre PR" --> gh
+  gh -- "webhook (reativo)" --> orch
+  feeds -- "schedule (ambiente)" --> orch
+  orch --> runner
+  runner -- "inferencia" --> gw
+  gw -- "HTTPS" --> orr
+  runner -- "le / escreve" --> mem
+  runner -- "abre PR / comenta" --> gh
+  runner -- "notifica / pergunta" --> tg
+  runner -- "traces / custo" --> obs
+
+  classDef externo stroke-dasharray:5 3
+  classDef destaque stroke-width:3px
+  class gh,orr,tg,feeds,contrib externo
+  class gw,runner destaque
 ```
 
-### 2b · Execução e modelos
-```mermaid
-%%{init: {'theme':'base', 'themeVariables': {'background':'#FBF3DE'}}}%%
-C4Container
-  title Nivel 2b — Execucao e modelos
-  System_Ext(gh, "GitHub")
-  System_Ext(orr, "OpenRouter")
-  System_Ext(direct, "APIs diretas / Jev direto", "fallback")
-  Container_Boundary(cd, "Continuous Development") {
-    Container(runner, "Runner + agente", "container efemero", "hospeda agentes (N3)")
-    Container(gw, "Gateway de modelos", "interface / roteador", "escada de validacao")
-    ContainerDb(mem, "Memoria / indice", "md+git + FTS5")
-    ContainerDb(secrets, "Secrets", "Vault / OpenBao")
-  }
-  Rel(runner, gw, "inferencia")
-  Rel(gw, orr, "HTTPS")
-  Rel(gw, direct, "fallback")
-  Rel(runner, mem, "le / escreve")
-  Rel(runner, gh, "abre PR")
-  Rel(secrets, runner, "credencial curta")
-  UpdateElementStyle(gh, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#8A8A8A")
-  UpdateElementStyle(orr, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#8A8A8A")
-  UpdateElementStyle(direct, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#8A8A8A")
-  UpdateElementStyle(runner, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
-  UpdateElementStyle(gw, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
-  UpdateElementStyle(mem, $bgColor="#EAF4F1", $fontColor="#1A1A1A", $borderColor="#2E7D6F")
-  UpdateElementStyle(secrets, $bgColor="#EAF4F1", $fontColor="#1A1A1A", $borderColor="#2E7D6F")
-  UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
-```
+**O que este nível decide (e por quê):**
+- **Dois gatilhos, não um** (Trilha B): `gh → orch` é **reativo** (webhook); `feeds → orch` é
+  **ambiente** (schedule) — o agente de Segurança nasce de feed, não de PR.
+- **Telegram é porta de conversa, não só aviso** (Trilha M): refino de demanda e consulta ao
+  backlog passam por aqui — mas a **verdade continua na issue** (o chat vira proposta).
+- **OpenRouter é o único caminho de modelo** (Trilha I): tudo (Claude, chineses, Jev) entra por ele,
+  atrás do **gateway** interno (contorno grosso) — é o que permite trocar provedor sem tocar o resto.
 
-### 2c · Humano e observabilidade
-```mermaid
-%%{init: {'theme':'base', 'themeVariables': {'background':'#FBF3DE'}}}%%
-C4Container
-  title Nivel 2c — Humano e observabilidade
-  Person(dono, "Dono / Revisor")
-  System_Ext(tg, "Telegram")
-  Container_Boundary(cd, "Continuous Development") {
-    Container(runner, "Runner + agente", "", "emite sinais")
-    Container(obs, "Observabilidade", "plataforma da Trilha H", "duracao / custo / erros")
-    Container(tgbot, "Bot Telegram", "Bot API", "porta conversacional (refino/consulta) + notifica + aprova")
-  }
-  Rel(runner, obs, "traces / custo")
-  Rel(runner, tgbot, "pede aprovacao / avisa")
-  Rel(tgbot, tg, "via Bot API")
-  Rel(tg, dono, "Approve / Deny")
-  Rel(obs, dono, "dashboard")
-  UpdateElementStyle(dono, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#08427B")
-  UpdateElementStyle(tg, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#8A8A8A")
-  UpdateElementStyle(runner, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
-  UpdateElementStyle(obs, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
-  UpdateElementStyle(tgbot, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
-  UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
-```
+⚠️ O `contrib` (PR externo, tracejado) é o **vetor não-confiável**; onde ele cai muda tudo no nível 2.
 
 ---
 
-## C4 Nível 3 — Componentes
+## Nível 2 · Contêineres
 
-### 3a · Agente (dentro do runner)
+### 2.1 · O caminho da task (execução e modelos)
+
 ```mermaid
-%%{init: {'theme':'base', 'themeVariables': {'background':'#FBF3DE'}}}%%
-C4Component
-  title Nivel 3a — Agente
-  System_Ext(ci, "CI", "tier 1: sem LLM")
-  Container(gw, "Gateway", "tier 2/3")
-  ContainerDb(mem, "Memoria")
-  Container_Boundary(agent, "Agente") {
-    Component(skill, "Skills", "SKILL.md")
-    Component(tier, "Decisor de tier", "delega, nao executa")
-    Component(tools, "Tools", "code-intel / gh")
-    Component(memc, "Cli. memoria", "")
-    Component(gwc, "Cli. gateway", "")
-  }
-  Rel(skill, tier, "decide tier")
-  Rel(tier, ci, "tier 1 -> CI")
-  Rel(tier, gwc, "tier 2/3")
-  Rel(gwc, gw, "chama")
-  Rel(skill, tools, "usa")
-  Rel(skill, memc, "estado")
-  Rel(memc, mem, "le/escreve")
-  UpdateElementStyle(ci, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#8A8A8A")
-  UpdateElementStyle(gw, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
-  UpdateElementStyle(mem, $bgColor="#EAF4F1", $fontColor="#1A1A1A", $borderColor="#2E7D6F")
-  UpdateElementStyle(skill, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
-  UpdateElementStyle(tier, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
-  UpdateElementStyle(tools, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
-  UpdateElementStyle(memc, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
-  UpdateElementStyle(gwc, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
-  UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
+flowchart LR
+  gh[["GitHub"]]
+  feeds[["Feeds"]]
+  orr[["OpenRouter"]]
+  direct[["APIs diretas / Jev direto<br/><i>fallback</i>"]]
+
+  subgraph cd["Continuous Development"]
+    direction TB
+    orch["Orquestrador<br/><i>fila · WIP · idempotencia · dependencias</i>"]
+    rt["Runner confiavel<br/><i>container efemero + git worktree</i>"]
+    ru["Runner isolado<br/><i>microVM gVisor · PR externo</i>"]
+    gw["Gateway de modelos<br/><i>escada de validacao</i>"]
+    mem[("Memoria / indice<br/><i>md+git + FTS5</i>")]
+    st[("Estado / journal<br/><i>durable · FORA do container</i>")]
+    sec[("Secrets<br/><i>Vault / OpenBao</i>")]
+  end
+
+  gh -- "webhook" --> orch
+  feeds -- "schedule" --> orch
+  orch -- "job confiavel" --> rt
+  orch -- "PR externo (isolado)" --> ru
+  orch -- "checkpoint / resume" --> st
+  rt -- "inferencia" --> gw
+  ru -- "inferencia" --> gw
+  gw -- "HTTPS" --> orr
+  gw -. "fallback" .-> direct
+  rt -- "le / escreve" --> mem
+  rt -- "abre PR" --> gh
+  sec -- "credencial curta" --> rt
+
+  classDef externo stroke-dasharray:5 3
+  classDef destaque stroke-width:3px
+  class gh,feeds,orr,direct externo
+  class ru,gw destaque
 ```
 
-### 3b · Orquestrador (interno) — profundidade
+### 2.2 · O caminho do humano (observabilidade e comunicação)
+
 ```mermaid
-%%{init: {'theme':'base', 'themeVariables': {'background':'#FBF3DE'}}}%%
-C4Component
-  title Nivel 3b — Orquestrador
-  System_Ext(gh, "GitHub")
-  Container(runner, "Runner")
-  ContainerDb(state, "Estado/journal")
-  Container_Boundary(o, "Orquestrador") {
-    Component(ev, "Event handler", "valida webhook")
-    Component(idem, "Idempotencia", "head_sha + evento")
-    Component(dep, "Scheduler dependencia", "blocked-by / colisao")
-    Component(wip, "WIP / backpressure", "limite concorrencia")
-    Component(disp, "Dispatcher", "escolhe runner T / U")
-  }
-  Rel(gh, ev, "evento")
-  Rel(ev, idem, "chave")
-  Rel(idem, dep, "nao-visto")
-  Rel(dep, wip, "desbloqueado")
-  Rel(wip, disp, "slot livre")
-  Rel(disp, runner, "dispara (T ou U)")
-  Rel(disp, state, "checkpoint")
-  UpdateElementStyle(gh, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#8A8A8A")
-  UpdateElementStyle(runner, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
-  UpdateElementStyle(state, $bgColor="#EAF4F1", $fontColor="#1A1A1A", $borderColor="#2E7D6F")
-  UpdateElementStyle(ev, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
-  UpdateElementStyle(idem, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
-  UpdateElementStyle(dep, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
-  UpdateElementStyle(wip, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
-  UpdateElementStyle(disp, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
-  UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
+flowchart LR
+  dono(["Dono / Revisor"])
+  tg[["Telegram"]]
+
+  subgraph cd["Continuous Development"]
+    direction TB
+    runner["Runner + agente<br/><i>emite sinais</i>"]
+    obs["Observabilidade<br/><i>plataforma da Trilha H · consumida</i>"]
+    tgbot["Bot Telegram<br/><i>conversa (refino/consulta) + aviso + aprovacao</i>"]
+  end
+
+  runner -- "traces / custo / erros" --> obs
+  runner -- "pede aprovacao / avisa" --> tgbot
+  tgbot -- "Bot API" --> tg
+  tg -- "Approve / Deny · conversa" --> dono
+  obs -- "dashboard" --> dono
+
+  classDef externo stroke-dasharray:5 3
+  class tg externo
 ```
+
+**As cinco coisas que este nível decide:**
+1. **Orquestrador é processo determinístico** (Trilhas B/0) — fila, WIP, idempotência, grafo de
+   dependências. Não é um agente; é a camada que coordena.
+2. **Runner é efêmero, 1 por task + git worktree** (Trilha K) — paralelismo sem colisão de código.
+3. **Dois perfis de runner** (⚠️, Trilha K): `rt` confiável (código nosso) e `ru` **isolado
+   (gVisor/Firecracker)** para PR externo — **não é opcional-MVP**; a fronteira de confiança é estrutural.
+4. **O estado durável vive FORA do container efêmero** (Trilha M) — por isso `orch → st`: um
+   container novo **retoma do checkpoint externo** (resume ≠ rollback).
+5. **Telegram ≠ observabilidade** (Trilha M): são contêineres distintos; a observabilidade é a
+   **plataforma decidida na H** (consumida, não inventada aqui).
+
+⚠️ **Gateway é contorno grosso porque é a única porta de modelo** — e tem `fallback` (tracejado) para
+não virar ponto único (Trilha I). OpenRouter é **uma** implementação da interface.
 
 ---
 
-## C4 Deployment — runtime / infra (profundidade)
+## Nível 3 · Componentes do agente (dentro do runner)
 
 ```mermaid
-%%{init: {'theme':'base', 'themeVariables': {'background':'#FBF3DE'}}}%%
-C4Deployment
-  title Deployment — onde cada coisa roda
-  Deployment_Node(vps, "VPS / host", "Linux + Docker") {
-    Deployment_Node(svc, "Servico sempre-ligado", "") {
-      Container(orch, "Orquestrador", "fila/worker")
-    }
-    Deployment_Node(jit, "Runner JIT (por task)", "") {
-      Deployment_Node(ctr, "Container efemero", "nao-root, read-only, egress allowlist") {
-        Container(agentT, "Agente (confiavel)", "")
-      }
-      Deployment_Node(uvm, "microVM gVisor/Firecracker", "PR externo nao-confiavel") {
-        Container(agentU, "Agente (isolado)", "")
-      }
-    }
-  }
-  Deployment_Node(cloud, "Externo (SaaS)", "") {
-    System_Ext(orr, "OpenRouter")
-    ContainerDb(state, "Estado / journal", "store durable")
-  }
-  Rel(orch, agentT, "dispara")
-  Rel(orch, agentU, "dispara (isolado)")
-  Rel(agentT, orr, "inferencia (via gateway)")
-  Rel(orch, state, "checkpoint")
-  UpdateElementStyle(orch, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
-  UpdateElementStyle(agentT, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
-  UpdateElementStyle(agentU, $bgColor="#FCE9E7", $fontColor="#1A1A1A", $borderColor="#C0392B")
-  UpdateElementStyle(orr, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#8A8A8A")
-  UpdateElementStyle(state, $bgColor="#EAF4F1", $fontColor="#1A1A1A", $borderColor="#2E7D6F")
-  UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
+flowchart LR
+  ci[["CI (GitHub Actions)<br/><i>tier 1 · SEM LLM</i>"]]
+  gw["Gateway<br/><i>tier 2/3</i>"]
+  mem[("Memoria")]
+
+  subgraph agent["Agente"]
+    direction TB
+    skill["Skills<br/><i>SKILL.md + scripts</i>"]
+    tier["Decisor de tier<br/><i>DELEGA, nao executa</i>"]
+    tools["Tools<br/><i>code-intel · gh · ripgrep</i>"]
+    memc["Cli. memoria"]
+    gwc["Cli. gateway"]
+  end
+
+  skill -- "decide o tier" --> tier
+  tier -- "tier 1 -> CI" --> ci
+  tier -- "tier 2/3" --> gwc
+  gwc -- "chama" --> gw
+  skill -- "usa" --> tools
+  skill -- "estado" --> memc
+  memc -- "le / escreve" --> mem
+
+  classDef externo stroke-dasharray:5 3
+  classDef destaque stroke-width:3px
+  class ci externo
+  class tier destaque
 ```
+
+⚠️ **A escada atravessa fronteiras — não é lógica interna do agente.** O **tier 1 é o CI (externo,
+sem LLM)** e o **tier 3 é o Gateway (externo)**. O `Decisor de tier` (contorno grosso) só **decide e
+delega** — se desenhássemos a escada inteira dentro do agente, sugeriríamos que ele roda os próprios
+checks, violando "determinismo primeiro / CI é o juiz" (Trilhas 0/I).
+
+## Nível 3 · Componentes do orquestrador
+
+```mermaid
+flowchart LR
+  gh[["GitHub"]]
+  st[("Estado / journal")]
+  runner["Runners"]
+
+  subgraph o["Orquestrador"]
+    direction TB
+    ev["Event handler<br/><i>valida webhook</i>"]
+    idem["Idempotencia<br/><i>head_sha + evento</i>"]
+    dep["Scheduler de dependencia<br/><i>blocked-by · colisao</i>"]
+    wip["WIP / backpressure<br/><i>limite de concorrencia</i>"]
+    disp["Dispatcher<br/><i>escolhe runner T / U</i>"]
+  end
+
+  gh -- "evento" --> ev
+  ev -- "chave" --> idem
+  idem -- "nao-visto" --> dep
+  dep -- "desbloqueado" --> wip
+  wip -- "slot livre" --> disp
+  disp -- "dispara (T ou U)" --> runner
+  disp -- "checkpoint" --> st
+
+  classDef externo stroke-dasharray:5 3
+  classDef destaque stroke-width:3px
+  class gh externo
+  class disp destaque
+```
+
+⚠️ **`idem` vem antes de `dep`**: entrega de evento é *at-least-once* (Trilha B) — deduplicar
+**antes** de agendar evita disparar a mesma task duas vezes. E o `Dispatcher` (grosso) é quem
+**roteia PR externo para o runner isolado** — a decisão de confiança do nível 2 mora aqui.
 
 ---
 
-## Sequências (comportamento + decisões)
+## Deployment · onde cada coisa roda
 
-### S1 · Issue → PR → merge
 ```mermaid
-%%{init: {'theme':'base', 'themeVariables': {'background':'#FBF3DE'}}}%%
+flowchart TB
+  subgraph vps["VPS / host · Linux + Docker"]
+    orch["Orquestrador<br/><i>servico sempre-ligado</i>"]
+    subgraph jit["Runner JIT · por task"]
+      ctr["Container efemero<br/><i>nao-root · read-only · egress allowlist</i>"]
+      uvm["microVM gVisor/Firecracker<br/><i>PR externo</i>"]
+    end
+  end
+  orr[["OpenRouter"]]
+  st[("Estado / journal<br/><i>store durable</i>")]
+
+  orch -- "dispara" --> ctr
+  orch -- "dispara (isolado)" --> uvm
+  ctr -- "inferencia (via gateway)" --> orr
+  orch -- "checkpoint" --> st
+
+  classDef externo stroke-dasharray:5 3
+  classDef destaque stroke-width:3px
+  class orr,st externo
+  class uvm destaque
+```
+
+⚠️ **O estado durável é externo** (store, tracejado): o host/container pode morrer que o checkpoint
+sobrevive. E o caminho de PR externo é a **microVM** (grosso), não o container padrão.
+
+---
+
+## Fluxo · Issue → PR → merge
+
+```mermaid
 sequenceDiagram
   autonumber
   actor Dono
@@ -245,15 +267,15 @@ sequenceDiagram
   participant CI
   Dono->>GH: abre issue
   GH->>Orq: evento
-  Orq->>Ag: Refinamento (DoR)
-  alt falta definicao
-    Ag-->>GH: pede clarificacao (loop)
+  Orq->>Ag: Refinamento (DoR / gate de prontidao)
+  alt falta definicao (ou e task de definicao)
+    Ag-->>GH: pede clarificacao (loop bounded)
   else pronta
     Orq->>Ag: Planejamento + Implementacao
     Ag->>GH: abre PR
-    GH->>CI: checks tier 1 (sem LLM)
+    GH->>CI: checks tier 1 (lint/test/build · SEM LLM)
     Orq->>Ag: Review (agente != autor)
-    alt DoD ok + gate humano
+    alt DoD verde + gate humano
       Dono->>GH: aprova merge
     else falha de gate
       Orq->>Ag: volta a Implementacao
@@ -261,9 +283,9 @@ sequenceDiagram
   end
 ```
 
-### S2 · Gate de aprovação (Jev + Telegram, revalidado no servidor)
+## Fluxo · Gate de aprovação (Jev + Telegram, revalidado no servidor)
+
 ```mermaid
-%%{init: {'theme':'base', 'themeVariables': {'background':'#FBF3DE'}}}%%
 sequenceDiagram
   autonumber
   participant Ag as Agente
@@ -272,74 +294,73 @@ sequenceDiagram
   participant TG as Bot Telegram
   actor Dono
   Ag->>Pol: acao proposta
-  Pol-->>Ag: deny | ask | allow (+confianca)
+  Pol-->>Ag: deny | ask | allow (+ confianca)
   alt allow e confianca alta
     Ag->>Ag: executa
   else ask ou confianca baixa
-    Ag->>St: PENDING_APPROVAL
-    Ag->>TG: notifica (IDs+resumo, sem codigo)
-    TG->>Dono: Approve/Deny
-    Dono->>TG: toque
+    Ag->>St: PENDING_APPROVAL (na issue, nao no chat)
+    Ag->>TG: notifica (IDs + resumo · sem codigo)
+    TG->>Dono: Approve / Deny
+    Dono->>TG: toque (user ID na allowlist)
     TG->>St: registra decisao
     St->>Ag: revalida no servidor (acao == aprovado)
   end
 ```
 
-### S3 · Checkpoint / resume pós-falha
+## Fluxo · Checkpoint / resume pós-falha
+
 ```mermaid
-%%{init: {'theme':'base', 'themeVariables': {'background':'#FBF3DE'}}}%%
 sequenceDiagram
   autonumber
   participant Orq as Orquestrador
   participant R as Runner efemero
-  participant St as Estado/journal
+  participant St as Estado/journal (externo)
   Orq->>R: dispara task
   R->>St: checkpoint (progresso)
   R--xOrq: crash
-  Orq->>St: le ultimo checkpoint verificado
+  Orq->>St: le ultimo checkpoint VERIFICADO
   Orq->>R: novo container retoma (resume)
-  note over Orq,St: desfazer efeitos = rollback (git revert + reabrir issue, Trilha H)
+  note over Orq,St: desfazer efeitos = rollback (git revert + reabrir issue · Trilha H)
 ```
 
 ---
 
-## Esboços de implementação (ilustrativos, não-produção)
+## As arestas-chave e o contrato de cada uma
 
-<details><summary>Gateway + escada · gatilho anti-loop · gate de aprovação</summary>
+Uma aresta está *definida* quando se sabe: quem inicia, o que carrega, como autentica, e o que
+acontece na falha.
 
-```ts
-interface ModelGateway {               // SÓ o que usa modelo; tier 1 NÃO é do gateway
-  judge(task): { verdict: "deny"|"ask"|"allow"; confidence: number };   // Jev
-  generate(task, model: string): { text: string; confidence?: number };
-}
-async function routed(task) {
-  if (task.isDeterministic) return ci.run(task);                   // tier 1 — CI externo, sem LLM
-  if (task.kind === "decision") return gateway.judge(task);        // tier 2 — Jev
-  const cheap = await gateway.generate(task, pickCheapModel(task)); // tier 3a — chinês/aberto
-  return cheap.confidence! >= T ? cheap : gateway.generate(task, FRONTIER); // tier 3b — Claude
-}
-```
-```yaml
-# anti-loop CORRETO (B): filtro por actor COM exceções + loop breaker — não filtro cego
-on: { issues: { types: [opened, edited] }, pull_request: { types: [synchronize] } }
-jobs:
-  agent:
-    if: ${{ github.actor != 'roboto-bot' || github.event.action == 'synchronize' }}
-    runs-on: [self-hosted, roboto-ephemeral]
-    steps:
-      - run: assert-loop-budget --key "${{ github.event.issue.number }}" --max 5
-      - uses: ./.github/actions/run-agent
-```
-```ts
-const v = gateway.judge({ action, context });
-if (v.verdict === "deny") return abort(v);
-if (v.verdict === "ask" || v.confidence < HUMAN_THRESHOLD) {
-  persistState("PENDING_APPROVAL");            // na issue (A), não no chat
-  notifyTelegram(idsResumoSemCodigo);          // dados mínimos (M); gate canônico = GitHub
-  await waitApprovalRevalidatedServerSide();   // autoridade no servidor (M/H)
-}
-```
-</details>
+| Aresta | Inicia | Carrega | Autentica | Falha |
+|---|---|---|---|---|
+| GitHub → Orquestrador | evento | webhook | secret do webhook + dedupe (`head_sha`) | reentrega (at-least-once) |
+| Feeds → Orquestrador | schedule | CVE/advisory | cron/feed | próxima janela |
+| Orquestrador → Runner | orquestrador | task + contexto da issue | runner JIT | retoma do checkpoint |
+| Runner → Gateway | agente | prompt/decisão | chave no secret store | fallback (APIs diretas / Jev direto) |
+| Runner → GitHub | agente | PR / comentário | machine-user (escopo mínimo) | reabre issue / retenta |
+| Runner → Telegram | agente | aviso / pergunta (IDs+resumo) | bot token + allowlist de user | perda tolerável (verdade na issue) |
+| PR externo → Runner isolado | orquestrador | diff não-confiável | — | **isolamento forte obrigatório** (gVisor) |
+| Agente → modelos | agente | prompt | OpenRouter (CTO) | fallback / degrada |
+
+⚠️ **Assimetria do Telegram:** a mesma aresta serve *conversa de entrada* (refino/consulta) e
+*aprovação* — mas **nenhuma delas é autoridade final**: toda mutação de estado é revalidada no
+servidor contra a issue + política (Trilhas M/H). Telegram propõe; GitHub/issue decide.
 
 ---
-Estrutura: 0/B/C/I/K · gates/observabilidade: H/M · custo: L · memória: G. Auditoria: `research/audits/auditoria-c4.md` (PR #19).
+
+## O que falta para fechar (lista de trabalho do alto nível)
+
+| Elo | Fecha? | O que falta |
+|---|---|---|
+| Stack inicial do `roboto` (linguagem/framework) | **não** | fixa comandos/linter (E), ferramenta de impacto (J), base do runner (K) |
+| Orquestrador (fila/idempotência/WIP) | **não** | peça central ainda não especificada em detalhe (B) |
+| Gateway de modelos (interface + fallback) | **parcial** | interface desenhada; falta mapa operação→tier medido (I) |
+| Runner isolado para PR externo | **não** | gVisor/Firecracker + roteamento por confiança (K) |
+| Estado durável / checkpoint | **parcial** | leve (issue+git+journal) vs engine durável — decidir no MVP (M) |
+| Plataforma de observabilidade | **não** | decisão única da H, consumida por M/L |
+| Telegram (conversa + aprovação) | **não** | bot + allowlist + revalidação server-side (M) |
+| Gates humanos (catálogo de ações) | **não** | lista explícita de "irreversível/alto impacto" (H) |
+| Orçamento token/$ por agente/issue | **parcial** | teto = R$550/mês de API; falta baseline medido (L) |
+
+---
+Trilhas: estrutura 0/B/C/I/K · gates/observabilidade H/M · custo L · memória G · contratos A.
+Processo macro: `SYNTHESIS.md`. Auditoria desta vista: `research/audits/auditoria-c4.md` (PR #19).
