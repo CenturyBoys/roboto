@@ -1,8 +1,12 @@
 # Síntese da Pesquisa — Continuous Development
 
-> Fase: **PESQUISA**. Este documento **sintetiza e amarra** as 13 trilhas (0, A–L) sem substituí-las —
+> Fase: **PESQUISA**. Este documento **sintetiza e amarra** as 14 trilhas (0, A–M) sem substituí-las —
 > o detalhe completo, as fontes e as perguntas em aberto permanecem em cada `research/<trilha>.md`.
-> Estado: rascunho forte pós **2 rodadas de auditoria independente** (PRs #14 e #16).
+> Estado: rascunho forte pós **3 rodadas de auditoria independente** (PRs #14 / #16 / #18).
+>
+> 🧱 **Vistas estruturais em padrão C4** (Context/Container/Component + esboços de implementação):
+> [`ARCHITECTURE-C4.md`](ARCHITECTURE-C4.md). Os diagramas abaixo são de **processo/estado** (fluxo,
+> máquina de estados, escada) — **complementares** ao C4, não substitutos.
 
 ---
 
