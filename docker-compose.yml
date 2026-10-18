@@ -1,0 +1,29 @@
+# Ambiente de dev inteiro em Docker (decisão D3): app + Postgres (núcleo durável).
+# Observabilidade (Langfuse/Phoenix self-host) e checks periódicos entram como serviços aqui.
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: roboto
+      POSTGRES_PASSWORD: dev-only-change-me   # dev; em prod vem do ansible-vault (D4)
+      POSTGRES_DB: roboto
+    ports: ["5432:5432"]
+    volumes:
+      - ./migrations:/docker-entrypoint-initdb.d:ro   # aplica 0001_init.sql no 1º boot
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U roboto"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://roboto:dev-only-change-me@db:5432/roboto
+
+volumes:
+  pgdata:

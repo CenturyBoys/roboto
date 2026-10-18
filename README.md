@@ -4,8 +4,12 @@ Fleet de agentes cobrindo o **ciclo de vida inteiro de desenvolvimento de softwa
 **GitHub** como substrato (Issues = fonte da verdade, PR/CI = feedback loop). Objetivo de primeira
 classe: **economia de token** e sessões curtas em vez de sessões gigantes de contexto.
 
-> **Fase atual: PESQUISA.** Só mudamos de fase com aprovação explícita do dono do projeto.
-> Nada aqui é implementação final — é a base de pesquisa que vai definir o fleet.
+> **Fase atual: IMPLEMENTAÇÃO** (aprovada pelo dono em 2026-10-18) — começando pela **fundação**.
+> A pesquisa que fundamenta o desenho está em [`research/`](research/) (decisões em
+> `research/DECISOES-A-FECHAR.md`; ordem de build em `research/READINESS.md`). Só muda de fase com OK do dono.
+>
+> **Setup:** `pip install -e ".[dev]"` · **tier 1:** `ruff check src tests` · `mypy` · `pytest` ·
+> **dev env:** `docker compose up`. Regras do repo em [`AGENTS.md`](AGENTS.md).
 
 ## Princípios-guia
 

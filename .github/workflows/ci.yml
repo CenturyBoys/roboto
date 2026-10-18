@@ -1,0 +1,20 @@
+name: ci
+
+# Tier 1 determinístico (AGENTS.md): lint + tipos + testes. CI é o juiz do "pronto" (DoD).
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tier1:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e ".[dev]"
+      - run: ruff check src tests
+      - run: mypy
+      - run: pytest -q
