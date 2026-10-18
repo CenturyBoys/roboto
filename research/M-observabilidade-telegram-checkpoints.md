@@ -1,73 +1,108 @@
-# Trilha M — Observabilidade operacional, comunicação (Telegram) e checkpoints
+# Trilha M — Observabilidade operacional, comunicação (Telegram) e continuidade
 
-> Status: RASCUNHO PARA REVISÃO (criada 2026-10-18 a pedido do dono)
+> Status: RASCUNHO PARA REVISÃO (criada 2026-10-18; reescrita após auditoria `audit/trilha-m` / PR #18)
 
 ## Pergunta
 
 Como o humano **acompanha e intervém** no fleet em operação: ver jobs/execuções (duração, erros,
-logs), ser **notificado e aprovar via Telegram**, e como as execuções **sobrevivem a falha**
-(checkpoint/resume)?
+logs), ser **notificado e aprovar via Telegram**, e como uma execução **sobrevive a falha** sem
+confundir *persistir estado*, *retomar* e *desfazer*?
 
 ## Princípio aplicado
 
-Determinismo primeiro: o **estado da verdade vive na issue (A) + git**, não no chat. "Output do
-modelo = proposta; política determinística decide" (H) vale também para aprovações via Telegram.
+Determinismo primeiro: a **verdade do estado vive na issue (A) + git**, não no chat. "Output do
+modelo = proposta; política determinística decide" (H) — e **a autoridade do gate é verificada no
+servidor**, nunca delegada a um toque de botão em app de terceiro.
+
+## Três capacidades distintas (não confundir)
+
+A auditoria pegou a confusão original. São **três coisas separadas**:
+
+1. **Comunicação/aprovação** (Telegram) — notificar e coletar um sinal humano.
+2. **Observabilidade** (monitor) — ver o que aconteceu/está acontecendo.
+3. **Continuidade de execução** — e aqui há **três mecanismos diferentes**:
+   - **Persistência de estado**: issue + git + run journal guardam *onde parou* (resume de alto
+     nível, entre etapas). **NÃO é** durable execution.
+   - **Durable execution (engine)**: Temporal/Restate/LangGraph fazem **replay de control-flow e
+     preservam wait-states** *dentro* de um run longo. Mecanismo distinto, não "um tamanho maior" do anterior.
+   - **Rollback**: desfazer efeitos — **default já decidido na H: `git revert` + reabrir issue**;
+     checkpoint sofisticado só como exceção. **Resume (retomar) ≠ rollback (desfazer).**
 
 ## 1. Comunicação via Telegram
 
-- **Bot** que (a) **notifica** eventos — job iniciado/concluído/falhou, pedido de aprovação — e
-  (b) recebe **aprovações/comandos**.
-- **Aprovação HITL**: no checkpoint, o estado é persistido como `PENDING_APPROVAL` (na issue/store,
-  **não** no chat); envia mensagem com **task id + resumo da ação + contexto** e **inline keyboard
-  Approve/Deny**; resume ao tocar.
-- **Segurança**: verificar webhook (secret token do Telegram); **defesa de loopjacking (H)** — a
-  mensagem mostra a **ação canônica** e a comparação é exata no momento do uso (o que foi aprovado ==
-  o que executa); evitar **double-approval** (idempotência, B); **timeout**; múltiplos aprovadores.
-- **Confiabilidade**: poller isolado + **spool durável** de updates de entrada.
-- Telegram é **canal**; a verdade do gate vive na issue (A) + política (H). (Dois canais de aprovação
-  — Telegram e GitHub — = mais superfície; decidir qual é o canônico.)
+- **Bot** notifica eventos (job iniciado/concluído/falhou, pedido de aprovação) e coleta aprovação
+  (inline keyboard Approve/Deny).
+- **Autenticação do aprovador (finding alto)**: o secret do webhook autentica o **canal**, não
+  **quem clica**. Exigir: **allowlist de Telegram user IDs** autorizados; política de **conta
+  comprometida** (revogação); e — crítico — a aprovação do Telegram é só um **gatilho de
+  conveniência**: a **autoridade canônica é revalidada no servidor** contra o estado da issue e a
+  política (H). Um toque no chat **não** pode, sozinho, aprovar merge/deploy.
+- **Minimização de dados (finding alto)**: notificação carrega **só IDs + resumo curto**, **nunca
+  código, diff ou secret**; o domínio do Telegram precisa estar **explicitamente no allowlist de
+  egress** (senão colide com o deny-all da K); dados sensíveis **não vão ao Telegram** (bots não são E2E).
+- **Defesa de loopjacking (herdada de H)**: a mensagem mostra a **ação canônica** e a comparação é
+  **exata no momento do uso** (o aprovado == o executado); anti-double-approval via idempotência (B); timeout.
+- Confiabilidade: poller isolado + spool durável de updates.
 
-## 2. Monitor / dashboard
+## 2. Monitor / observabilidade
 
-É a **observabilidade da Trilha H virada tela**: timeline de execução, **duração por job**,
-**tokens/custo (L)**, **erros/traces**, mutações de estado.
+**Não é uma plataforma nova** — é a **observabilidade da Trilha H virada tela**. Dono da decisão de
+plataforma = **H** (uma escolha única que M e L consomem).
 
-- Camadas possíveis: (a) o próprio **GitHub** (issues/PRs/Actions) já mostra parte; (b) **plataforma
-  de observabilidade** (H) p/ traces de LLM/tool + custo; (c) **dashboard de execução** do runtime
-  durável (timeline/event history — ver §3).
-- Métricas-chave: duração por job/etapa, custo/token por run (L), taxa de erro, runs em
-  andamento/fila (J), **alertas de runaway** (H).
+- Mostra: timeline de execução, **duração por job/etapa**, **tokens/custo (L)**, erros/traces,
+  runs em andamento/fila (J), alertas de **runaway** (H).
+- Camadas: GitHub (issues/PRs/Actions) já cobre parte → plataforma de observabilidade (H) para
+  traces de LLM/tool + custo.
+- **A própria observabilidade tem custo** (ingestão/retenção) → entra no orçamento (L).
 
-## 3. Checkpoints / durable execution
+## 3. Continuidade — onde o estado vive
 
-Sim, é possível — e há padrões estabelecidos. **Durable execution** mantém um run vivo através de
-crash/restart: checkpoint de progresso, replay de control flow determinístico, retry de atividades
-e **preservação de wait states** (exatamente o que o pause→Telegram→resume precisa).
-
-- **Plataformas**: Temporal, Restate, Inngest, DBOS, Azure Durable Task, Dagster; **LangGraph** tem
-  checkpointer (SQLite/Postgres em prod). Padrão 2026: "reasoning graph sobre runtime durável".
-- **Nossa escada (determinismo primeiro)**: começar **leve** — checkpoint = **estado na issue (A) +
-  run journal + git worktree/branch (K) + memória (G)**; adotar engine durável (Temporal/Restate) só
-  se complexidade/escala justificar.
-- **Habilita**: resume pós-crash, pausa para aprovação (Telegram), auditoria.
+- **Persistência leve (default MVP)**: estado em **issue (A) + git worktree/branch (K)** + **run
+  journal = comentários estruturados na issue / traces na plataforma de observabilidade (H)** — não
+  é artefato órfão novo. Permite **resume de alto nível** entre etapas.
+- **Durable execution engine** (Temporal/Restate/LangGraph): adotar **só se** precisarmos de replay
+  de control-flow / wait-states longos / pause→aprovação→resume robusto em escala.
+- **Reconciliação com o runtime efêmero (K)**: o container é **1-por-task e efêmero**; portanto o
+  **estado durável vive FORA do container** (store externo / camada do orquestrador) — um container
+  novo **retoma do checkpoint externo**. Engine durável ≠ container de vida longa.
 - **Caveat (H)**: resume/rollback tem superfície de ataque (ACRFence; "Safe to Resume?") → **só
   retomar de estado verificado**.
 
-## Amarrações
-A (estado na issue) · B (idempotência/orquestração) · G (memória) · H (observabilidade/gates/
-loopjacking/rollback) · J (fila/duração) · K (runtime/worktree) · L (custo/latência).
+## Opções e trade-offs
+
+| Decisão | Opção A | Opção B | Recomendação |
+|---------|---------|---------|--------------|
+| Canal canônico de aprovação | **GitHub** (review/comment/estado da issue) | Telegram | **GitHub é canônico**; Telegram = notifica + atalho que **revalida no servidor** |
+| Continuidade | Persistência leve (issue+git+journal) | Durable execution engine | **Leve no MVP**; engine só quando escala/replay exigir |
+
+## Recomendação
+
+Telegram como **notificador + gatilho de conveniência** (allowlist de user ID, dados mínimos, egress
+explícito, revalidação server-side); **GitHub como canal canônico de gate**. Monitor = a plataforma
+de observabilidade **decidida na H**, exibindo duração/custo/erros. Continuidade = **persistência
+leve (issue+git+journal) no MVP**, com estado durável **fora** do container efêmero; engine durável
+só se justificar. **Resume ≠ rollback**; rollback segue o default da H (`git revert` + reabrir issue).
+
+## Impacto em token
+- Notificação/aprovação e monitor são **determinísticos** (sem LLM) → custo de token ~zero.
+- Persistência/checkpoint é estado, não geração → não gasta token; evita **re-trabalho** (re-executar
+  do zero após falha), o que **economiza** token. A observabilidade de custo (L) é o que torna isso mensurável.
 
 ## Perguntas em aberto
-- [ ] Checkpoint **leve** (issue + journal + git) basta no MVP, ou adotar **durable execution engine**
-      (Temporal/Restate) desde já?
-- [ ] **Canal canônico de aprovação**: Telegram, GitHub (review/comment), ou ambos? (dois = mais superfície)
-- [ ] O que o **dashboard mostra no MVP** (GitHub + logs) vs. plataforma de observabilidade dedicada?
+- [ ] Persistência leve basta no MVP, ou já adotar durable execution engine? (recomendação: leve)
+- [ ] Qual plataforma de observabilidade (decisão **da H**, consumida aqui).
+- [ ] Semântica de **timeout** (expira → volta a `blocked`/escala?) e **múltiplos aprovadores**
+      (quórum vs. primeiro-a-responder).
 
 ---
 
 ### Fontes
-- [Human-in-the-Loop AI Agents with Telegram — dev.to](https://dev.to/jameszh/human-in-the-loop-ai-agents-with-google-adk-and-telegram-5agd)
-- [Telegram bot reliability: durable spooling for always-on agents — OpenClaw](https://openclawai.io/blog/openclaw-telegram-bot-reliability-durable-spool)
-- [Durable Execution for AI Agents: LangGraph, DBOS, Inngest, Temporal — HackerNoon](https://hackernoon.com/durable-execution-for-ai-agents-langgraph-dbos-inngest-and-temporal-compared)
-- [Temporal's LangGraph Plugin — durable execution](https://temporal.io/blog/temporal-langgraph-plugin-durable-execution)
-- [AI Agent Workflow Checkpointing and Resumability — zylos.ai](https://zylos.ai/research/2026-03-04-ai-agent-workflow-checkpointing-resumability/)
+> Disciplina de fontes: as abaixo são **secundárias/indicativas** (blog/vendor). As primárias que
+> sustentam a parte de segurança são **herdadas da Trilha H** e verificadas lá:
+> loopjacking (arXiv 2609.21081) e ACRFence (arXiv 2603.20625).
+
+- [Human-in-the-Loop AI Agents with Telegram — dev.to](https://dev.to/jameszh/human-in-the-loop-ai-agents-with-google-adk-and-telegram-5agd) *(indicativo)*
+- [Telegram bot reliability: durable spooling — OpenClaw](https://openclawai.io/blog/openclaw-telegram-bot-reliability-durable-spool) *(indicativo)*
+- [Durable Execution for AI Agents: LangGraph/DBOS/Inngest/Temporal — HackerNoon](https://hackernoon.com/durable-execution-for-ai-agents-langgraph-dbos-inngest-and-temporal-compared) *(indicativo)*
+- [Temporal's LangGraph Plugin — durable execution](https://temporal.io/blog/temporal-langgraph-plugin-durable-execution) *(vendor, indicativo)*
+- [Loopjacking (arXiv 2609.21081)](https://arxiv.org/abs/2609.21081) · [ACRFence (arXiv 2603.20625)](https://arxiv.org/abs/2603.20625) — primárias, via Trilha H
