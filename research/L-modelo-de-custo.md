@@ -42,8 +42,37 @@ Como **orçar e medir** o custo (token/$) do fleet por **agente**, por **etapa**
 - **Atribuição de custo** por feature/modelo/agente → mede o ganho real da ferramentificação (F) e
   do right-sizing (I) contra um **baseline**.
 
+## Base de orçamento (decidida pelo dono, 2026-10-18)
+
+A **unidade de orçamento** do fleet é **1 assinatura Max ≈ R$ 550/mês** (~US$100 na ordem de
+grandeza → tier **Max 5x**; se for o Max 20x/US$200, dobrar os números), autorizada pelo CTO.
+
+> ⚠️ **Dois modelos de cobrança distintos — isso é decisão de arquitetura, não detalhe:**
+> - **Assinatura Max** = valor fixo mensal com **rate limits** (janelas de ~5h + teto semanal),
+>   pensada para uso **interativo** (Claude Code / claude.ai). Não é um pool de "X tokens/mês"
+>   alocável; um fleet headless sempre-ligado esbarra nos limites e na finalidade de uso.
+> - **API / pay-per-token** = o que OpenRouter + Jev (Trilhas B/I/K) de fato usam; custo por token.
+>
+> **Decisão necessária**: o fleet roda **(a) em API pay-per-token**, usando a Max como **âncora de
+> custo / teto mensal-alvo**; ou **(b) sob a assinatura Max** via Claude Code headless, aceitando os
+> rate limits como teto de throughput (e verificando ToS de automação)?
+
+### Referência de preço de API (verificado — claude-api, cache 2026-06-04)
+| Modelo | Input $/MTok | Output $/MTok |
+|--------|--------------|---------------|
+| Opus 4.8 | 5 | 25 |
+| Sonnet 4.6 | 3 | 15 |
+| Haiku 4.5 | 1 | 5 |
+| **Jev** (judge, Trilha I) | ~0,042 | **grátis** |
+
+Ordem de grandeza do que ~US$100/mês compra (ilustrativo; blend real varia): Opus ≈ 20M in / 4M out ·
+Sonnet ≈ 33M in / 6,7M out · Haiku ≈ 100M in / 20M out · Jev praticamente desprezível. → o
+right-sizing (Trilha I) + Jev na validação são o que fazem esse orçamento render.
+
 ## Perguntas em aberto (precisam do dono)
-- [ ] **Teto de token/$ por tipo de agente** e **budget-alvo por issue**.
+- [ ] **Qual modelo de cobrança**: API pay-per-token (Max como âncora) vs. rodar sob a assinatura Max?
+      E **confirmar os limites exatos do plano Max** (não constam na doc de API — verificar na página de planos).
+- [ ] Dado o teto mensal (1 Max seat), **ratear em teto por tipo de agente** e **budget-alvo por issue**.
 - [ ] Custo/issue aceitável antes de acionar gate humano de custo.
 - [ ] Política ao estourar: degradar modelo, pausar, ou escalar? (default sugerido: degradar → pausar → escalar).
 - [ ] Plataforma de medição (liga com a decisão de observabilidade da Trilha H).
