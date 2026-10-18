@@ -198,5 +198,6 @@ search = índice derivado **rebuildável** (SQLite FTS5/BM25, recall sem LLM). F
 | J | Escala: build/CI, testes e revisores | `J-escala-ci-build-review.md` |
 | K | Runtime containerizado | `K-runtime-containerizado.md` |
 | L | Modelo de custo do fleet | `L-modelo-de-custo.md` |
+| M | Observabilidade operacional, Telegram e checkpoints | `M-observabilidade-telegram-checkpoints.md` |
 
 Auditorias: `research/audits/` (via PRs #14 e #16). Prompt do auditor: `prompts/revisor-pesquisa.md`.

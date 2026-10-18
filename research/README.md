@@ -29,6 +29,7 @@ em vez de sessões gigantes de contexto.
 | J | Escala: build/CI, carga de testes e revisores | Com muitos PRs/builds/pipelines concorrentes, qual a política de prioridade de build, de carga de testes e de distribuição de revisão? | B, A |
 | K | Runtime containerizado | Rodar o fleet em Docker: auth no container, Playwright, credenciais via symlink/sync com least privilege. | H, B |
 | L | Modelo de custo do fleet | Orçar/medir token/$ por agente/issue/PR, com teto e alerta (criada na auditoria rodada-01). | F, I, J, H, D |
+| M | Observabilidade operacional, Telegram e checkpoints | Monitor de jobs (duração/erros), notificação+aprovação via Telegram, checkpoint/resume (durable execution). | H, A, B, G, J, K, L |
 
 ## Como cada doc de trilha é estruturado
 
