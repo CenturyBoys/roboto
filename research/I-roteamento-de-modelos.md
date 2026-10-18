@@ -21,9 +21,10 @@ roteamos, e por qual substrato?
 
 - Lançado 15/set/2026; decision engine: estado do programa + perguntas tipadas → respostas
   estruturadas com probabilidades calibradas, em paralelo num request.
-- **Acesso: early access / waitlist.** API `POST https://api.typesafe.ai/v1/systemone`, modelo
-  `jev-latest`; SDKs Python (`typesafe-sdk`) e JS/TS (`@typesafe-ai/sdk`). **NÃO** confirmado via
-  OpenRouter → acesso direto. **Ação**: entrar na waitlist e avaliar nos nossos casos antes de depender.
+- **Acesso (nosso caso): LIBERADO via OpenRouter, com autorização do CTO.** Ou seja, não dependemos
+  da waitlist pública — rodamos o Jev através do OpenRouter (mesmo substrato de roteamento/billing).
+  API direta de referência: `POST https://api.typesafe.ai/v1/systemone`, modelo `jev-latest`;
+  SDKs Python (`typesafe-sdk`) e JS/TS (`@typesafe-ai/sdk`). **Ação**: avaliar nos nossos casos reais.
 - **`jev-guard`**: classifica cada tool call em **deny / ask / allow**. Isso é *diretamente* a
   camada "output = proposta → política decide" da Trilha H: `deny` (least privilege), `ask`
   (gate humano), `allow`. Forte candidato a guardrail do fleet.
@@ -44,19 +45,20 @@ O score do Jev define um **threshold de escalonamento**: abaixo do limiar → es
 maior ou para humano. Conecta com os gates da Trilha H e o gate de prontidão da Trilha A.
 
 ## Riscos
-- **Jev em waitlist** → dependência imatura; ter fallback (um judge frontier barato) até liberar.
+- **Jev é vendor novo** → ainda assim manter fallback (judge frontier barato) para resiliência,
+  mesmo com acesso liberado via OpenRouter.
 - **OpenRouter/terceiros + código privado**: enviar código a terceiros tem risco de privacidade.
   `roboto` é público, mas projetos futuros podem ser privados → avaliar roteamento self-host nesses casos.
 - Cada vendor novo (TypeSafe, OpenRouter) é superfície operacional.
 
 ## Recomendação
 Escada de validação como política padrão; **OpenRouter como substrato** (fallback/billing único);
-**RouteLLM** para espremer o tier frontier; **Jev** para decisões estruturadas + **`jev-guard`**
-como guardrail de tool call (assim que sair da waitlist, com fallback até lá).
+**RouteLLM** para espremer o tier frontier; **Jev** (liberado via OpenRouter, autorizado pelo CTO) para decisões
+estruturadas + **`jev-guard`** como guardrail de tool call, com fallback de judge para resiliência.
 
 ## Perguntas em aberto
 - [ ] Mapa operação→tier concreto (tabela por etapa do fleet).
-- [ ] Entrar na waitlist do Jev agora? Qual o fallback de judge até liberar?
+- [ ] Jev já liberado via OpenRouter (autorizado pelo CTO) — qual judge frontier fica de fallback?
 - [ ] Self-host de roteamento para projetos privados futuros?
 
 ---
