@@ -1,16 +1,15 @@
 # Arquitetura — Vistas C4 + Sequências
 
-> Fase: PESQUISA. **Rev. 4** — estilo (cores por tipo + layout) e **profundidade** (componentes do
-> Orquestrador + vista de Deployment). Diagramas pequenos e focados. Correções da auditoria (PR #19) mantidas.
->
-> Paleta: **azul** = nosso sistema/contêiner · **verde-água** = armazenamento · **cinza** = externo ·
-> **vermelho** = fronteira não-confiável (isolamento forte). Render do mermaid varia por viewer.
+> Fase: PESQUISA. **Rev. 5** — **fundo bege + caixas claras com texto escuro** (legível em tema
+> claro ou escuro); tipo codificado pela **cor da borda**: azul = nosso · verde-água = armazenamento ·
+> cinza = externo · vermelho = não-confiável (isolamento forte). Correções da auditoria (PR #19) mantidas.
 
 ---
 
 ## C4 Nível 1 — Contexto
 
 ```mermaid
+%%{init: {'theme':'base', 'themeVariables': {'background':'#FBF3DE'}}}%%
 C4Context
   title Nivel 1 — Contexto
   Person(dono, "Dono / Revisor")
@@ -18,7 +17,7 @@ C4Context
   System(cd, "Continuous Development", "Fleet de agentes do SDLC")
   System_Ext(gh, "GitHub")
   System_Ext(orr, "OpenRouter", "substrato de modelos")
-  System_Ext(tg, "Telegram")
+  System_Ext(tg, "Telegram", "porta de conversa + notificacao")
   System_Ext(feeds, "Feeds de seguranca")
   Rel(dono, gh, "aprova (canonico)")
   Rel(dono, tg, "alertas / aprova")
@@ -27,8 +26,13 @@ C4Context
   Rel(cd, orr, "inferencia")
   Rel(cd, tg, "notifica")
   Rel(feeds, cd, "ambiente")
-  UpdateElementStyle(cd, $bgColor="#1168BD", $fontColor="#ffffff", $borderColor="#0B4884")
-  UpdateElementStyle(contrib, $bgColor="#B5433A", $fontColor="#ffffff", $borderColor="#7D2B25")
+  UpdateElementStyle(dono, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#08427B")
+  UpdateElementStyle(contrib, $bgColor="#FCE9E7", $fontColor="#1A1A1A", $borderColor="#C0392B")
+  UpdateElementStyle(cd, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
+  UpdateElementStyle(gh, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#8A8A8A")
+  UpdateElementStyle(orr, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#8A8A8A")
+  UpdateElementStyle(tg, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#8A8A8A")
+  UpdateElementStyle(feeds, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#8A8A8A")
   UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
 ```
 
@@ -38,6 +42,7 @@ C4Context
 
 ### 2a · Entrada e orquestração
 ```mermaid
+%%{init: {'theme':'base', 'themeVariables': {'background':'#FBF3DE'}}}%%
 C4Container
   title Nivel 2a — Entrada e orquestracao
   System_Ext(gh, "GitHub")
@@ -53,14 +58,18 @@ C4Container
   Rel(orch, runnerT, "job confiavel")
   Rel(orch, runnerU, "PR externo")
   Rel(orch, state, "checkpoint / resume")
-  UpdateElementStyle(orch, $bgColor="#1168BD", $fontColor="#ffffff", $borderColor="#0B4884")
-  UpdateElementStyle(runnerU, $bgColor="#B5433A", $fontColor="#ffffff", $borderColor="#7D2B25")
-  UpdateElementStyle(state, $bgColor="#2E7D6F", $fontColor="#ffffff", $borderColor="#1C5349")
+  UpdateElementStyle(gh, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#8A8A8A")
+  UpdateElementStyle(feeds, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#8A8A8A")
+  UpdateElementStyle(orch, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
+  UpdateElementStyle(runnerT, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
+  UpdateElementStyle(runnerU, $bgColor="#FCE9E7", $fontColor="#1A1A1A", $borderColor="#C0392B")
+  UpdateElementStyle(state, $bgColor="#EAF4F1", $fontColor="#1A1A1A", $borderColor="#2E7D6F")
   UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
 ```
 
 ### 2b · Execução e modelos
 ```mermaid
+%%{init: {'theme':'base', 'themeVariables': {'background':'#FBF3DE'}}}%%
 C4Container
   title Nivel 2b — Execucao e modelos
   System_Ext(gh, "GitHub")
@@ -78,14 +87,19 @@ C4Container
   Rel(runner, mem, "le / escreve")
   Rel(runner, gh, "abre PR")
   Rel(secrets, runner, "credencial curta")
-  UpdateElementStyle(gw, $bgColor="#1168BD", $fontColor="#ffffff", $borderColor="#0B4884")
-  UpdateElementStyle(mem, $bgColor="#2E7D6F", $fontColor="#ffffff", $borderColor="#1C5349")
-  UpdateElementStyle(secrets, $bgColor="#2E7D6F", $fontColor="#ffffff", $borderColor="#1C5349")
+  UpdateElementStyle(gh, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#8A8A8A")
+  UpdateElementStyle(orr, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#8A8A8A")
+  UpdateElementStyle(direct, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#8A8A8A")
+  UpdateElementStyle(runner, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
+  UpdateElementStyle(gw, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
+  UpdateElementStyle(mem, $bgColor="#EAF4F1", $fontColor="#1A1A1A", $borderColor="#2E7D6F")
+  UpdateElementStyle(secrets, $bgColor="#EAF4F1", $fontColor="#1A1A1A", $borderColor="#2E7D6F")
   UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
 ```
 
 ### 2c · Humano e observabilidade
 ```mermaid
+%%{init: {'theme':'base', 'themeVariables': {'background':'#FBF3DE'}}}%%
 C4Container
   title Nivel 2c — Humano e observabilidade
   Person(dono, "Dono / Revisor")
@@ -93,15 +107,18 @@ C4Container
   Container_Boundary(cd, "Continuous Development") {
     Container(runner, "Runner + agente", "", "emite sinais")
     Container(obs, "Observabilidade", "plataforma da Trilha H", "duracao / custo / erros")
-    Container(tgbot, "Bot Telegram", "Bot API", "notifica + atalho de aprovacao")
+    Container(tgbot, "Bot Telegram", "Bot API", "porta conversacional (refino/consulta) + notifica + aprova")
   }
   Rel(runner, obs, "traces / custo")
   Rel(runner, tgbot, "pede aprovacao / avisa")
   Rel(tgbot, tg, "via Bot API")
   Rel(tg, dono, "Approve / Deny")
   Rel(obs, dono, "dashboard")
-  UpdateElementStyle(obs, $bgColor="#1168BD", $fontColor="#ffffff", $borderColor="#0B4884")
-  UpdateElementStyle(tgbot, $bgColor="#1168BD", $fontColor="#ffffff", $borderColor="#0B4884")
+  UpdateElementStyle(dono, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#08427B")
+  UpdateElementStyle(tg, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#8A8A8A")
+  UpdateElementStyle(runner, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
+  UpdateElementStyle(obs, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
+  UpdateElementStyle(tgbot, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
   UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
 ```
 
@@ -111,6 +128,7 @@ C4Container
 
 ### 3a · Agente (dentro do runner)
 ```mermaid
+%%{init: {'theme':'base', 'themeVariables': {'background':'#FBF3DE'}}}%%
 C4Component
   title Nivel 3a — Agente
   System_Ext(ci, "CI", "tier 1: sem LLM")
@@ -130,12 +148,20 @@ C4Component
   Rel(skill, tools, "usa")
   Rel(skill, memc, "estado")
   Rel(memc, mem, "le/escreve")
-  UpdateElementStyle(tier, $bgColor="#1168BD", $fontColor="#ffffff", $borderColor="#0B4884")
+  UpdateElementStyle(ci, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#8A8A8A")
+  UpdateElementStyle(gw, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
+  UpdateElementStyle(mem, $bgColor="#EAF4F1", $fontColor="#1A1A1A", $borderColor="#2E7D6F")
+  UpdateElementStyle(skill, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
+  UpdateElementStyle(tier, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
+  UpdateElementStyle(tools, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
+  UpdateElementStyle(memc, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
+  UpdateElementStyle(gwc, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
   UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
 ```
 
 ### 3b · Orquestrador (interno) — profundidade
 ```mermaid
+%%{init: {'theme':'base', 'themeVariables': {'background':'#FBF3DE'}}}%%
 C4Component
   title Nivel 3b — Orquestrador
   System_Ext(gh, "GitHub")
@@ -155,8 +181,14 @@ C4Component
   Rel(wip, disp, "slot livre")
   Rel(disp, runner, "dispara (T ou U)")
   Rel(disp, state, "checkpoint")
-  UpdateElementStyle(disp, $bgColor="#1168BD", $fontColor="#ffffff", $borderColor="#0B4884")
-  UpdateElementStyle(state, $bgColor="#2E7D6F", $fontColor="#ffffff", $borderColor="#1C5349")
+  UpdateElementStyle(gh, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#8A8A8A")
+  UpdateElementStyle(runner, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
+  UpdateElementStyle(state, $bgColor="#EAF4F1", $fontColor="#1A1A1A", $borderColor="#2E7D6F")
+  UpdateElementStyle(ev, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
+  UpdateElementStyle(idem, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
+  UpdateElementStyle(dep, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
+  UpdateElementStyle(wip, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
+  UpdateElementStyle(disp, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
   UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
 ```
 
@@ -165,6 +197,7 @@ C4Component
 ## C4 Deployment — runtime / infra (profundidade)
 
 ```mermaid
+%%{init: {'theme':'base', 'themeVariables': {'background':'#FBF3DE'}}}%%
 C4Deployment
   title Deployment — onde cada coisa roda
   Deployment_Node(vps, "VPS / host", "Linux + Docker") {
@@ -188,7 +221,11 @@ C4Deployment
   Rel(orch, agentU, "dispara (isolado)")
   Rel(agentT, orr, "inferencia (via gateway)")
   Rel(orch, state, "checkpoint")
-  UpdateElementStyle(agentU, $bgColor="#B5433A", $fontColor="#ffffff", $borderColor="#7D2B25")
+  UpdateElementStyle(orch, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
+  UpdateElementStyle(agentT, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#1168BD")
+  UpdateElementStyle(agentU, $bgColor="#FCE9E7", $fontColor="#1A1A1A", $borderColor="#C0392B")
+  UpdateElementStyle(orr, $bgColor="#FFFFFF", $fontColor="#1A1A1A", $borderColor="#8A8A8A")
+  UpdateElementStyle(state, $bgColor="#EAF4F1", $fontColor="#1A1A1A", $borderColor="#2E7D6F")
   UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
 ```
 
@@ -198,6 +235,7 @@ C4Deployment
 
 ### S1 · Issue → PR → merge
 ```mermaid
+%%{init: {'theme':'base', 'themeVariables': {'background':'#FBF3DE'}}}%%
 sequenceDiagram
   autonumber
   actor Dono
@@ -225,6 +263,7 @@ sequenceDiagram
 
 ### S2 · Gate de aprovação (Jev + Telegram, revalidado no servidor)
 ```mermaid
+%%{init: {'theme':'base', 'themeVariables': {'background':'#FBF3DE'}}}%%
 sequenceDiagram
   autonumber
   participant Ag as Agente
@@ -248,6 +287,7 @@ sequenceDiagram
 
 ### S3 · Checkpoint / resume pós-falha
 ```mermaid
+%%{init: {'theme':'base', 'themeVariables': {'background':'#FBF3DE'}}}%%
 sequenceDiagram
   autonumber
   participant Orq as Orquestrador

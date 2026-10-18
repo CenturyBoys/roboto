@@ -4,9 +4,10 @@
 
 ## Pergunta
 
-Como o humano **acompanha e intervém** no fleet em operação: ver jobs/execuções (duração, erros,
-logs), ser **notificado e aprovar via Telegram**, e como uma execução **sobrevive a falha** sem
-confundir *persistir estado*, *retomar* e *desfazer*?
+Como o humano **acompanha, conversa e intervém** no fleet em operação: ver jobs/execuções (duração,
+erros, logs), **conversar via Telegram** (notificar/aprovar e **refinar demandas / consultar o
+backlog** — além de issues e eventos), e como uma execução **sobrevive a falha** sem confundir
+*persistir estado*, *retomar* e *desfazer*?
 
 ## Princípio aplicado
 
@@ -18,7 +19,8 @@ servidor**, nunca delegada a um toque de botão em app de terceiro.
 
 A auditoria pegou a confusão original. São **três coisas separadas**:
 
-1. **Comunicação/aprovação** (Telegram) — notificar e coletar um sinal humano.
+1. **Comunicação (porta bidirecional via Telegram)** — notificar, coletar aprovação **e conversar**
+   (refinar demandas, consultar backlog) — além de issues/eventos.
 2. **Observabilidade** (monitor) — ver o que aconteceu/está acontecendo.
 3. **Continuidade de execução** — e aqui há **três mecanismos diferentes**:
    - **Persistência de estado**: issue + git + run journal guardam *onde parou* (resume de alto
@@ -32,6 +34,15 @@ A auditoria pegou a confusão original. São **três coisas separadas**:
 
 - **Bot** notifica eventos (job iniciado/concluído/falhou, pedido de aprovação) e coleta aprovação
   (inline keyboard Approve/Deny).
+- **Porta de comunicação bidirecional (ideia do dono — além de issues/eventos)**: o Telegram também
+  é um canal de **conversa** com o fleet, para dar agilidade sem abrir o GitHub:
+  - **Refinamento conversacional**: o dono descreve/discute uma demanda no chat; o agente de
+    Refinamento ajuda a moldar → o resultado **materializa numa issue do GitHub** (fonte da verdade).
+    O chat é **entrada**, não o registro.
+  - **Consulta / Q&A**: perguntar status, o que falta, **demandas ainda não feitas** (leitura sobre
+    issues/Projects) direto do Telegram.
+  - Mesmas regras: **user ID na allowlist**, **dados mínimos**, e qualquer **mutação de estado**
+    (criar issue, iniciar trabalho, aprovar) é **proposta revalidada no servidor → GitHub canônico**.
 - **Autenticação do aprovador (finding alto)**: o secret do webhook autentica o **canal**, não
   **quem clica**. Exigir: **allowlist de Telegram user IDs** autorizados; política de **conta
   comprometida** (revogação); e — crítico — a aprovação do Telegram é só um **gatilho de
