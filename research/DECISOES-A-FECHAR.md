@@ -50,14 +50,14 @@ Legenda da decisão: ⬜ em aberto · ✅ aceita a proposta · ✏️ outra (ano
 - **Pontos de vista:** *Leve* (issue + git worktree + run journal) — simples, determinístico, cobre
   resume de alto nível · *Durable execution engine* (Temporal/Restate) — replay/wait-state robusto, mas infra nova.
 - **Proposta:** **Leve no MVP**; engine durável só se escala/replay exigir (reavaliar com dados).
-- **Decisão:** ⬜
+- **Decisão:** ✅ **Leve (issue + git worktree + run journal)** no MVP; engine durável só se escala/replay exigir.
 
 ### D6 · Orçamento (token/$)
 - **Pontos de vista:** *Teto global* (R$550/mês de API) simples de controlar · *Budget por issue*
   exige baseline medido (ainda não existe).
 - **Proposta:** **Teto global = R$550/mês**, roteamento barato-primeiro (Jev/chineses) + alerta em 80%;
   **budget por issue** entra depois da 1ª medição (fica como "medir no build").
-- **Decisão:** ⬜
+- **Decisão:** ✅ **Teto global R$550/mês + alerta em 80%**, barato-primeiro; budget por issue após a 1ª medição.
 
 ### D7 · Catálogo de ações com gate humano obrigatório
 - **Pontos de vista:** *Lista curta* (só irreversível) = mais autonomia, mais risco · *Lista longa* =
@@ -65,7 +65,8 @@ Legenda da decisão: ⬜ em aberto · ✅ aceita a proposta · ✏️ outra (ano
 - **Proposta (lista inicial):** **merge, deploy, mudança de credencial, decisão arquitetural,
   resolução de conflito de merge, ação destrutiva.** O resto é `allow`/`deny` determinístico
   (jev-guard), com amostragem dos `allow` de baixo risco.
-- **Decisão:** ⬜
+- **Decisão:** ✅ **Lista proposta aceita** (merge · deploy · credencial · arquitetura · conflito de
+  merge · destrutivo); resto `allow`/`deny` (jev-guard) + amostragem.
 
 ### D17 · Tenancy e empacotamento (multi-empresa, N repos) — Docker image
 - **Pergunta:** o `roboto` é empacotado como **Docker image** e sobe **uma instância por empresa**,
