@@ -53,9 +53,10 @@ grandeza → tier **Max 5x**; se for o Max 20x/US$200, dobrar os números), auto
 >   alocável; um fleet headless sempre-ligado esbarra nos limites e na finalidade de uso.
 > - **API / pay-per-token** = o que OpenRouter + Jev (Trilhas B/I/K) de fato usam; custo por token.
 >
-> **Decisão necessária**: o fleet roda **(a) em API pay-per-token**, usando a Max como **âncora de
-> custo / teto mensal-alvo**; ou **(b) sob a assinatura Max** via Claude Code headless, aceitando os
-> rate limits como teto de throughput (e verificando ToS de automação)?
+> **DECIDIDO (dono, 2026-10-18): opção (a) — API pay-per-token via OpenRouter.** A Max (~R$550/mês)
+> vira o **teto mensal-alvo em $/token**, não uma assinatura rodando o fleet → os rate limits do plano
+> Max **não se aplicam** ao fleet; o orçamento é puramente o valor em dólar gasto na API.
+> Pool multi-provedor via OpenRouter, **incluindo modelos chineses** baratos para geração (Trilha I).
 
 ### Referência de preço de API (verificado — claude-api, cache 2026-06-04)
 | Modelo | Input $/MTok | Output $/MTok |
@@ -70,8 +71,8 @@ Sonnet ≈ 33M in / 6,7M out · Haiku ≈ 100M in / 20M out · Jev praticamente 
 right-sizing (Trilha I) + Jev na validação são o que fazem esse orçamento render.
 
 ## Perguntas em aberto (precisam do dono)
-- [ ] **Qual modelo de cobrança**: API pay-per-token (Max como âncora) vs. rodar sob a assinatura Max?
-      E **confirmar os limites exatos do plano Max** (não constam na doc de API — verificar na página de planos).
+- [ ] Mix de provedores no OpenRouter por etapa (quais modelos chineses/abertos para geração, quando
+      escalar a Claude frontier) e política de fallback entre provedores.
 - [ ] Dado o teto mensal (1 Max seat), **ratear em teto por tipo de agente** e **budget-alvo por issue**.
 - [ ] Custo/issue aceitável antes de acionar gate humano de custo.
 - [ ] Política ao estourar: degradar modelo, pausar, ou escalar? (default sugerido: degradar → pausar → escalar).

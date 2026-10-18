@@ -17,8 +17,10 @@ roteamos, e por qual substrato?
    > O **degrau 2 é uma interface** (classificador estruturado com confiança calibrada); **Jev é uma
    > implementação plugável**, com um judge frontier barato como fallback testado — não casar a
    > arquitetura com um produto único.
-3. **Frontier tiered — Haiku → Sonnet → Opus.** Só quando há raciocínio/geração de verdade;
-   right-size por etapa (refinar vs arquitetar vs implementar vs revisar).
+3. **Geração tiered via OpenRouter.** Modelos **abertos/baratos — incluindo provedores chineses
+   (DeepSeek, Qwen/Qwen-Coder, GLM/Zhipu, Kimi/Moonshot)** — para o grosso da geração (fortes em
+   coding, custo baixo); **Claude (Haiku → Sonnet → Opus)** reservado para o raciocínio mais difícil
+   e etapas sensíveis a qualidade. Right-size por etapa (refinar vs arquitetar vs implementar vs revisar).
 
 ## Jev / System One — detalhes de acesso (atualizado)
 
@@ -40,6 +42,10 @@ roteamos, e por qual substrato?
 | **RouteLLM** (LMSYS, OSS) | roteia aprendido entre modelo "forte" e "fraco" | cortar custo no tier frontier |
 | LiteLLM / Bifrost / Kong AI GW | tradução de protocolo / throughput / gateway | alternativas de infra |
 
+> **DECIDIDO (dono, 2026-10-18): OpenRouter é o substrato** (opção API pay-per-token, Trilha L).
+> Um endpoint + billing único + acesso a **provedores chineses** (DeepSeek, Qwen, GLM/Zhipu, Kimi):
+> fortes em coding e muito baratos → ideais para os tiers de geração, reforçando a economia de token.
+
 **Evidência (fonte primária LMSYS, arXiv 2406.18665, verificada)**: no MT-Bench, RouteLLM atinge
 **95% da qualidade do GPT-4 roteando só 26% das queries** ao modelo forte (~3,66× de economia; até
 -85% de custo). Em MMLU/GSM8K o ganho é menor (1,41×/1,49×, a 92%/87% de qualidade). Vale para o tier 3.
@@ -55,6 +61,9 @@ maior ou para humano. Conecta com os gates da Trilha H e o gate de prontidão da
   resolve os nossos casos — são premissas a testar (eval, Trilha H).
 - **OpenRouter/terceiros + código privado**: enviar código a terceiros tem risco de privacidade.
   `roboto` é público, mas projetos futuros podem ser privados → avaliar roteamento self-host nesses casos.
+- **Provedores chineses + dados sensíveis/jurisdição**: para o `roboto` (público/estudo) é tranquilo;
+  para código privado futuro, avaliar residência de dados e políticas de retenção por provedor, e
+  restringir esses modelos aos tiers que não veem código sensível, ou usar o roteamento self-host.
 - Cada vendor novo (TypeSafe, OpenRouter) é superfície operacional.
 
 ## Recomendação
