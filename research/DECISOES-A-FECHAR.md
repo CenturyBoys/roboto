@@ -93,7 +93,28 @@ Legenda da decisão: ⬜ em aberto · ✅ aceita a proposta · ✏️ outra (ano
   (on-demand + memória), acessível pela porta Telegram (M), escopada por empresa/projeto (D17).
   Planejamento/arquitetura/refino conversam por ela; **execução segue nos agentes efêmeros**;
   verdade continua na issue/repo.
-- **Decisão:** ⬜ (confirmar a interpretação antes de propagar)
+- **Decisão:** ✅ **Confirmado** (dono): sob demanda + memória durável; **execução nos efêmeros**;
+  é um tech lead/staff **consultivo** por empresa/projeto.
+
+### D19 · Acesso de leitura a dados/APIs da empresa (insumo para desenvolver)
+- **Pergunta:** o agente (sênior consultivo e implementadores) pode **ler o banco e APIs internas**
+  da empresa como contexto para planejar/desenvolver? É válido?
+- **Resposta:** **Sim — e útil —, mas NUNCA como query livre.** Dar credencial de DB a um modelo que
+  lê texto do usuário é **superfície de exfiltração** (confirmado na busca e no próprio exemplo viva:
+  *"a única porta é `get_recommendations(memberId)`"*). Padrão seguro (2026):
+  - **Read-only por padrão**; **service account dedicada por agente/tenant**; least privilege.
+  - **Sem SQL cru do LLM** → **views restritas / queries parametrizadas pré-definidas**; allowlist de operações.
+  - **RLS deny-by-default** + escopo **por tenant** (nunca cross-empresa); preferir **réplica de leitura**.
+  - **Auditoria** de todo acesso (liga ao `llm_call`, D10) + egress allowlist (K) + secret via vault (D4).
+  - ⚠️ **Read-only NÃO basta contra prompt injection via dado armazenado**: texto numa linha pode
+    mandar o agente devolver dado fora do escopo → por isso **porta curada** (função específica, não
+    consulta livre) + RLS + minimização.
+  - **APIs de outros sistemas**: mesmo modelo — tools de leitura curadas, token escopado, allowlist.
+- **Pontos de vista:** *query livre (DB para o modelo)* = flexível, exfiltração enorme → **rejeitado** ·
+  *tools read-only curadas + views/RLS* = seguro, menos flexível → **recomendado**.
+- **Proposta:** um **"data-gateway de leitura" (MCP)** com tools read-only curadas, por tenant,
+  auditado — como o `code-intel` é MCP para código (ferramentificação, F). Amarra H/I/K/D17.
+- **Decisão:** ⬜
 
 ---
 
