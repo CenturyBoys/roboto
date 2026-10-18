@@ -1,35 +1,73 @@
 # Trilha K — Runtime containerizado
 
-> Status: ESQUELETO (pesquisa não iniciada)
+> Status: RASCUNHO PARA REVISÃO (executado 2026-10-18)
 
 ## Pergunta
 
-Como deve ser o ambiente de execução do fleet? Ideia de partida (do dono): **rodar tudo numa
-máquina/container Docker**, com login/auth dentro do container, Playwright disponível quando
-precisar de navegação web, e credenciais entregues via symlink/sync.
+Como deve ser o ambiente de execução do fleet? Ideia de partida (do dono): **rodar tudo em Docker**,
+com auth dentro do container, Playwright quando precisar, e credenciais entregues com segurança.
 
-Vantagens: reprodutível, isolado, efêmero e fronteira de segurança natural para um agente com
-credenciais e push access.
+## Arquitetura de sandbox (estado-da-arte)
 
-## A pesquisar / decidir
+Sandbox seguro de agente = **container não-root + filtro de egress + mounts read-only + timeout
+estrito por task**. Flags Docker-chave:
+- `--network=none` (ou egress allowlist), `--cap-drop=ALL`, `--read-only` (root FS imutável).
+- **Isolamento mais forte para código não-confiável** (ex.: contribuição em repo público):
+  `gVisor` (`--runtime=runsc`, kernel em user-space) ou **microVM Firecracker** — fronteiras bem
+  mais fortes que container padrão. Provedores: E2B, Modal, Daytona, Docker Sandboxes.
 
-- [ ] **Imagem base**: Claude Code headless + toolchain + Playwright (imagens oficiais do Playwright).
-- [ ] **Auth dentro do container**: como persistir sessões de login (GitHub, serviços) de forma segura.
-- [ ] **Playwright**: quando o fleet realmente precisa de browser (logins web, verificação de UI).
-- [ ] **Credenciais** (crítico — amarra com Trilha H / segurança):
-      - nunca assar segredo na imagem;
-      - montar **read-only**, least privilege (token GitHub de escopo mínimo);
-      - symlink/sync vs. secret manager — avaliar; preferir o mais auditável.
-- [ ] **Gestão de secrets**: avaliar **Ansible Vault** vs **HashiCorp Vault** (e SOPS) para
-      guardar/entregar/rotacionar secrets; injeção em runtime vs. symlink.
-- [ ] **Validadores determinísticos de acesso/infra** (determinismo primeiro, SEM LLM): checks de
-      SSL/certificados, disco, conectividade/portas e saúde de credenciais como **pré-condição**
-      antes de o agente agir. Amarra com Trilha J (health) e H (segurança).
-- [ ] **Efemeridade vs. cache**: container descartável por tarefa vs. warm para cache (ex.: índice do code-intel).
-- [ ] **Onde roda**: VPS única vs. orquestração (um container por tarefa/worktree) — amarra com Trilhas B e J.
-- [ ] **Isolamento entre tarefas paralelas** (worktrees/containers separados) para evitar conflito.
+### Isolamento para paralelismo (amarra Trilhas J e C)
+**Cada agente = container efêmero próprio + git worktree dedicado** → trabalho paralelo e
+livre de conflito. É o mecanismo concreto da prevenção de colisão da Trilha J.
 
-## Saída esperada
+### Egress
+Políticas: open / **deny-all (default) + allow por domínio+CIDR** / CIDR deny, mutáveis no box.
+Recomendado: **deny-all + allowlist** (GitHub, API do modelo/OpenRouter, feeds de segurança).
 
-Desenho do runtime (imagem, modelo de auth, política de credenciais, efemeridade, isolamento)
-que vira base da orquestração (Trilha B) e herda as regras de segurança (Trilha H).
+### Playwright
+Imagem oficial do Playwright quando o agente precisa de navegação/login web (ex.: verificação de UI).
+
+## Credenciais e secrets (crítico — amarra Trilha H)
+
+Padrão moderno = **runtime injection**: o pipeline pede a credencial **no momento do uso**, recebe
+um valor **curto** e usa só naquele passo. Okta: **-92% de roubo de credencial** com token de
+**300s** vs. sessão de 24h. Regras: service account por estágio; secret escopado ao ambiente
+(secret de prod só a partir do branch de prod); **identidade curta por agente** (certs tipo
+Teleport), nunca API key longa; token **task-scoped e time-boxed** (minutos/horas).
+
+### Ferramentas de secret
+| Ferramenta | Modelo | Uso para nós |
+|-----------|--------|--------------|
+| **HashiCorp Vault / OpenBao** | **secrets dinâmicos** (gera sob demanda, lease curto, revoga) | ideal para injeção runtime; OSS free; tem overhead operacional |
+| **SOPS** (CNCF) | cifra valores em YAML/JSON/.env, chaves legíveis → **git diff útil** | config estática cifrada no git; integra com Ansible (`community.sops`) |
+| **Ansible Vault** | secrets **estáticos** (update manual) | pragmático para config estática simples, baixo overhead |
+
+> Refina a ideia inicial do dono: symlink/estático serve para baixa sensibilidade, mas **preferir
+> injeção runtime de credencial curta** (Vault/OpenBao ou token OIDC) para o que é sensível.
+
+## Efemeridade vs. cache
+Container descartável por task (segurança) **vs.** warm para cache (ex.: índice do code-intel ~23×).
+Resolver por tipo: efêmero para execução; camada/volume de cache reaproveitável para índices.
+
+## Recomendação
+Container **não-root, efêmero, 1 por task + git worktree**, `--read-only` + `--cap-drop=ALL` +
+**egress deny-all/allowlist**, timeout por task; **gVisor/Firecracker** para código não-confiável;
+Playwright via imagem oficial sob demanda; secrets por **injeção runtime de credencial curta**
+(Vault/OpenBao), SOPS/Ansible Vault só para config estática. É onde vive o runner da Trilha B.
+
+## Perguntas em aberto
+- [ ] gVisor/Firecracker desde o MVP, ou container padrão basta no começo (repo nosso, confiável)?
+- [ ] Vault/OpenBao agora, ou tokens OIDC curtos do próprio GitHub bastam no início?
+- [ ] Estratégia de cache warm (code-intel) sem furar o isolamento efêmero.
+- [ ] Validadores determinísticos de acesso/infra (SSL/disco/conectividade) como pré-condição do container.
+
+---
+
+### Fontes
+- [AI Agent Sandboxing in 2026: Docker, E2B, Firecracker, gVisor, Modal, Daytona — amux](https://amux.io/guides/ai-agent-sandboxing/)
+- [Sandboxing AI Coding Agents with Docker: Secure and Reproducible — yurtbay.dev](https://yurtbay.dev/blog/docker-sandboxes-ki-coding-agents/en/)
+- [AI Agent Sandbox: How to Safely Run Autonomous Agents in 2026 — Firecrawl](https://www.firecrawl.dev/blog/ai-agent-sandbox)
+- [Best Secrets Management Tools in 2026: Vault, OpenBao, Infisical — devtoollab](https://devtoollab.com/blog/best-secrets-management-tools)
+- [HashiCorp Vault vs Ansible Vault — arnav.au](https://arnav.au/2025/12/12/hashicorp-vault-vs-ansible-vault/)
+- [Least-Privilege Credentials for AI Agents: a Practical Guide — aitechconnect](https://aitechconnect.in/tips/least-privilege-credentials-ai-agents-oauth-secrets-2026)
+- [The Hidden Risks of Secrets Mismanagement in CI/CD — Akeyless](https://www.akeyless.io/blog/the-hidden-risks-of-secrets-management-in-ci-cd-pipelines/)
