@@ -37,16 +37,19 @@ roteamos, e por qual substrato?
 | **RouteLLM** (LMSYS, OSS) | roteia aprendido entre modelo "forte" e "fraco" | cortar custo no tier frontier |
 | LiteLLM / Bifrost / Kong AI GW | tradução de protocolo / throughput / gateway | alternativas de infra |
 
-**Evidência**: RouteLLM corta gasto **>75% mantendo ~95% da qualidade** do modelo forte (MT-Bench
--85%, MMLU -45%, GSM8K -35% a 95% de qualidade). Vale para o tier 3 (frontier).
+**Evidência (fonte primária LMSYS, arXiv 2406.18665, verificada)**: no MT-Bench, RouteLLM atinge
+**95% da qualidade do GPT-4 roteando só 26% das queries** ao modelo forte (~3,66× de economia; até
+-85% de custo). Em MMLU/GSM8K o ganho é menor (1,41×/1,49×, a 92%/87% de qualidade). Vale para o tier 3.
 
 ## Como a confiança calibrada vira gate
 O score do Jev define um **threshold de escalonamento**: abaixo do limiar → escala para modelo
 maior ou para humano. Conecta com os gates da Trilha H e o gate de prontidão da Trilha A.
 
 ## Riscos
-- **Jev é vendor novo** → ainda assim manter fallback (judge frontier barato) para resiliência,
-  mesmo com acesso liberado via OpenRouter.
+- **Jev é vendor novo e vira dependência transversal (A/D/H/I)** → **isolar atrás de uma interface/
+  adapter trocável**, manter fallback (judge frontier barato) e **validar nos nossos casos antes de
+  confiar**. "Não alucina (por construção)" e "CTO autorizou" **não são evidência técnica** de que
+  resolve os nossos casos — são premissas a testar (eval, Trilha H).
 - **OpenRouter/terceiros + código privado**: enviar código a terceiros tem risco de privacidade.
   `roboto` é público, mas projetos futuros podem ser privados → avaliar roteamento self-host nesses casos.
 - Cada vendor novo (TypeSafe, OpenRouter) é superfície operacional.
@@ -65,6 +68,7 @@ estruturadas + **`jev-guard`** como guardrail de tool call, com fallback de judg
 
 ### Fontes
 - [Top LLM Routing Tools in 2026: Architectures, Benchmarks, Trade-offs — dev.to](https://dev.to/artem42/top-llm-routing-tools-in-2026-architectures-benchmarks-and-production-trade-offs-ife)
+- [RouteLLM: Learning to Route LLMs with Preference Data — LMSYS (fonte primária, arXiv 2406.18665)](https://arxiv.org/abs/2406.18665)
 - [LLM Router 2026: RouteLLM Benchmarks, Cut Costs 30-85% — Klymentiev](https://klymentiev.com/blog/llm-router)
 - [RouteLLM vs OpenRouter vs Not Diamond (2026) — nomadx](https://nomadx.ae/blog/llm-model-routing-routellm-openrouter-notdiamond-2026/)
 - [TypeSafe AI Releases Jev — MarkTechPost](https://www.marktechpost.com/2026/09/19/typesafe-ai-releases-jev/)

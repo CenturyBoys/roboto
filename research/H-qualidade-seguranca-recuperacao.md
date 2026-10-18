@@ -47,8 +47,14 @@ e I (escada de validação).
   **irreversíveis/alto impacto** (merge, deploy, mudança de credencial, decisão arquitetural).
 - **Calibração é o desafio**: gates demais → *approval fatigue*; de menos → brecha de ataque.
   Usar a confiança calibrada (Jev, Trilha I) para decidir quando escalar ao humano.
-- **Loopjacking**: ataques sequestram o próprio passo de aprovação humana → o gate precisa de
-  contexto íntegro e assinado, não só um "aprovar?" cego.
+- **Escala do gate (senão recria o gargalo humano, Trilha J)**: só ações **irreversíveis/alto
+  impacto** vão ao humano; o resto é `allow`/`deny` determinístico (jev-guard). Usar **risk-tiering**,
+  **amostragem** (revisar só uma fração dos `allow` de baixo risco) e **aprovação em lote** de itens
+  similares. O humano é recurso escasso → o gate tem de ser seletivo por design, não por exceção.
+- **Loopjacking** (arXiv 2609.21081, verificado): o atacante faz o humano aprovar uma ação enquanto
+  o sistema executa outra (ocultação no momento da aprovação ou troca de estado pós-aprovação).
+  Defesa verificada: **canonical rendering** + **comparação exata no momento do uso** (o que foi
+  aprovado == o que executa).
 - Conflito de merge = gate humano (Trilha J); priorização = gate humano (Trilha 0).
 
 ## 4. Rollback e recuperação

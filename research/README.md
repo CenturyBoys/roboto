@@ -25,6 +25,7 @@ em vez de sessões gigantes de contexto.
 | I | Roteamento de modelos | Qual compute por operação: check determinístico → judge barato (Jev/System One) → frontier tiered (Haiku/Sonnet/Opus). OpenRouter como substrato. | F, H |
 | J | Escala: build/CI, carga de testes e revisores | Com muitos PRs/builds/pipelines concorrentes, qual a política de prioridade de build, de carga de testes e de distribuição de revisão? | B, A |
 | K | Runtime containerizado | Rodar o fleet em Docker: auth no container, Playwright, credenciais via symlink/sync com least privilege. | H, B |
+| L | Modelo de custo do fleet | Orçar/medir token/$ por agente/issue/PR, com teto e alerta (criada na auditoria rodada-01). | F, I, J, H, D |
 
 ## Como cada doc de trilha é estruturado
 
@@ -52,6 +53,9 @@ em vez de sessões gigantes de contexto.
   em vez de ser reconstruída em linguagem natural a cada sessão. Ganho duplo: menos token e
   mais determinismo/qualidade. Caso-guia: `ide_cc` (CenturyBoys) = o MCP `code-intel`, que
   promove refactors mecânicos a tools verificadas por build. Ver Trilha F.
+- **Disciplina de fontes** (introduzida pela auditoria rodada-01): separar evidência
+  **primária/acadêmica** de **número de vendor/blog** (indicativo, a verificar). Decisão de desenho
+  se apoia em fonte verificável; claim de parte interessada é marcado como "indicativo".
 - **Right-sizing de modelo**: dimensionar o compute à operação, não usar Opus para tudo.
   Escada de validação (do mais barato ao mais caro): (1) check determinístico — teste/lint/
   type-check/build (sem LLM); (2) decisão estruturada barata com confiança calibrada (Jev/

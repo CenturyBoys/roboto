@@ -25,7 +25,8 @@ Toda a investigação vive em [`research/`](research/) — um documento por tril
 
 Trilhas: **0** papéis · **A** contratos de trabalho · **B** orquestração · **C** skills ·
 **D** review de PR · **E** AGENTS.md/padrões · **F** token/ferramentificação · **G** memória ·
-**H** qualidade/segurança · **I** roteamento de modelos · **J** escala CI · **K** runtime.
+**H** qualidade/segurança · **I** roteamento de modelos · **J** escala CI · **K** runtime ·
+**L** modelo de custo.
 
 O próprio backlog desta pesquisa é rastreado como **épico + issues** neste repositório (dogfooding
 do processo que estamos projetando).

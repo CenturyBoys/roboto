@@ -140,6 +140,9 @@ a gente compõe:
 
 > Cross-links: trigger por comentário (Trilha B), judge barato (Trilha I), gate humano no pipeline (Trilha H).
 
+> **Fontes verificadas (auditoria rodada-01, out/2026)**: ClarifyCodeBench (arXiv 2607.00711) e
+> Ambig-SWE (arXiv 2502.13069) existem e conferem; Ambig-SWE reporta até **+74%** com interação.
+
 ## Impacto em token
 
 - DoR forte → issue densa → agente carrega só a mini-spec + arquivos apontados = sessão curta.
