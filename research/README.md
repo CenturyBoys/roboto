@@ -14,6 +14,7 @@ em vez de sessões gigantes de contexto.
 > 🧱 Vistas estruturais em **padrão C4** + esboços de implementação: [`ARCHITECTURE-C4.md`](ARCHITECTURE-C4.md).
 > ✅ **Revisão final / prontidão para implementar:** [`READINESS.md`](READINESS.md) — o que está sólido, lacunas, decisões-fundação e ordem do MVP.
 > 🟦 **Decisões a fechar (proposta + pontos de vista p/ o dono verificar):** [`DECISOES-A-FECHAR.md`](DECISOES-A-FECHAR.md).
+> 🧩 **Design do núcleo durável (§2):** [`DESIGN-nucleo.md`](DESIGN-nucleo.md) — run lifecycle, idempotência, outbox, auditoria `llm_call`, versão de prompt.
 
 ## Trilhas
 

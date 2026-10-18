@@ -2,6 +2,9 @@
 
 > Status: RASCUNHO PARA REVISÃO (executado 2026-10-18)
 
+> 🧩 Design do núcleo durável (ciclo de vida do run no banco, idempotência + lock, outbox): ver
+> [`DESIGN-nucleo.md`](DESIGN-nucleo.md).
+
 ## Pergunta
 
 Como disparar os agentes do fleet de forma **idempotente, sem loops e barata**, usando eventos do

@@ -2,6 +2,8 @@
 
 > Status: RASCUNHO PARA REVISÃO (criada 2026-10-18; reescrita após auditoria `audit/trilha-m` / PR #18)
 
+> 🧩 Checkpoint/resume (estado no banco) e efeitos via outbox: ver [`DESIGN-nucleo.md`](DESIGN-nucleo.md).
+
 ## Pergunta
 
 Como o humano **acompanha, conversa e intervém** no fleet em operação: ver jobs/execuções (duração,

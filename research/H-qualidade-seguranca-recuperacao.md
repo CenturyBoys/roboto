@@ -2,6 +2,9 @@
 
 > Status: RASCUNHO PARA REVISÃO (executado 2026-10-18)
 
+> 🧩 Auditoria `llm_call`, versão de prompt por run e resume de estado verificado: ver
+> [`DESIGN-nucleo.md`](DESIGN-nucleo.md).
+
 ## Pergunta
 
 Como **medir, proteger e recuperar** o fleet — a camada que separa "demo legal" de "premium e

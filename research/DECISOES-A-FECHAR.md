@@ -79,7 +79,7 @@ Legenda da decisão: ⬜ em aberto · ✅ aceita a proposta · ✏️ outra (ano
 - **Proposta:** **Sim, Docker image(s); uma instância por empresa; um orquestrador atende N repos via
   GitHub App.** Estado keyed por `repo+issue`; **WIP e orçamento por-repo e por-empresa**. Config,
   **vault por empresa** (D4) e teto (L) por tenant.
-- **Decisão:** ⬜
+- **Decisão:** ✅ (dono) **Docker image · 1 instância por empresa · N repos via GitHub App**.
 
 ### D18 · Agente(s) sênior persistente(s) — persona consultiva por empresa/projeto *(interpretação a confirmar)*
 - **Ideia (do dono):** além dos agentes efêmeros por task, um **"engenheiro sênior"** por
@@ -115,7 +115,7 @@ Legenda da decisão: ⬜ em aberto · ✅ aceita a proposta · ✏️ outra (ano
   *tools read-only curadas + views/RLS* = seguro, menos flexível → **recomendado**.
 - **Proposta:** um **"data-gateway de leitura" (MCP)** com tools read-only curadas, por tenant,
   auditado — como o `code-intel` é MCP para código (ferramentificação, F). Amarra H/I/K/D17.
-- **Decisão:** ⬜
+- **Decisão:** ✅ (dono) **data-gateway de leitura (MCP) read-only curado, por tenant, auditado — nunca query livre**.
 
 ---
 
@@ -125,24 +125,24 @@ Legenda da decisão: ⬜ em aberto · ✅ aceita a proposta · ✏️ outra (ano
 - **Proposta:** **máquina de estados do run no banco**; idempotência por `head_sha+evento+nº`
   **com "reconferir dentro do lock"** (não só dedupe na entrada); serialização por issue/PR;
   **varredura** de run abandonado (estado gravado antes da chamada externa). Padrão do turno do viva.
-- **Decisão:** ⬜ (aceitar que eu escreva este design na Trilha B)
+- **Decisão:** ✅ **escrito em [`DESIGN-nucleo.md`](DESIGN-nucleo.md)** (ciclo de vida, idempotência, lock+reconferir, varredura)
 
 ### D9 · Outbox / efeitos exactly-once
 - **Proposta:** ações com efeito colateral (abrir PR, notificar Telegram, publicar evento) via
   **gravar → commit → publicar**, com dedupe do consumidor. Dissolve "morreu no meio" (estado sem efeito
   / efeito sem estado). Toca B (idempotência) + M (Telegram/estado).
-- **Decisão:** ⬜ (adotar outbox?)
+- **Decisão:** ✅ **adotado** — outbox + `gravar→commit→publicar` ([`DESIGN-nucleo.md`](DESIGN-nucleo.md))
 
 ### D10 · Esquema de auditoria `llm_call`
 - **Proposta:** registro por chamada de modelo: `tokens, custo, latência, modelo/provedor,
   versão de prompt, versão de AGENTS.md/guia, run/issue`. É o que torna **custo (L)** e
   **observabilidade/reprodutibilidade (H)** verificáveis.
-- **Decisão:** ⬜ (adotar + onde mora)
+- **Decisão:** ✅ **adotado** — tabela `llm_call` ([`DESIGN-nucleo.md`](DESIGN-nucleo.md))
 
 ### D11 · Versão de prompt/AGENTS.md por run
 - **Proposta:** carimbar em cada run qual prompt/AGENTS.md rodou (liga ao D10) → "qual regra falou no
   run X" sem reconstruir histórico.
-- **Decisão:** ⬜
+- **Decisão:** ✅ **adotado** — campos no `run`/`llm_call` ([`DESIGN-nucleo.md`](DESIGN-nucleo.md))
 
 ---
 
