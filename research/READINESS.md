@@ -74,3 +74,19 @@ runtime efêmero + isolamento (K) · modelo de custo (L) · observabilidade/Tele
 - Um incremento de design para (B) + os 3 temas novos — eu escrevo como extensão de B/H/M.
 - (C) fica explicitamente como "medir no build", não bloqueia.
 - Então: **aprovação de fase** (dono) → implementação na ordem acima.
+
+## Revisão da jornada — spec de operação interativa (2026-10-19)
+
+O doc do dono (incorporado na **[Trilha N](N-operacao-interativa-e-motores.md)**) adiciona 6 decisões
+(**D21–D26**) que **estendem** a ordem acima — não a substituem:
+
+- **Passo 1 (Fundação):** ✅ feito. **Passo 2 (Orquestrador):** núcleo + **PgStore** ✅ feito;
+  falta **GitHub App** (transporte) + **D21** (bot↔empresa) + wiring do **outbox** (issue como verdade).
+- **Passo 2.5 (novo):** **D23** — migração `0002` com `session`/`execution`/`interaction` + mapa de
+  sessão nativa. **Precede** interação humana.
+- **Passo 3 (Loop núcleo):** **D22** (EngineAdapters Codex/Claude Code, **após PoC**) + **D24**
+  (`request_human_input` + roteamento por reply). O Refinamento (agente já criado) materializa a issue.
+- **Passo 5 (Humano):** **D25** console web + terminal tmux.
+- **Transversal:** **D26** auditoria (taxonomia de eventos ligada aos IDs).
+
+**Gating do passo 3:** PoC de capacidades dos motores (D22) antes de fixar o contrato do adapter.

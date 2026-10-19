@@ -182,6 +182,63 @@ Legenda da decisão: ⬜ em aberto · ✅ aceita a proposta · ✏️ outra (ano
 
 ---
 
+## §4 · Operação interativa + motores de coding (spec do dono, 2026-10-19)
+
+> Vêm do doc "Visão geral da arquitetura" do dono. Reconciliadas e detalhadas em
+> [`N-operacao-interativa-e-motores.md`](N-operacao-interativa-e-motores.md). ⬜ = aguardam o ok
+> do dono (recomendação já dada). D26 fica **parcial** (doc cortado no §8).
+
+### D21 · Bot do Telegram por empresa; tenant derivado do servidor (refino de D20/D17)
+- **Decisão (proposta):** **um bot por empresa**; o backend resolve o `tenant` pelo **token/bot**
+  (nunca confia em `tenant_id` vindo na mensagem); identidade + autorização validadas mesmo em
+  grupo privado; token do bot é secret (vault, D4). *(o adapter atual já vincula token→tenant na
+  construção — falta só formalizar a regra e a allowlist por empresa.)*
+- **Decisão:** ⬜
+
+### D22 · Registro de motores de coding (Codex, Claude Code) via adapters + contrato comum ⭐
+- **Decisão (proposta):** motor de coding é **plugável por ambiente** (não fixar fornecedor);
+  cada motor tem um **`EngineAdapter`** (evolução da porta `Runner`, K) com contrato comum: iniciar/
+  acompanhar execução, eventos, erros/resultados, `request_human_input`, aprovações, **retomada**,
+  mapa **sessão nativa↔interna**, encerrar/cancelar/recuperar. **PoC obrigatório** (matriz de
+  capacidades por motor) antes de fixar o contrato. É o **reframe** central: motor ≠ `ModelGateway`.
+- **Decisão:** ⬜ (maior item novo; destrava o passo 3)
+
+### D23 · Identificadores session / execution / interaction (protocolo + auditoria)
+- **Decisão (proposta):** três entidades de primeira classe — **session** (sessão de trabalho do
+  motor), **execution** (= nosso `run`), **interaction** (pergunta/decisão pendente) — com IDs
+  internos únicos + versão curta legível (S-…, E-…, Q-…). Preservar vínculos e o **id nativo** do
+  motor sem confundir com o interno. IDs são **rastreabilidade, não credencial**. Entra como
+  **migração `0002`**; **precede** a interação humana (D24).
+- **Decisão:** ⬜
+
+### D24 · Protocolo de interação humana (`request_human_input`) + roteamento por reply
+- **Decisão (proposta):** capacidade comum `request_human_input` (pergunta/contexto/alternativas/
+  resposta livre/ids/prazo). Pergunta sai pelo **outbox (D9)**; guarda-se o **`message_id`** do
+  Telegram na `interaction`; resposta em *reply* resolve a interação → valida autz → entrega ao
+  `EngineAdapter`. Estado `AWAITING_HUMAN` **=** `waiting` (sobrevive a restart; sweeper/lease).
+  **Sem resposta ≠ aprovação.** Concorrência: **1ª resposta válida vence**; demais rejeitadas.
+  Destino incerto → **pedir esclarecimento, nunca inferir**. Amarra H/D7/D15.
+- **Decisão:** ⬜
+
+### D25 · Console web operacional + terminal via tmux
+- **Decisão (proposta):** console que mostra empresas/ambientes/execuções/sessões/interações/logs/
+  custos e permite ações autorizadas (pausar/cancelar/retentar/reatribuir/pedir review) — **mesmo
+  backend** do Telegram. Terminal no navegador (**ttyd/Wetty**) para diagnóstico: autenticado,
+  isolado por empresa, **nunca exposto cru**; fechar a janela **não** encerra a execução (tmux é
+  diagnóstico, não fonte do estado). Stack do front decidida no passo 5.
+- **Decisão:** ⬜
+
+### D26 · Modelo de auditoria de execução (taxonomia de eventos) — *parcial*
+- **Decisão (proposta):** além de `run_event` (D8) + `llm_call` (D10), registrar a **taxonomia de
+  eventos** do §8 (tarefa/critérios, atribuição empresa-papel-agente-motor, início/fim, etapas/
+  tentativas/estados, tool calls, comandos, erros de lint/test, recuperações, perguntas/respostas,
+  aprovações, arquivos/commits/PRs, cancelamentos/timeouts), **correlacionada** aos IDs
+  (empresa/tarefa/execution/session/interaction/attempt). ⚠️ **Fechar "Separação dos registros"
+  (store quente vs log frio) quando o §8 chegar inteiro.**
+- **Decisão:** ⬜
+
+---
+
 ## Fora desta lista de propósito (medir no build, não decidir agora)
 Baseline de custo por issue/PR · golden set de evals · latência da escada · mapa fino operação→tier.
 Esses só existem com execução real — não travam o build.
