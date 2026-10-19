@@ -61,6 +61,19 @@ A auditoria pegou a confusão original. São **três coisas separadas**:
   **exata no momento do uso** (o aprovado == o executado); anti-double-approval via idempotência (B); timeout.
 - Confiabilidade: poller isolado + spool durável de updates.
 
+### Canais como adapters + áudio (refinamento 2026-10-19)
+O núcleo conversacional é **agnóstico de canal**; cada canal é um **adapter** (como o gateway de
+modelos é interface, não provedor). Telegram, CLI e GitHub têm papéis distintos — não é "tudo num só":
+- **Telegram = canal humano primário** (móvel, push, assíncrono, de qualquer lugar). Inclui **áudio**:
+  voz → baixa o `.ogg` → **speech-to-text** (Whisper / via OpenRouter) → vira texto no **mesmo**
+  pipeline de refino/consulta. STT é só um **adapter de entrada**; o texto resultante segue as mesmas
+  regras (materializa em issue; proposta revalidada no servidor).
+- **CLI** (Claude Code / `roboto` CLI) = **canal do operador/dev**, local e síncrono — bom para rodar/
+  depurar/operar o fleet; **não** é canal de push/assíncrono/móvel.
+- **GitHub = registro canônico** (issue/PR/gate, D15) — não é chat.
+Conclusão: dá para fazer **toda a conversa humana** pelo Telegram (texto ou áudio), mas a **verdade**
+fica na issue e o **CLI** segue útil para operação. Canais = adapters sobre o mesmo núcleo.
+
 ## 2. Monitor / observabilidade
 
 **Não é uma plataforma nova** — é a **observabilidade da Trilha H virada tela**. Dono da decisão de

@@ -173,6 +173,13 @@ Legenda da decisão: ⬜ em aberto · ✅ aceita a proposta · ✏️ outra (ano
   **Claude frontier** no difícil + **Jev** no judge; **pinar por medição** (não por leaderboard).
 - **Decisão:** ✅ começar com 1 modelo chinês/aberto barato + Claude frontier + Jev; **pinar por medição**.
 
+### D20 · Canais de comunicação + áudio (refinamento de D15/M)
+- **Pergunta:** Telegram é o melhor canal? Dá pra fazer tudo por ele? E áudio?
+- **Decisão:** ✅ **Canais = adapters sobre um núcleo agnóstico.** **Telegram = canal humano primário**
+  (móvel/push/assíncrono) **com áudio** (voz → STT Whisper/OpenRouter → mesmo pipeline). **CLI** =
+  canal do operador/dev (local). **GitHub = registro canônico** (D15). Dá pra fazer toda a conversa
+  humana no Telegram; a verdade fica na issue; o CLI serve operação. Detalhe em Trilha M.
+
 ---
 
 ## Fora desta lista de propósito (medir no build, não decidir agora)
