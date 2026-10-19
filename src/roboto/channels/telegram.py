@@ -86,6 +86,7 @@ class TelegramChannel:
         if user_id not in self._allow:  # allowlist (Trilha M)
             return None
         chat_id = str(message["chat"]["id"])
+        message_id = str(message.get("message_id", ""))
         if "voice" in message:
             audio = await self._download(message["voice"]["file_id"], client)
             return InboundMessage(
@@ -93,6 +94,7 @@ class TelegramChannel:
                 chat_id=chat_id,
                 user_id=user_id,
                 kind=MessageKind.AUDIO,
+                message_id=message_id,
                 audio=audio,
                 audio_name="voice.ogg",
             )
@@ -102,6 +104,7 @@ class TelegramChannel:
                 chat_id=chat_id,
                 user_id=user_id,
                 kind=MessageKind.TEXT,
+                message_id=message_id,
                 text=str(message["text"]),
             )
         return None
