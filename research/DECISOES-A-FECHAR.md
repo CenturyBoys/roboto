@@ -202,7 +202,12 @@ Legenda da decisão: ⬜ em aberto · ✅ aceita a proposta · ✏️ outra (ano
   acompanhar execução, eventos, erros/resultados, `request_human_input`, aprovações, **retomada**,
   mapa **sessão nativa↔interna**, encerrar/cancelar/recuperar. **PoC obrigatório** (matriz de
   capacidades por motor) antes de fixar o contrato. É o **reframe** central: motor ≠ `ModelGateway`.
-- **Decisão:** ⬜ (maior item novo; destrava o passo 3)
+- **Decisão:** ✅ **contrato + registro + matriz resolvidos** — porta `CodingEngine` (start/events/
+  respond/interrupt; resume por id de sessão nativa → D23), `CAPABILITIES` por motor e driver
+  `drive_turn` ligando evento→sessão→interação(D24), testado por `StubEngine` (PR em curso;
+  detalhe/reflexão em [`N2-motores-de-coding.md`](N2-motores-de-coding.md)).
+  ⏳ **PoC vivo pendente** (gate antes dos adapters reais): aprovação por ação no Codex (SDK grosso →
+  talvez app-server cru) e ergonomia de pausa/retomada no Claude Code — precisam dos SDKs + auth.
 
 ### D23 · Identificadores session / execution / interaction (protocolo + auditoria)
 - **Decisão (proposta):** três entidades de primeira classe — **session** (sessão de trabalho do
