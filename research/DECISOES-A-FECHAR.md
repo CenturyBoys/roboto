@@ -193,7 +193,8 @@ Legenda da decisão: ⬜ em aberto · ✅ aceita a proposta · ✏️ outra (ano
   (nunca confia em `tenant_id` vindo na mensagem); identidade + autorização validadas mesmo em
   grupo privado; token do bot é secret (vault, D4). *(o adapter atual já vincula token→tenant na
   construção — falta só formalizar a regra e a allowlist por empresa.)*
-- **Decisão:** ⬜
+- **Decisão:** ✅ **implementado** (adapter vincula token→tenant; allowlist; webhook ingest com
+  tenant do servidor — PRs #22/#25).
 
 ### D22 · Registro de motores de coding (Codex, Claude Code) via adapters + contrato comum ⭐
 - **Decisão (proposta):** motor de coding é **plugável por ambiente** (não fixar fornecedor);
@@ -209,7 +210,7 @@ Legenda da decisão: ⬜ em aberto · ✅ aceita a proposta · ✏️ outra (ano
   internos únicos + versão curta legível (S-…, E-…, Q-…). Preservar vínculos e o **id nativo** do
   motor sem confundir com o interno. IDs são **rastreabilidade, não credencial**. Entra como
   **migração `0002`**; **precede** a interação humana (D24).
-- **Decisão:** ⬜
+- **Decisão:** ✅ **implementado** — migração 0002 + modelos + métodos de store (PR #26).
 
 ### D24 · Protocolo de interação humana (`request_human_input`) + roteamento por reply
 - **Decisão (proposta):** capacidade comum `request_human_input` (pergunta/contexto/alternativas/
@@ -218,7 +219,8 @@ Legenda da decisão: ⬜ em aberto · ✅ aceita a proposta · ✏️ outra (ano
   `EngineAdapter`. Estado `AWAITING_HUMAN` **=** `waiting` (sobrevive a restart; sweeper/lease).
   **Sem resposta ≠ aprovação.** Concorrência: **1ª resposta válida vence**; demais rejeitadas.
   Destino incerto → **pedir esclarecimento, nunca inferir**. Amarra H/D7/D15.
-- **Decisão:** ⬜
+- **Decisão:** ✅ **implementado** — `request_human_input` + `handle_reply` (reply-routing por
+  `message_id`, first-wins, WAITING/AWAITING_HUMAN) sobre o outbox (PR #27). Retomada = motor (D22).
 
 ### D25 · Console web operacional + terminal via tmux
 - **Decisão (proposta):** console que mostra empresas/ambientes/execuções/sessões/interações/logs/
