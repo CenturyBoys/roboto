@@ -57,6 +57,58 @@ class OutboxItem:
     sent_at: datetime | None = None
 
 
+class Engine(StrEnum):
+    CODEX = "codex"
+    CLAUDE_CODE = "claude_code"
+
+
+class InteractionKind(StrEnum):
+    QUESTION = "question"
+    DECISION = "decision"
+    APPROVAL = "approval"
+
+
+class InteractionStatus(StrEnum):
+    PENDING = "pending"
+    ANSWERED = "answered"
+    EXPIRED = "expired"
+    CANCELLED = "cancelled"
+
+
+@dataclass(frozen=True)
+class Session:
+    """Sessão de trabalho de um motor de coding para uma execução (=run). D23."""
+
+    id: int
+    tenant: str
+    execution_id: int
+    engine: Engine
+    state: str
+    created_at: datetime
+    updated_at: datetime
+    native_session_id: str | None = None
+
+
+@dataclass(frozen=True)
+class Interaction:
+    """Pergunta/decisão humana pendente (request_human_input — D24)."""
+
+    id: int
+    tenant: str
+    execution_id: int
+    kind: InteractionKind
+    prompt: str
+    options: list[str]
+    status: InteractionStatus
+    created_at: datetime
+    session_id: int | None = None
+    channel_message_id: str | None = None
+    answer: str | None = None
+    answered_by: str | None = None
+    expires_at: datetime | None = None
+    answered_at: datetime | None = None
+
+
 @dataclass(frozen=True)
 class Error:
     """Erro como valor (D1). ``kind`` ∈ db | dispatch | effect | invalid_signature."""

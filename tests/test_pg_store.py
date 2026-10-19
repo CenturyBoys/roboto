@@ -16,7 +16,13 @@ import pytest
 asyncpg = pytest.importorskip("asyncpg")
 import pytest_asyncio  # noqa: E402
 
-from roboto.orchestrator.model import GithubEvent, RunState  # noqa: E402
+from roboto.orchestrator.model import (  # noqa: E402
+    Engine,
+    GithubEvent,
+    InteractionKind,
+    InteractionStatus,
+    RunState,
+)
 from roboto.orchestrator.pg_store import PostgresStore  # noqa: E402
 
 DSN = os.environ.get("DATABASE_URL")
@@ -24,7 +30,8 @@ pytestmark = pytest.mark.skipif(
     not DSN, reason="DATABASE_URL não definido (sobe via docker compose / CI)"
 )
 
-_MIGRATION = Path(__file__).resolve().parents[1] / "migrations" / "0001_init.sql"
+_MIGRATIONS = sorted((Path(__file__).resolve().parents[1] / "migrations").glob("*.sql"))
+_TABLES = "run, run_event, outbox, llm_call, session, interaction"
 _T0 = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
 
 
@@ -38,8 +45,9 @@ def _event(key: str = "k1") -> GithubEvent:
 async def store() -> PostgresStore:
     pool = await asyncpg.create_pool(DSN)
     async with pool.acquire() as conn:
-        await conn.execute(_MIGRATION.read_text())
-        await conn.execute("TRUNCATE run, run_event, outbox, llm_call RESTART IDENTITY CASCADE")
+        for migration in _MIGRATIONS:
+            await conn.execute(migration.read_text())
+        await conn.execute(f"TRUNCATE {_TABLES} RESTART IDENTITY CASCADE")
     s = PostgresStore(pool)
     yield s
     await s.close()
@@ -85,3 +93,35 @@ async def test_find_abandoned_after_lease_expires(store: PostgresStore) -> None:
     assert claimed is not None
     abandoned = await store.find_abandoned(_T0 + timedelta(seconds=400))
     assert [r.id for r in abandoned] == [claimed.id]
+
+
+async def test_session_and_native_mapping(store: PostgresStore) -> None:
+    run, _ = await store.insert_run_if_absent(_event(), _T0)
+    session = await store.create_session("acme", run.id, Engine.CLAUDE_CODE, _T0)
+    assert session.execution_id == run.id
+    assert session.native_session_id is None
+    await store.set_native_session(session.id, "nat-1", _T0)
+    stored = await store._pool.fetchval(
+        "SELECT native_session_id FROM session WHERE id = $1", session.id
+    )
+    assert stored == "nat-1"
+
+
+async def test_interaction_routing_and_first_answer_wins(store: PostgresStore) -> None:
+    run, _ = await store.insert_run_if_absent(_event(), _T0)
+    interaction = await store.create_interaction(
+        "acme", run.id, InteractionKind.DECISION, "Redis ou DB?", ["redis", "db"], _T0
+    )
+    assert interaction.status is InteractionStatus.PENDING
+    await store.set_interaction_message_id(interaction.id, "msg-55", _T0)
+
+    found = await store.get_interaction_by_message_id("acme", "msg-55")
+    assert found is not None
+    assert found.id == interaction.id
+    assert found.options == ["redis", "db"]
+    assert len(await store.pending_interactions("acme", 10)) == 1
+
+    assert await store.answer_interaction(interaction.id, "2, com abstração", "u1", _T0) is True
+    # 1ª resposta válida vence: a segunda é rejeitada sem alterar a decisão (§6)
+    assert await store.answer_interaction(interaction.id, "outra", "u2", _T0) is False
+    assert await store.pending_interactions("acme", 10) == []
