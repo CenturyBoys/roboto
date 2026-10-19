@@ -36,7 +36,7 @@ async def test_interaction_routing_and_first_wins() -> None:
     interaction = await store.create_interaction(
         "acme", run.id, InteractionKind.QUESTION, "qual persistência?", ["a", "b"], _T0
     )
-    await store.set_interaction_message_id(interaction.id, "m1", _T0)
+    await store.set_interaction_message_id(interaction.id, "m1")
 
     found = await store.get_interaction_by_message_id("acme", "m1")
     assert found is not None

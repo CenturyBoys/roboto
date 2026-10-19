@@ -109,15 +109,46 @@ async def test_telegram_poll_allowlist_and_voice_download() -> None:
         await client.aclose()
 
 
-async def test_telegram_send() -> None:
+async def test_telegram_send_returns_message_id() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path.endswith("/sendMessage")
-        return httpx.Response(200, json={"ok": True})
+        return httpx.Response(200, json={"ok": True, "result": {"message_id": 987}})
 
     client = _client(handler)
     try:
         ch = TelegramChannel("tok", "acme", allowlist=set(), client=client)
         result = await ch.send(OutboundMessage(chat_id="1", text="oi"))
         assert isinstance(result, Ok)
+        assert result.value == "987"
+    finally:
+        await client.aclose()
+
+
+async def test_telegram_poll_captures_reply_to() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "result": [
+                    {
+                        "update_id": 1,
+                        "message": {
+                            "message_id": 50,
+                            "from": {"id": 111},
+                            "chat": {"id": 111},
+                            "text": "2",
+                            "reply_to_message": {"message_id": 42},
+                        },
+                    }
+                ]
+            },
+        )
+
+    client = _client(handler)
+    try:
+        ch = TelegramChannel("tok", "acme", allowlist={"111"}, client=client)
+        result = await ch.poll()
+        assert isinstance(result, Ok)
+        assert result.value[0].reply_to_message_id == "42"
     finally:
         await client.aclose()

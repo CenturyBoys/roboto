@@ -71,7 +71,7 @@ class Store(Protocol):
     ) -> Interaction: ...
 
     async def set_interaction_message_id(
-        self, interaction_id: int, channel_message_id: str, now: datetime
+        self, interaction_id: int, channel_message_id: str
     ) -> None: ...
 
     async def get_interaction_by_message_id(
@@ -248,7 +248,7 @@ class InMemoryStore:
         return interaction
 
     async def set_interaction_message_id(
-        self, interaction_id: int, channel_message_id: str, now: datetime
+        self, interaction_id: int, channel_message_id: str
     ) -> None:
         interaction = self._interactions[interaction_id]
         self._interactions[interaction_id] = replace(

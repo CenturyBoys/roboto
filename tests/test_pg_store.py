@@ -113,7 +113,7 @@ async def test_interaction_routing_and_first_answer_wins(store: PostgresStore) -
         "acme", run.id, InteractionKind.DECISION, "Redis ou DB?", ["redis", "db"], _T0
     )
     assert interaction.status is InteractionStatus.PENDING
-    await store.set_interaction_message_id(interaction.id, "msg-55", _T0)
+    await store.set_interaction_message_id(interaction.id, "msg-55")
 
     found = await store.get_interaction_by_message_id("acme", "msg-55")
     assert found is not None

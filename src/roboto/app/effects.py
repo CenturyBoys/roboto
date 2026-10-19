@@ -10,6 +10,7 @@ from roboto.channels.model import OutboundMessage
 from roboto.channels.port import Channel
 from roboto.github.app import GithubAppClient
 from roboto.orchestrator.model import Error, OutboxItem
+from roboto.orchestrator.store import Store
 from roboto.result import Err, Ok, Result
 
 
@@ -30,13 +31,38 @@ class GithubIssuePublisher:
 
 
 class TelegramPublisher:
-    """Efeito ``telegram_notify`` -> envia mensagem pelo canal."""
+    """Efeito ``telegram_notify`` -> envia mensagem pelo canal (descarta o message_id)."""
 
     def __init__(self, channel: Channel) -> None:
         self._channel = channel
 
     async def send(self, item: OutboxItem) -> Result[None, Error]:
         p = item.payload
-        return await self._channel.send(
+        sent = await self._channel.send(
             OutboundMessage(chat_id=str(p["chat_id"]), text=str(p["text"]))
         )
+        if isinstance(sent, Err):
+            return Err(sent.error)
+        return Ok(None)
+
+
+class TelegramQuestionPublisher:
+    """Efeito ``telegram_question`` -> envia a pergunta e **guarda o message_id** na interação.
+
+    É o que torna o roteamento por reply possível (D24): a resposta em reply a essa mensagem
+    localiza a interação pelo id do canal.
+    """
+
+    def __init__(self, channel: Channel, store: Store) -> None:
+        self._channel = channel
+        self._store = store
+
+    async def send(self, item: OutboxItem) -> Result[None, Error]:
+        p = item.payload
+        sent = await self._channel.send(
+            OutboundMessage(chat_id=str(p["chat_id"]), text=str(p["text"]))
+        )
+        if isinstance(sent, Err):
+            return Err(sent.error)
+        await self._store.set_interaction_message_id(int(p["interaction_id"]), sent.value)
+        return Ok(None)
