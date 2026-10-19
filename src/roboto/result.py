@@ -7,8 +7,9 @@ programação/inesperado, não para o fluxo esperado.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Generic, NoReturn, TypeVar, Union
+from typing import Generic, NoReturn, TypeVar
 
 T = TypeVar("T")
 E = TypeVar("E")
@@ -30,13 +31,13 @@ class Ok(Generic[T]):
     def unwrap_or(self, default: T) -> T:
         return self.value
 
-    def map(self, fn: Callable[[T], U]) -> "Result[U, E]":
+    def map(self, fn: Callable[[T], U]) -> Result[U, E]:
         return Ok(fn(self.value))
 
-    def map_err(self, fn: Callable[[E], F]) -> "Result[T, F]":
+    def map_err(self, fn: Callable[[E], F]) -> Result[T, F]:
         return self
 
-    def and_then(self, fn: Callable[[T], "Result[U, E]"]) -> "Result[U, E]":
+    def and_then(self, fn: Callable[[T], Result[U, E]]) -> Result[U, E]:
         return fn(self.value)
 
 
@@ -54,15 +55,15 @@ class Err(Generic[E]):
     def unwrap_or(self, default: T) -> T:
         return default
 
-    def map(self, fn: Callable[[T], U]) -> "Result[U, E]":
+    def map(self, fn: Callable[[T], U]) -> Result[U, E]:
         return self
 
-    def map_err(self, fn: Callable[[E], F]) -> "Result[T, F]":
+    def map_err(self, fn: Callable[[E], F]) -> Result[T, F]:
         return Err(fn(self.error))
 
-    def and_then(self, fn: Callable[[T], "Result[U, E]"]) -> "Result[U, E]":
+    def and_then(self, fn: Callable[[T], Result[U, E]]) -> Result[U, E]:
         return self
 
 
-Result = Union[Ok[T], Err[E]]
+Result = Ok[T] | Err[E]
 """Um ``Result`` é ``Ok[T]`` ou ``Err[E]``."""

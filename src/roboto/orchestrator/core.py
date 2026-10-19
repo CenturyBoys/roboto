@@ -27,12 +27,12 @@ async def process_next(
     """Pega o próximo run na fila (lock+reconferir -> RUNNING antes do efeito) e dispara o runner."""
     run = await store.claim_next_queued(tenant, now, lease_seconds)
     if run is None:
-        return Ok(None)
+        return Ok[Run | None](None)
     outcome = await runner.dispatch(run)
     if isinstance(outcome, Err):
         await store.set_state(run.id, RunState.FAILED, now)
         return Err(outcome.error)
-    return Ok(run)
+    return Ok[Run | None](run)
 
 
 async def enqueue_effect(
