@@ -84,6 +84,14 @@ class Store(Protocol):
 
     async def pending_interactions(self, tenant: str, limit: int) -> list[Interaction]: ...
 
+    async def list_runs(self, tenant: str, limit: int) -> list[Run]: ...
+
+    async def get_run(self, run_id: int) -> Run | None: ...
+
+    async def sessions_for_execution(self, execution_id: int) -> list[Session]: ...
+
+    async def interactions_for_execution(self, execution_id: int) -> list[Interaction]: ...
+
 
 class InMemoryStore:
     """Store em memória para testes tier-1 e o MVP local."""
@@ -285,3 +293,28 @@ class InMemoryStore:
             and self._interactions[i].status is InteractionStatus.PENDING
         ]
         return items[:limit]
+
+    async def list_runs(self, tenant: str, limit: int) -> list[Run]:
+        runs = [
+            self._runs[i]
+            for i in sorted(self._runs, reverse=True)
+            if self._runs[i].tenant == tenant
+        ]
+        return runs[:limit]
+
+    async def get_run(self, run_id: int) -> Run | None:
+        return self._runs.get(run_id)
+
+    async def sessions_for_execution(self, execution_id: int) -> list[Session]:
+        return [
+            self._sessions[i]
+            for i in sorted(self._sessions)
+            if self._sessions[i].execution_id == execution_id
+        ]
+
+    async def interactions_for_execution(self, execution_id: int) -> list[Interaction]:
+        return [
+            self._interactions[i]
+            for i in sorted(self._interactions)
+            if self._interactions[i].execution_id == execution_id
+        ]

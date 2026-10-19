@@ -233,7 +233,10 @@ Legenda da decisão: ⬜ em aberto · ✅ aceita a proposta · ✏️ outra (ano
   backend** do Telegram. Terminal no navegador (**ttyd/Wetty**) para diagnóstico: autenticado,
   isolado por empresa, **nunca exposto cru**; fechar a janela **não** encerra a execução (tmux é
   diagnóstico, não fonte do estado). Stack do front decidida no passo 5.
-- **Decisão:** ⬜
+- **Decisão:** ✅ **API implementada** (Starlette, PR em curso): mesma store do Telegram; auth bearer
+  + **isolamento por empresa** (run de outro tenant → 404); views de execuções/sessões/interações e
+  ações cancelar/retentar; endpoint `terminal` devolve URL do ttyd (processo+proxy = **infra**, fora
+  do código). Front rico (HTML/SPA) e o ttyd em si ficam para depois — a espinha (API) está pronta.
 
 ### D26 · Modelo de auditoria de execução (taxonomia de eventos) — *parcial*
 - **Decisão (proposta):** além de `run_event` (D8) + `llm_call` (D10), registrar a **taxonomia de
