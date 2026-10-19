@@ -1,9 +1,9 @@
 """Console web operacional (D25) — mesma store do Telegram (sem estado próprio).
 
-API ASGI (Starlette) de leitura + ações autorizadas sobre as execuções. Auth por **bearer token**
-e **isolamento por empresa** (tenant do processo, D17): um run de outra empresa responde 404.
-O terminal tmux (ttyd/Wetty) é infra à parte (processo por container + proxy autenticado) — aqui só
-devolvemos a URL configurada; fechar a janela não encerra a execução (tmux é diagnóstico).
+Rotas de leitura + ações autorizadas sobre as execuções. Auth por **bearer token** e **isolamento
+por empresa** (tenant do processo, D17): um run de outra empresa responde 404. `console_routes`
+devolve a lista de rotas para compor com o webhook no mesmo app ASGI (ver `web/app.py`).
+O terminal tmux (ttyd/Wetty) é infra à parte; aqui só devolvemos a URL configurada.
 """
 
 from __future__ import annotations
@@ -54,11 +54,15 @@ def _interaction_dict(it: Interaction) -> dict[str, object]:
     }
 
 
-def build_console(
+def console_routes(
     store: Store, *, tenant: str, token: str, ttyd_base: str | None = None
-) -> Starlette:
+) -> list[Route]:
     def _unauthorized(request: Request) -> bool:
         return not token or request.headers.get("authorization") != f"Bearer {token}"
+
+    async def _owned_run(request: Request) -> Run | None:
+        run = await store.get_run(int(request.path_params["run_id"]))
+        return run if run is not None and run.tenant == tenant else None  # isolamento (D17)
 
     async def healthz(request: Request) -> JSONResponse:
         return JSONResponse({"ok": True})
@@ -120,11 +124,7 @@ def build_console(
             {"terminal_url": url, "note": "ttyd/Wetty por container; autenticado e isolado (D25)"}
         )
 
-    async def _owned_run(request: Request) -> Run | None:
-        run = await store.get_run(int(request.path_params["run_id"]))
-        return run if run is not None and run.tenant == tenant else None  # isolamento por empresa
-
-    routes = [
+    return [
         Route("/healthz", healthz),
         Route("/executions", list_executions),
         Route("/executions/{run_id:int}", execution_detail),
@@ -133,4 +133,9 @@ def build_console(
         Route("/executions/{run_id:int}/terminal", terminal),
         Route("/interactions", pending_interactions),
     ]
-    return Starlette(routes=routes)
+
+
+def build_console(
+    store: Store, *, tenant: str, token: str, ttyd_base: str | None = None
+) -> Starlette:
+    return Starlette(routes=console_routes(store, tenant=tenant, token=token, ttyd_base=ttyd_base))
