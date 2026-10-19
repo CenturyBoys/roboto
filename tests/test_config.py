@@ -13,6 +13,7 @@ _FULL = {
     "GITHUB_APP_ID": "123",
     "GITHUB_APP_PRIVATE_KEY": "-----BEGIN-----\\nABC\\n-----END-----",
     "GITHUB_APP_INSTALLATION_ID": "789",
+    "GITHUB_WEBHOOK_SECRET": "whsec",
     "TELEGRAM_BOT_TOKEN": "000:AAA",
     "TELEGRAM_ALLOWLIST": "111, 222 ,,333",
     "OPENROUTER_API_KEY": "sk-or-x",
