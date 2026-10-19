@@ -3,7 +3,13 @@ name = "roboto"
 version = "0.0.1"
 description = "Continuous Development — fleet de agentes cobrindo o SDLC no GitHub"
 requires-python = ">=3.11"
-dependencies = ["asyncpg>=0.29", "httpx>=0.27", "pyjwt[crypto]>=2.8", "starlette>=0.37"]
+dependencies = [
+    "asyncpg>=0.29",
+    "httpx>=0.27",
+    "pyjwt[crypto]>=2.8",
+    "starlette>=0.37",
+    "uvicorn>=0.30",
+]
 
 [project.optional-dependencies]
 dev = ["ruff>=0.6", "mypy>=1.11", "pytest>=8.0", "pytest-asyncio>=0.23"]
@@ -27,6 +33,10 @@ python_version = "3.11"
 strict = true
 packages = ["roboto"]
 mypy_path = "src"
+
+[[tool.mypy.overrides]]
+module = ["uvicorn", "uvicorn.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
