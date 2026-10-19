@@ -67,7 +67,7 @@ async def test_outbox_materializes_issue_and_notifies() -> None:
             )
         if path.endswith("/sendMessage"):
             posted["send"] += 1
-            return httpx.Response(200, json={"ok": True})
+            return httpx.Response(200, json={"ok": True, "result": {"message_id": 5}})
         return httpx.Response(404)
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))

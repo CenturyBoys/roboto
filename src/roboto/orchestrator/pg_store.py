@@ -282,7 +282,7 @@ class PostgresStore:
             return _row_to_interaction(row)
 
     async def set_interaction_message_id(
-        self, interaction_id: int, channel_message_id: str, now: datetime
+        self, interaction_id: int, channel_message_id: str
     ) -> None:
         async with self._pool.acquire() as conn:
             await conn.execute(

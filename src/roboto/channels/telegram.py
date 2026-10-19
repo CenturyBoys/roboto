@@ -61,7 +61,7 @@ class TelegramChannel:
             if owns:
                 await client.aclose()
 
-    async def send(self, msg: OutboundMessage) -> Result[None, Error]:
+    async def send(self, msg: OutboundMessage) -> Result[str, Error]:
         owns = self._client is None
         client = (
             self._client if self._client is not None else httpx.AsyncClient(timeout=self._timeout)
@@ -71,7 +71,7 @@ class TelegramChannel:
                 f"{self._api}/sendMessage", json={"chat_id": msg.chat_id, "text": msg.text}
             )
             resp.raise_for_status()
-            return Ok(None)
+            return Ok(str(resp.json()["result"]["message_id"]))
         except httpx.HTTPError as exc:
             return Err(Error("channel", f"telegram sendMessage: {exc}"))
         finally:
@@ -87,6 +87,10 @@ class TelegramChannel:
             return None
         chat_id = str(message["chat"]["id"])
         message_id = str(message.get("message_id", ""))
+        reply_to = message.get("reply_to_message")
+        reply_to_message_id = (
+            str(reply_to["message_id"]) if isinstance(reply_to, dict) else None
+        )
         if "voice" in message:
             audio = await self._download(message["voice"]["file_id"], client)
             return InboundMessage(
@@ -105,6 +109,7 @@ class TelegramChannel:
                 user_id=user_id,
                 kind=MessageKind.TEXT,
                 message_id=message_id,
+                reply_to_message_id=reply_to_message_id,
                 text=str(message["text"]),
             )
         return None
