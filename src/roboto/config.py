@@ -20,6 +20,7 @@ class GithubConfig:
     app_id: str
     private_key: str
     installation_id: str
+    webhook_secret: str
 
 
 @dataclass(frozen=True)
@@ -53,6 +54,7 @@ _REQUIRED = (
     "GITHUB_APP_ID",
     "GITHUB_APP_PRIVATE_KEY",
     "GITHUB_APP_INSTALLATION_ID",
+    "GITHUB_WEBHOOK_SECRET",
     "TELEGRAM_BOT_TOKEN",
     "OPENROUTER_API_KEY",
     "STT_API_KEY",
@@ -83,6 +85,7 @@ def load_config(env: Mapping[str, str]) -> Result[Config, Error]:
                 # tolera PEM em uma linha (\n escapado) vindo do vault/env
                 private_key=env["GITHUB_APP_PRIVATE_KEY"].replace("\\n", "\n"),
                 installation_id=env["GITHUB_APP_INSTALLATION_ID"],
+                webhook_secret=env["GITHUB_WEBHOOK_SECRET"],
             ),
             telegram=TelegramConfig(
                 bot_token=env["TELEGRAM_BOT_TOKEN"],
