@@ -90,3 +90,12 @@ O doc do dono (incorporado na **[Trilha N](N-operacao-interativa-e-motores.md)**
 - **Transversal:** **D26** auditoria (taxonomia de eventos ligada aos IDs).
 
 **Gating do passo 3:** PoC de capacidades dos motores (D22) antes de fixar o contrato do adapter.
+
+### Passo final · Configuração (antes do teste ao vivo)
+**Como a config chega ao sistema (já implementado):** ansible-vault (prod) / `.env` (dev) →
+**variáveis de ambiente** → `roboto.config.load_config` (tipado, `Result`; faltou var → `Err`) →
+`Config` → `roboto.app.build_adapters(config)` monta os adapters (gateway, STT, GitHub App, Telegram,
+`RouterPublisher`). 1 instância por empresa ⇒ um `tenant` por processo (D17). Variáveis em `.env.example`.
+**O que falta é só preencher os valores** (GitHub App `app_id`/`private_key`/`installation_id`,
+`TELEGRAM_BOT_TOKEN`+allowlist, `OPENROUTER_API_KEY`, `STT_API_KEY`, `DATABASE_URL`, `ROBOTO_DEFAULT_REPO`)
+no vault → este é o **passo final**, imediatamente antes do smoke test ponta-a-ponta.
