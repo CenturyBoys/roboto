@@ -45,6 +45,7 @@ class Config:
     telegram: TelegramConfig
     models: ModelsConfig
     lease_seconds: int = 300
+    console_token: str = ""  # bearer do console web (D25); vazio = console desabilitado
 
 
 _REQUIRED = (
@@ -97,5 +98,6 @@ def load_config(env: Mapping[str, str]) -> Result[Config, Error]:
                 stt_base_url=env.get("STT_BASE_URL", "https://api.openai.com/v1"),
             ),
             lease_seconds=int(lease_raw),
+            console_token=env.get("CONSOLE_TOKEN", ""),
         )
     )

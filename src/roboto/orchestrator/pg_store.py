@@ -325,3 +325,32 @@ class PostgresStore:
                 tenant, limit,
             )
             return [_row_to_interaction(r) for r in rows]
+
+    async def list_runs(self, tenant: str, limit: int) -> list[Run]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                f"SELECT {_RUN_COLS} FROM run WHERE tenant = $1 ORDER BY id DESC LIMIT $2",
+                tenant, limit,
+            )
+            return [_row_to_run(r) for r in rows]
+
+    async def get_run(self, run_id: int) -> Run | None:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(f"SELECT {_RUN_COLS} FROM run WHERE id = $1", run_id)
+            return _row_to_run(row) if row is not None else None
+
+    async def sessions_for_execution(self, execution_id: int) -> list[Session]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                f"SELECT {_SESSION_COLS} FROM session WHERE execution_id = $1 ORDER BY id",
+                execution_id,
+            )
+            return [_row_to_session(r) for r in rows]
+
+    async def interactions_for_execution(self, execution_id: int) -> list[Interaction]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                f"SELECT {_INTERACTION_COLS} FROM interaction WHERE execution_id = $1 ORDER BY id",
+                execution_id,
+            )
+            return [_row_to_interaction(r) for r in rows]
