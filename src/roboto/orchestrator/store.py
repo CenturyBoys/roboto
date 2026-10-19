@@ -10,7 +10,17 @@ from dataclasses import replace
 from datetime import datetime, timedelta
 from typing import Any, Protocol
 
-from roboto.orchestrator.model import GithubEvent, OutboxItem, Run, RunState
+from roboto.orchestrator.model import (
+    Engine,
+    GithubEvent,
+    Interaction,
+    InteractionKind,
+    InteractionStatus,
+    OutboxItem,
+    Run,
+    RunState,
+    Session,
+)
 
 
 class Store(Protocol):
@@ -40,6 +50,40 @@ class Store(Protocol):
 
     async def find_abandoned(self, now: datetime) -> list[Run]: ...
 
+    async def create_session(
+        self, tenant: str, execution_id: int, engine: Engine, now: datetime
+    ) -> Session: ...
+
+    async def set_native_session(
+        self, session_id: int, native_session_id: str, now: datetime
+    ) -> None: ...
+
+    async def create_interaction(
+        self,
+        tenant: str,
+        execution_id: int,
+        kind: InteractionKind,
+        prompt: str,
+        options: list[str],
+        now: datetime,
+        session_id: int | None = None,
+        expires_at: datetime | None = None,
+    ) -> Interaction: ...
+
+    async def set_interaction_message_id(
+        self, interaction_id: int, channel_message_id: str, now: datetime
+    ) -> None: ...
+
+    async def get_interaction_by_message_id(
+        self, tenant: str, channel_message_id: str
+    ) -> Interaction | None: ...
+
+    async def answer_interaction(
+        self, interaction_id: int, answer: str, answered_by: str, now: datetime
+    ) -> bool: ...
+
+    async def pending_interactions(self, tenant: str, limit: int) -> list[Interaction]: ...
+
 
 class InMemoryStore:
     """Store em memória para testes tier-1 e o MVP local."""
@@ -49,8 +93,13 @@ class InMemoryStore:
         self._run_by_key: dict[tuple[str, str], int] = {}
         self._effects: dict[int, OutboxItem] = {}
         self._effect_keys: set[tuple[str, str]] = set()
+        self._sessions: dict[int, Session] = {}
+        self._interactions: dict[int, Interaction] = {}
+        self._interaction_by_msg: dict[tuple[str, str], int] = {}
         self._run_seq = 0
         self._effect_seq = 0
+        self._session_seq = 0
+        self._interaction_seq = 0
 
     async def insert_run_if_absent(self, ev: GithubEvent, now: datetime) -> tuple[Run, bool]:
         key = (ev.tenant, ev.idempotency_key)
@@ -146,3 +195,93 @@ class InMemoryStore:
             for r in self._runs.values()
             if r.state == RunState.RUNNING and r.lease_until is not None and r.lease_until < now
         ]
+
+    async def create_session(
+        self, tenant: str, execution_id: int, engine: Engine, now: datetime
+    ) -> Session:
+        self._session_seq += 1
+        session = Session(
+            id=self._session_seq,
+            tenant=tenant,
+            execution_id=execution_id,
+            engine=engine,
+            state="active",
+            created_at=now,
+            updated_at=now,
+        )
+        self._sessions[session.id] = session
+        return session
+
+    async def set_native_session(
+        self, session_id: int, native_session_id: str, now: datetime
+    ) -> None:
+        session = self._sessions[session_id]
+        self._sessions[session_id] = replace(
+            session, native_session_id=native_session_id, updated_at=now
+        )
+
+    async def create_interaction(
+        self,
+        tenant: str,
+        execution_id: int,
+        kind: InteractionKind,
+        prompt: str,
+        options: list[str],
+        now: datetime,
+        session_id: int | None = None,
+        expires_at: datetime | None = None,
+    ) -> Interaction:
+        self._interaction_seq += 1
+        interaction = Interaction(
+            id=self._interaction_seq,
+            tenant=tenant,
+            execution_id=execution_id,
+            kind=kind,
+            prompt=prompt,
+            options=list(options),
+            status=InteractionStatus.PENDING,
+            created_at=now,
+            session_id=session_id,
+            expires_at=expires_at,
+        )
+        self._interactions[interaction.id] = interaction
+        return interaction
+
+    async def set_interaction_message_id(
+        self, interaction_id: int, channel_message_id: str, now: datetime
+    ) -> None:
+        interaction = self._interactions[interaction_id]
+        self._interactions[interaction_id] = replace(
+            interaction, channel_message_id=channel_message_id
+        )
+        self._interaction_by_msg[(interaction.tenant, channel_message_id)] = interaction_id
+
+    async def get_interaction_by_message_id(
+        self, tenant: str, channel_message_id: str
+    ) -> Interaction | None:
+        iid = self._interaction_by_msg.get((tenant, channel_message_id))
+        return self._interactions[iid] if iid is not None else None
+
+    async def answer_interaction(
+        self, interaction_id: int, answer: str, answered_by: str, now: datetime
+    ) -> bool:
+        interaction = self._interactions[interaction_id]
+        if interaction.status is not InteractionStatus.PENDING:
+            return False  # 1ª resposta válida vence; demais rejeitadas (§6)
+        self._interactions[interaction_id] = replace(
+            interaction,
+            status=InteractionStatus.ANSWERED,
+            answer=answer,
+            answered_by=answered_by,
+            answered_at=now,
+        )
+        return True
+
+    async def pending_interactions(self, tenant: str, limit: int) -> list[Interaction]:
+        items = [
+            self._interactions[i]
+            for i in sorted(self._interactions)
+            if self._interactions[i].tenant == tenant
+            and self._interactions[i].status is InteractionStatus.PENDING
+        ]
+        return items[:limit]
