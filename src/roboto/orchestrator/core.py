@@ -24,7 +24,7 @@ async def ingest(store: Store, ev: GithubEvent, now: datetime) -> Result[Run, Er
 async def process_next(
     store: Store, runner: Runner, tenant: str, now: datetime, lease_seconds: int = 300
 ) -> Result[Run | None, Error]:
-    """Pega o próximo run na fila (lock+reconferir -> RUNNING antes do efeito) e dispara o runner."""
+    """Pega o próximo run (lock+reconferir -> RUNNING antes do efeito) e dispara o runner."""
     run = await store.claim_next_queued(tenant, now, lease_seconds)
     if run is None:
         return Ok[Run | None](None)

@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class RunState(str, Enum):
+class RunState(StrEnum):
     QUEUED = "queued"
     RUNNING = "running"
     WAITING = "waiting"
