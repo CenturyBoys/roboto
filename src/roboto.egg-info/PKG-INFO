@@ -1,0 +1,10 @@
+Metadata-Version: 2.4
+Name: roboto
+Version: 0.0.1
+Summary: Continuous Development — fleet de agentes cobrindo o SDLC no GitHub
+Requires-Python: >=3.11
+Provides-Extra: dev
+Requires-Dist: ruff>=0.6; extra == "dev"
+Requires-Dist: mypy>=1.11; extra == "dev"
+Requires-Dist: pytest>=8.0; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.23; extra == "dev"
