@@ -34,7 +34,7 @@ class Ok(Generic[T]):
         return Ok(fn(self.value))
 
     def map_err(self, fn: Callable[[E], F]) -> "Result[T, F]":
-        return self  # type: ignore[return-value]
+        return self
 
     def and_then(self, fn: Callable[[T], "Result[U, E]"]) -> "Result[U, E]":
         return fn(self.value)
@@ -51,17 +51,17 @@ class Err(Generic[E]):
     def unwrap(self) -> NoReturn:
         raise RuntimeError(f"unwrap() chamado em Err: {self.error!r}")
 
-    def unwrap_or(self, default: U) -> U:
+    def unwrap_or(self, default: T) -> T:
         return default
 
     def map(self, fn: Callable[[T], U]) -> "Result[U, E]":
-        return self  # type: ignore[return-value]
+        return self
 
     def map_err(self, fn: Callable[[E], F]) -> "Result[T, F]":
         return Err(fn(self.error))
 
     def and_then(self, fn: Callable[[T], "Result[U, E]"]) -> "Result[U, E]":
-        return self  # type: ignore[return-value]
+        return self
 
 
 Result = Union[Ok[T], Err[E]]
