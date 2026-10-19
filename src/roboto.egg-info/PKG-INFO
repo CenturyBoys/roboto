@@ -3,6 +3,7 @@ Name: roboto
 Version: 0.0.1
 Summary: Continuous Development — fleet de agentes cobrindo o SDLC no GitHub
 Requires-Python: >=3.11
+Requires-Dist: asyncpg>=0.29
 Provides-Extra: dev
 Requires-Dist: ruff>=0.6; extra == "dev"
 Requires-Dist: mypy>=1.11; extra == "dev"

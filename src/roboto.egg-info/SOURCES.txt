@@ -10,7 +10,9 @@ src/roboto.egg-info/top_level.txt
 src/roboto/orchestrator/__init__.py
 src/roboto/orchestrator/core.py
 src/roboto/orchestrator/model.py
+src/roboto/orchestrator/pg_store.py
 src/roboto/orchestrator/runner.py
 src/roboto/orchestrator/store.py
 tests/test_orchestrator.py
+tests/test_pg_store.py
 tests/test_result.py
