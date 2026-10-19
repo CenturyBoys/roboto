@@ -24,6 +24,7 @@ class InboundMessage:
     user_id: str
     kind: MessageKind
     text: str = ""
+    message_id: str = ""  # id nativo do canal (idempotência + reply-routing futuro, D23/D24)
     audio: bytes | None = None
     audio_name: str | None = None
 
