@@ -13,3 +13,6 @@ __pycache__/
 
 # scratch/local
 *.log
+
+# build/metadata
+*.egg-info/
