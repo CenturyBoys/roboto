@@ -51,6 +51,8 @@ class Config:
     engine: str = ""  # ROBOTO_ENGINE: ""=sem motor | stub | claude_code (D22/PoC N3)
     chat_id: str = ""  # chat padrão p/ perguntas do motor (ROBOTO_CHAT_ID)
     base_branch: str = "main"  # branch base dos PRs (ROBOTO_BASE_BRANCH; jo-ken-po usa develop)
+    trigger_label: str = "roboto"  # opt-in por label (ROBOTO_TRIGGER_LABEL); vazio = reage a tudo
+    bot_login: str = ""  # opt-in por assignee (ROBOTO_BOT_LOGIN)
 
 
 _REQUIRED = (
@@ -116,5 +118,7 @@ def load_config(env: Mapping[str, str]) -> Result[Config, Error]:
             engine=env.get("ROBOTO_ENGINE", ""),
             chat_id=env.get("ROBOTO_CHAT_ID", ""),
             base_branch=env.get("ROBOTO_BASE_BRANCH", "main"),
+            trigger_label=env.get("ROBOTO_TRIGGER_LABEL", "roboto"),
+            bot_login=env.get("ROBOTO_BOT_LOGIN", ""),
         )
     )

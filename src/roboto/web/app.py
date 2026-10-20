@@ -39,6 +39,8 @@ def build_app(
             store=store,
             now=now(),
             repos=config.repos,
+            trigger_label=config.trigger_label,
+            bot_login=config.bot_login,
         )
         if isinstance(result, Err):
             status = 401 if result.error.kind == "invalid_signature" else 400

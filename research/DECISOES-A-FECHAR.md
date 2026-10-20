@@ -269,6 +269,14 @@ Legenda da decisão: ⬜ em aberto · ✅ aceita a proposta · ✏️ outra (ano
 - **Decisão:** ✅ regra adotada. Próximo build: **agente/gate de review** (prontidão da issue + review
   de PR). Refiner já emite issue estruturada (DoR/DoD). Amarra A (DoR/DoD), D (review), D2 (loop).
 
+### D29 · Opt-in de trabalho (humanos + fleet no mesmo repo)
+- **Pergunta (dono):** com outras pessoas criando issues/PRs no repo, como o fleet sabe no que mexer?
+- **Decisão:** ✅ **opt-in explícito** — o fleet só age em issue/PR que tem o **label-gatilho**
+  (`ROBOTO_TRIGGER_LABEL`, default `roboto`) **ou** está **atribuída ao bot** (`ROBOTO_BOT_LOGIN`).
+  Sem gatilho configurado = reage a tudo (compat). Implementado em `github/webhook.normalize_event`
+  (`_is_for_fleet`). Trabalho dos humanos (sem label/assignee do fleet) é **ignorado**. Nada se
+  perde nem se intromete. Amarra B (gatilhos) + A (contratos).
+
 ---
 
 ## Fora desta lista de propósito (medir no build, não decidir agora)
