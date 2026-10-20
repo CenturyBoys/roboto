@@ -1,23 +1,28 @@
 # PoC do fleet (N3): tudo num container isolado — build/test do repo-alvo (Playwright),
 # roboto (daemon), Claude Code + claude-code-router (-> OpenRouter/Qwen).
 # NOTA: versões/pacotes marcados "validar" não foram exercitados sem rede; confira no 1º build.
-FROM mcr.microsoft.com/playwright:v1.48.0-jammy
+# base noble (Ubuntu 24.04) => Python 3.12 (roboto exige >=3.11; jammy tem só 3.10)
+FROM mcr.microsoft.com/playwright:v1.48.0-noble
 
 # Node já vem na imagem Playwright; habilita pnpm (versão do .nvmrc/engines do alvo).
 RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
 
-# Python 3.11 (roboto) + git + gettext (envsubst)
+# Python + venv + git + gettext (envsubst)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      python3 python3-pip python3-venv git gettext-base \
+      python3 python3-venv git gettext-base \
     && rm -rf /var/lib/apt/lists/*
 
 # Claude Code CLI + claude-code-router (validar nomes/versões dos pacotes npm)
 RUN npm install -g @anthropic-ai/claude-code @musistudio/claude-code-router
 
+# venv dedicado: evita PEP 668 (externally-managed) e garante pip novo (sem --break-system-packages)
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
 WORKDIR /opt/roboto
 COPY pyproject.toml ./
 COPY src ./src
-RUN pip3 install --break-system-packages -e .
+RUN pip install -e .
 
 COPY poc/ccr.config.json /opt/roboto/poc/ccr.config.json
 COPY poc/smoke.py /opt/roboto/poc/smoke.py
