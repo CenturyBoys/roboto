@@ -28,6 +28,7 @@ COPY poc/ccr.config.json /opt/roboto/poc/ccr.config.json
 COPY poc/smoke.py /opt/roboto/poc/smoke.py
 COPY poc/check_config.py /opt/roboto/poc/check_config.py
 COPY poc/run_engine.py /opt/roboto/poc/run_engine.py
+COPY poc/run_cycle.py /opt/roboto/poc/run_cycle.py
 COPY poc/migrate.py /opt/roboto/poc/migrate.py
 COPY migrations /opt/roboto/migrations
 COPY poc/entrypoint.sh /usr/local/bin/poc-entrypoint

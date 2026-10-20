@@ -63,6 +63,13 @@ Aprendizados/fixes (aplicados):
 - SDK Python `query()` falhava pelo mesmo motivo (root+bypass); com `acceptEdits` deve ir — o **CLI**
   `claude -p --output-format stream-json` é o caminho comprovado (fallback se o SDK insistir).
 
+## 4.3 CICLO COMPLETO ✅ ao vivo (2026-10-20)
+`run_pr_cycle` rodou ponta-a-ponta no repo real: o motor (Qwen via ccr) implementou `isMatchPoint`,
+abriu o **PR #183** (`arenavalendo/main`, base `develop`, branch `roboto/run-1`) com
+`rules.ts (+12)` + `index.ts (+1)` + `rules.test.ts (+53)`; o review (Qwen≠autor) **aprovou em 1
+tentativa**; PR fica **OPEN** (merge = gate humano, D7). Script: `poc/run_cycle.py`. Imagem precisa do
+`src` atual (rebuild via `phase0.sh`). Polir: título do PR = texto cru da tarefa (devia ser Conv. Commit).
+
 ## 5. Fases
 - **Fase 0 — encanamento (sem LLM):** Docker builda; Postgres sobe; daemon sobe; clona jo-ken-po;
   `StubEngine` percorre claim→drive→(WAITING/VERIFYING); `pnpm install && pnpm test`/Playwright
