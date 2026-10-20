@@ -169,6 +169,13 @@ async def process_pr_run_tick(
                 falta = ", ".join(verdict.missing)
                 msg = f"Issue incompleta para dev — falta: {falta}. Complete e eu sigo."
                 await github.comment_pr(run.repo, int(run.issue_id), msg)
+                if run.origin_chat_id:  # eco no Telegram de quem pediu (D30)
+                    await store.enqueue_effect(
+                        run.tenant, run.id, "telegram_notify",
+                        {"chat_id": run.origin_chat_id,
+                         "text": f"⚡ #{run.issue_id}: falta {falta}. Complete a issue e eu sigo."},
+                        f"dor-wait:{run.id}", moment,
+                    )
                 await store.set_state(run.id, RunState.WAITING, moment)
                 return
 
@@ -188,3 +195,15 @@ async def process_pr_run_tick(
     await store.set_state(
         run.id, RunState.VERIFYING if result.approved else RunState.FAILED, moment
     )
+    if run.origin_chat_id:  # status final volta pro Telegram de quem pediu (D30)
+        pr = result.pr
+        ref = f" (PR #{pr.number})" if pr is not None else ""
+        txt = (
+            f"✅ #{run.issue_id}: implementei e o review aprovou{ref}. Falta o merge humano."
+            if result.approved
+            else f"⚠️ #{run.issue_id}: não aprovei após {result.attempts} tentativa(s){ref}."
+        )
+        await store.enqueue_effect(
+            run.tenant, run.id, "telegram_notify",
+            {"chat_id": run.origin_chat_id, "text": txt}, f"done:{run.id}", moment,
+        )

@@ -28,7 +28,7 @@ from roboto.orchestrator.model import (
 
 _RUN_COLS = (
     "id, tenant, repo, issue_id, agent, state, attempt, "
-    "idempotency_key, created_at, updated_at, lease_until"
+    "idempotency_key, created_at, updated_at, lease_until, origin_chat_id"
 )
 _OUTBOX_COLS = "id, tenant, run_id, kind, payload, dedup_key, status, created_at, sent_at"
 _SESSION_COLS = (
@@ -53,6 +53,7 @@ def _row_to_run(row: Any) -> Run:
         created_at=row["created_at"],
         updated_at=row["updated_at"],
         lease_until=row["lease_until"],
+        origin_chat_id=row["origin_chat_id"],
     )
 
 
@@ -127,13 +128,13 @@ class PostgresStore:
             row = await conn.fetchrow(
                 f"""
                 INSERT INTO run (tenant, repo, issue_id, agent, state, attempt,
-                                 idempotency_key, created_at, updated_at)
-                VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $7)
+                                 idempotency_key, created_at, updated_at, origin_chat_id)
+                VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $7, $8)
                 ON CONFLICT (tenant, idempotency_key) DO NOTHING
                 RETURNING {_RUN_COLS}
                 """,
                 ev.tenant, ev.repo, ev.issue_id, ev.agent, RunState.QUEUED.value,
-                ev.idempotency_key, now,
+                ev.idempotency_key, now, ev.origin_chat_id,
             )
             if row is not None:
                 return _row_to_run(row), True
