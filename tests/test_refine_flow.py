@@ -13,9 +13,9 @@ from roboto.result import Err, Ok
 
 _T0 = datetime(2026, 1, 1, tzinfo=UTC)
 
-# issue COMPLETA (passa o gate DoR): seções + critério de aceite
+# issue COMPLETA (passa o gate DoR): seções + critério de aceite; "aprovado" p/ o juiz semântico
 _READY = (
-    "TITLE: Login\nBODY:\n## Contexto\nusuário não entra\n## Escopo\napp/auth\n"
+    "VEREDITO: aprovado\nTITLE: Login\nBODY:\n## Contexto\nusuário não entra\n## Escopo\napp/auth\n"
     "## Critérios de aceite\n- [ ] usuário entra\n## DoD\n- [ ] testes + CI\n"
     "## Fora de escopo\nnada"
 )
@@ -51,8 +51,24 @@ async def test_refine_ready_issue_enqueues_issue_and_ack() -> None:
     issue = next(e for e in effects if e.kind == "create_issue")
     assert issue.payload["title"] == "Login"
     assert "## Critérios de aceite" in issue.payload["body"]
-    # medição: a chamada do refiner foi gravada no llm_call
-    assert len(await store.llm_calls("acme", 10)) == 1
+    # medição: refiner + juiz semântico, ambos gravados no llm_call
+    assert len(await store.llm_calls("acme", 10)) == 2
+
+
+async def test_refine_semantic_reject_asks_clarification() -> None:
+    store = InMemoryStore()
+    # estruturalmente OK (todas as seções + '- [ ]'), mas o juiz REPROVA -> pede ajuste, sem issue
+    reply = (
+        "VEREDITO: reprovado\n- critério de aceite vago demais\n"
+        "TITLE: algo\nBODY:\n## Contexto\nx\n## Escopo\ny\n"
+        "## Critérios de aceite\n- [ ] faz\n## DoD\n- [ ] ci"
+    )
+    result = await _refine(store, _msg("faz um negocio ai", "77"), reply=reply)
+    assert isinstance(result, Ok)
+    assert store._runs[result.value.id].state is RunState.WAITING
+    effects = await store.pending_effects(10)
+    assert [e.kind for e in effects] == ["telegram_notify"]
+    assert "ajuste" in effects[0].payload["text"].lower()
 
 
 async def test_refine_incomplete_issue_asks_clarification() -> None:

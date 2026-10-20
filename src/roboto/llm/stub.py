@@ -10,8 +10,9 @@ from roboto.result import Err, Ok, Result
 class StubModelGateway:
     """Devolve sempre ``reply`` (ou um ``Err`` se construído com erro)."""
 
+    # inclui o veredito p/ o juiz semântico (mesma reply serve refiner E review no stub)
     _READY_ISSUE = (
-        "TITLE: feat: tarefa\nBODY:\n## Contexto\nmotivo\n## Escopo\narquivo\n"
+        "VEREDITO: aprovado\nTITLE: feat: tarefa\nBODY:\n## Contexto\nmotivo\n## Escopo\narquivo\n"
         "## Critérios de aceite\n- [ ] faz X\n## DoD\n- [ ] testes + CI\n## Fora de escopo\nnada"
     )
 
