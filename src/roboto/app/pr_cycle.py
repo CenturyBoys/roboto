@@ -55,7 +55,11 @@ async def run_pr_cycle(
     branch = f"roboto/run-{run.id}"
     title = f"run {run.id}: {run.issue_id}"
     base_prompt = (
-        f"Implemente a issue {run.issue_id} do repo {run.repo} (cwd {workdir}). Siga o AGENTS.md."
+        f"Implemente a issue {run.issue_id} no repo {run.repo} (cwd {workdir}). "
+        "Siga TODAS as regras do AGENTS.md — inclusive doc-in-sync (§5): mudança de regra/domínio "
+        "exige atualizar a doc (.md/docs/ADR) no MESMO commit. "
+        "Rode os checks do repo (lint, typecheck, testes, doc-sync) e corrija até passarem "
+        "ANTES de concluir."
     )
     state: dict[str, int] = {}  # guarda o número do PR entre tentativas
 
