@@ -8,7 +8,7 @@ from roboto.app.human import request_human_input
 from roboto.app.inbound import InboundOutcome, dispatch_inbound
 from roboto.channels.model import InboundMessage, MessageKind
 from roboto.llm.stub import StubModelGateway, StubTranscriber
-from roboto.orchestrator.model import Error, GithubEvent, InteractionKind
+from roboto.orchestrator.model import Error, GithubEvent, InteractionKind, RunState
 from roboto.orchestrator.store import InMemoryStore
 from roboto.result import Ok, Result
 
@@ -58,6 +58,19 @@ async def test_pick_command_enqueues_run() -> None:
     assert out.value.outcome is InboundOutcome.PICKED
     assert "#42" in (out.value.reply or "")
     assert [r.issue_id for r in store._runs.values()] == ["42"]  # run enfileirado p/ a issue 42
+
+
+async def test_repick_resumes_stopped_run() -> None:
+    # re-pegar uma issue parada (waiting, ex.: completou o DoR) retoma o MESMO run -> queued (D30)
+    store = InMemoryStore()
+    await _dispatch(store, _msg("pega #42"))
+    run_id = next(iter(store._runs))
+    await store.set_state(run_id, RunState.WAITING, _T0)
+    out = await _dispatch(store, _msg("pega #42"))
+    assert isinstance(out, Ok)
+    assert len(store._runs) == 1  # dedup: não cria run novo
+    assert store._runs[run_id].state is RunState.QUEUED  # retomado
+    assert "Retomando" in (out.value.reply or "")
 
 
 async def test_list_command_lists_open_issues() -> None:
