@@ -12,7 +12,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from roboto.agents.refiner import handle_inbound
-from roboto.agents.review import check_issue_readiness
+from roboto.agents.review import check_issue_readiness, review_issue_semantics
 from roboto.app.metering import MeteredGateway
 from roboto.channels.model import InboundMessage
 from roboto.llm.port import ModelGateway, Transcriber
@@ -62,6 +62,22 @@ async def refine_to_issue(
             "telegram_notify",
             {"chat_id": msg.chat_id, "text": text},
             f"incompleta:{run.id}",
+            now,
+        )
+        return Ok(run)
+
+    # gate SEMÂNTICO (juiz): pega issue estruturalmente ok mas sem sentido (ex.: vinda de "ola").
+    semantic = await review_issue_semantics(draft, metered)
+    if isinstance(semantic, Ok) and not semantic.value.approved:
+        await store.set_state(run.id, RunState.WAITING, now)
+        probs = ", ".join(semantic.value.issues) or "sem detalhes"
+        text = f"Issue precisa de ajuste — {probs}. Reenvie com mais contexto."
+        await store.enqueue_effect(
+            msg.tenant,
+            run.id,
+            "telegram_notify",
+            {"chat_id": msg.chat_id, "text": text},
+            f"review:{run.id}",
             now,
         )
         return Ok(run)
