@@ -12,11 +12,12 @@ from datetime import UTC, datetime
 
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import HTMLResponse, JSONResponse
 from starlette.routing import Route
 
-from roboto.orchestrator.model import Interaction, Run, RunState, Session
+from roboto.orchestrator.model import Interaction, LlmCall, Run, RunState, Session
 from roboto.orchestrator.store import Store
+from roboto.web.viewer import VIEWER_HTML
 
 
 def _run_dict(run: Run) -> dict[str, object]:
@@ -54,6 +55,18 @@ def _interaction_dict(it: Interaction) -> dict[str, object]:
     }
 
 
+def _llm_dict(c: LlmCall) -> dict[str, object]:
+    return {
+        "run_id": c.run_id,
+        "model": c.model,
+        "tier": c.tier,
+        "tokens_in": c.tokens_in,
+        "tokens_out": c.tokens_out,
+        "cost_usd": round(c.cost_usd, 6),
+        "at": c.at.isoformat(),
+    }
+
+
 def console_routes(
     store: Store, *, tenant: str, token: str, ttyd_base: str | None = None
 ) -> list[Route]:
@@ -64,8 +77,21 @@ def console_routes(
         run = await store.get_run(int(request.path_params["run_id"]))
         return run if run is not None and run.tenant == tenant else None  # isolamento (D17)
 
+    async def viewer(request: Request) -> HTMLResponse:
+        return HTMLResponse(VIEWER_HTML)  # página pública; os dados exigem o bearer (via JS)
+
     async def healthz(request: Request) -> JSONResponse:
         return JSONResponse({"ok": True})
+
+    async def costs(request: Request) -> JSONResponse:
+        if _unauthorized(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        calls = await store.llm_calls(tenant, 100)
+        tokens = sum(c.tokens_in + c.tokens_out for c in calls)
+        cost = sum(c.cost_usd for c in calls)
+        return JSONResponse(
+            {"calls": [_llm_dict(c) for c in calls], "totals": {"tokens": tokens, "cost_usd": cost}}
+        )
 
     async def list_executions(request: Request) -> JSONResponse:
         if _unauthorized(request):
@@ -125,6 +151,7 @@ def console_routes(
         )
 
     return [
+        Route("/", viewer),
         Route("/healthz", healthz),
         Route("/executions", list_executions),
         Route("/executions/{run_id:int}", execution_detail),
@@ -132,6 +159,7 @@ def console_routes(
         Route("/executions/{run_id:int}/retry", retry, methods=["POST"]),
         Route("/executions/{run_id:int}/terminal", terminal),
         Route("/interactions", pending_interactions),
+        Route("/costs", costs),
     ]
 
 
