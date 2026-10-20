@@ -20,6 +20,8 @@ COPY src ./src
 RUN pip3 install --break-system-packages -e .
 
 COPY poc/ccr.config.json /opt/roboto/poc/ccr.config.json
+COPY poc/smoke.py /opt/roboto/poc/smoke.py
+COPY migrations /opt/roboto/migrations
 COPY poc/entrypoint.sh /usr/local/bin/poc-entrypoint
 RUN chmod +x /usr/local/bin/poc-entrypoint
 

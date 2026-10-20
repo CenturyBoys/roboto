@@ -20,7 +20,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    env_file: .env.poc
+    env_file:
+      - path: .env.poc
+        required: false # Fase 0 não precisa de secrets
     environment:
       DATABASE_URL: postgresql://roboto:${DB_PASSWORD:-dev-only-change-me}@db:5432/roboto
     ports:
