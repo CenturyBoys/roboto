@@ -11,9 +11,11 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 
+from roboto.app.engine_loop import drive_turn
 from roboto.app.inbound import InboundOutcome, dispatch_inbound
 from roboto.channels.model import OutboundMessage
 from roboto.channels.port import Channel
+from roboto.engines.port import CodingEngine
 from roboto.llm.port import ModelGateway, Transcriber
 from roboto.orchestrator.store import Store
 from roboto.result import Err, Ok
@@ -33,6 +35,23 @@ async def run_periodic(
             await asyncio.wait_for(stop.wait(), timeout=interval)
         except TimeoutError:
             pass
+
+
+async def process_run_tick(
+    engine: CodingEngine,
+    store: Store,
+    *,
+    tenant: str,
+    chat_id: str,
+    now: Callable[[], datetime],
+    lease_seconds: int = 300,
+) -> None:
+    """Pega o próximo run da fila e dispara o motor de coding (D22). Fila vazia = no-op."""
+    moment = now()
+    run = await store.claim_next_queued(tenant, moment, lease_seconds)
+    if run is None:
+        return
+    await drive_turn(engine, store, run=run, chat_id=chat_id, now=moment)
 
 
 async def poll_tick(

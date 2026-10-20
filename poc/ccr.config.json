@@ -1,0 +1,17 @@
+{
+  "LOG": false,
+  "Providers": [
+    {
+      "name": "openrouter",
+      "api_base_url": "https://openrouter.ai/api/v1/chat/completions",
+      "api_key": "${OPENROUTER_API_KEY}",
+      "models": ["qwen/qwen3-coder", "qwen/qwen-2.5-72b-instruct"]
+    }
+  ],
+  "Router": {
+    "default": "openrouter,qwen/qwen3-coder",
+    "background": "openrouter,qwen/qwen-2.5-72b-instruct",
+    "think": "openrouter,qwen/qwen3-coder",
+    "longContext": "openrouter,qwen/qwen3-coder"
+  }
+}
