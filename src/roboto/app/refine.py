@@ -12,6 +12,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from roboto.agents.refiner import handle_inbound
+from roboto.agents.review import check_issue_readiness
 from roboto.channels.model import InboundMessage
 from roboto.llm.port import ModelGateway, Transcriber
 from roboto.orchestrator.model import Error, GithubEvent, Run, RunState
@@ -46,6 +47,23 @@ async def refine_to_issue(
         return Err(refined.error)
 
     draft = refined.value.draft
+
+    # gate de prontidão (DoR) ANTES de criar a issue — nada vira dev sem issue completa (D28)
+    verdict = check_issue_readiness(draft)
+    if not verdict.ready:
+        await store.set_state(run.id, RunState.WAITING, now)
+        falta = ", ".join(verdict.missing)
+        text = f"Issue incompleta — falta: {falta}. Reenvie com mais detalhes."
+        await store.enqueue_effect(
+            msg.tenant,
+            run.id,
+            "telegram_notify",
+            {"chat_id": msg.chat_id, "text": text},
+            f"incompleta:{run.id}",
+            now,
+        )
+        return Ok(run)
+
     await store.set_state(run.id, RunState.VERIFYING, now)
     await store.enqueue_effect(
         msg.tenant,

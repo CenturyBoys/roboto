@@ -10,7 +10,12 @@ from roboto.result import Err, Ok, Result
 class StubModelGateway:
     """Devolve sempre ``reply`` (ou um ``Err`` se construído com erro)."""
 
-    def __init__(self, reply: str = "TITLE: Rascunho\nBODY: (sem corpo)") -> None:
+    _READY_ISSUE = (
+        "TITLE: feat: tarefa\nBODY:\n## Contexto\nmotivo\n## Escopo\narquivo\n"
+        "## Critérios de aceite\n- [ ] faz X\n## DoD\n- [ ] testes + CI\n## Fora de escopo\nnada"
+    )
+
+    def __init__(self, reply: str = _READY_ISSUE) -> None:
         self._reply = reply
 
     async def complete(
