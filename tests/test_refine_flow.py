@@ -32,7 +32,9 @@ def _msg(text: str, message_id: str = "11") -> InboundMessage:
     )
 
 
-async def _refine(store: InMemoryStore, msg: InboundMessage, reply: str | None = None):  # type: ignore[no-untyped-def]
+async def _refine(  # type: ignore[no-untyped-def]
+    store: InMemoryStore, msg: InboundMessage, reply: str | None = None
+):
     gateway = StubModelGateway() if reply is None else StubModelGateway(reply=reply)
     return await refine_to_issue(
         msg, repo="acme/app", gateway=gateway, transcriber=StubTranscriber(), store=store, now=_T0
