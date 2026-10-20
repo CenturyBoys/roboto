@@ -16,10 +16,16 @@ from roboto.orchestrator.model import Error
 from roboto.result import Err, Ok, Result
 
 REFINE_SYSTEM = (
-    "Você é um agente de refinamento. A partir da mensagem do usuário, produza um rascunho de "
-    "issue objetivo. Responda EXATAMENTE neste formato, sem texto extra:\n"
-    "TITLE: <título curto e acionável>\n"
-    "BODY: <contexto, critério de aceite (DoD) e escopo>"
+    "Você é o agente de refinamento. A partir da mensagem do usuário, produza uma ISSUE COMPLETA e "
+    "acionável, pronta para desenvolvimento (DoR satisfeito). Nada será codado sem uma issue assim. "
+    "Responda EXATAMENTE neste formato, sem texto extra:\n"
+    "TITLE: <título curto em Conventional Commits>\n"
+    "BODY:\n"
+    "## Contexto\n<problema / por que>\n"
+    "## Escopo\n<arquivos/áreas afetados>\n"
+    "## Critérios de aceite\n- [ ] <verificável>\n"
+    "## DoD\n- [ ] testes (TDD) · lint/typecheck · review (reviewer≠autor) · CI verde\n"
+    "## Fora de escopo\n<o que NÃO fazer>"
 )
 
 

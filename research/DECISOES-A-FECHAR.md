@@ -258,6 +258,17 @@ Legenda da decisão: ⬜ em aberto · ✅ aceita a proposta · ✏️ outra (ano
   [`N4-controle-multiempresa.md`](N4-controle-multiempresa.md). **Pós-PoC** (o PoC valida 1 empresa primeiro).
 - **Decisão:** ⬜
 
+### D28 · Fluxo issue-first com gate de qualidade + review em todo lugar (regra do dono)
+- **Regra (dono, 2026-10-20):** **nada se desenvolve sem uma issue aberta e COMPLETA** (DoR: contexto,
+  escopo, critérios de aceite, DoD, fora de escopo). Antes de editar/testar/commitar/abrir PR, a issue
+  passa por um **gate de qualidade/review** que confere se está completa e correta. O **agente de
+  review é peça central** — presente na issue (antes do dev) **e** no PR (reviewer≠autor, trilha D).
+- **Por quê:** o PoC mostrou uma issue boa mas com erro sutil (caminho de teste errado) — é o gate que
+  pega isso antes de virar código. Ordem: **refino→issue** → **gate (review de prontidão)** →
+  **implementação** → **PR** → **review (≠autor)** → DoD.
+- **Decisão:** ✅ regra adotada. Próximo build: **agente/gate de review** (prontidão da issue + review
+  de PR). Refiner já emite issue estruturada (DoR/DoD). Amarra A (DoR/DoD), D (review), D2 (loop).
+
 ---
 
 ## Fora desta lista de propósito (medir no build, não decidir agora)
