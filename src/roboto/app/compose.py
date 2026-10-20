@@ -37,6 +37,7 @@ def build_adapters(config: Config, store: Store | None = None) -> Adapters:
         app_id=config.github.app_id,
         private_key=config.github.private_key,
         installation_id=config.github.installation_id,
+        token=config.github.api_token,  # modo PAT: usa o token direto, sem JWT
     )
     channel = TelegramChannel(
         config.telegram.bot_token,

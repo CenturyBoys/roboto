@@ -34,7 +34,16 @@ nada configurado pra provar o encanamento.
 Builda a imagem, sobe Postgres, checa ferramentas e roda o loop com `StubEngine`. Se passar, a
 infra está boa. **Só depois disto vale configurar o resto.**
 
-### Passo 1 — GitHub App (acesso ao repo)
+### Passo 1 — acesso ao GitHub (escolha UM modo)
+
+**Modo PAT (recomendado p/ o PoC — 1 credencial, sem App):**
+1. GitHub → *Settings → Developer settings → Fine-grained tokens* → novo token com acesso **só** ao
+   `arenavalendo/main` e permissões **Contents: RW · Issues: RW · Pull requests: RW**.
+2. Cole em **`GITHUB_API_TOKEN`** (usado p/ a API: abrir PR/issue) **e** em **`GITHUB_CLONE_TOKEN`**
+   (clone https). Deixe os `GITHUB_APP_*` vazios.
+3. Sem App ⇒ **sem webhook**: reaja por **Telegram** (crie a issue e dispare pelo chat). OK p/ o PoC.
+
+**Modo App (produção — identidade de robô, webhooks, multi-repo):**
 1. GitHub → *Settings → Developer settings → GitHub Apps → New GitHub App* (ou na org `arenavalendo`).
 2. **Permissions (repository):** Contents RW, Issues RW, Pull requests RW, Metadata RO, Checks RO.
 3. **Subscribe to events:** Issues, Pull request, Push.

@@ -17,10 +17,11 @@ from roboto.result import Err, Ok, Result
 
 @dataclass(frozen=True)
 class GithubConfig:
-    app_id: str
-    private_key: str
-    installation_id: str
-    webhook_secret: str
+    app_id: str = ""
+    private_key: str = ""
+    installation_id: str = ""
+    webhook_secret: str = ""  # só p/ webhook inbound
+    api_token: str = ""  # modo PAT: 1 token p/ git (clone/push) + API (PR/issue), sem App
 
 
 @dataclass(frozen=True)
@@ -32,7 +33,7 @@ class TelegramConfig:
 @dataclass(frozen=True)
 class ModelsConfig:
     openrouter_api_key: str
-    stt_api_key: str
+    stt_api_key: str = ""  # só p/ áudio (STT); vazio = sem transcrição
     stt_base_url: str = "https://api.openai.com/v1"
 
 
@@ -54,13 +55,8 @@ _REQUIRED = (
     "ROBOTO_TENANT",
     "DATABASE_URL",
     "ROBOTO_DEFAULT_REPO",
-    "GITHUB_APP_ID",
-    "GITHUB_APP_PRIVATE_KEY",
-    "GITHUB_APP_INSTALLATION_ID",
-    "GITHUB_WEBHOOK_SECRET",
     "TELEGRAM_BOT_TOKEN",
     "OPENROUTER_API_KEY",
-    "STT_API_KEY",
 )
 
 
@@ -78,17 +74,28 @@ def load_config(env: Mapping[str, str]) -> Result[Config, Error]:
     if not lease_raw.isdigit():
         return Err(Error("config", f"LEASE_SECONDS inválido: {lease_raw!r}"))
 
+    # auth do GitHub: modo PAT (GITHUB_API_TOKEN) OU GitHub App completo (D27/N3)
+    has_app = bool(
+        env.get("GITHUB_APP_ID")
+        and env.get("GITHUB_APP_PRIVATE_KEY")
+        and env.get("GITHUB_APP_INSTALLATION_ID")
+    )
+    if not env.get("GITHUB_API_TOKEN") and not has_app:
+        msg = "defina GITHUB_API_TOKEN (modo PAT) ou o conjunto GITHUB_APP_* completo"
+        return Err(Error("config", msg))
+
     return Ok(
         Config(
             tenant=env["ROBOTO_TENANT"],
             database_url=env["DATABASE_URL"],
             default_repo=env["ROBOTO_DEFAULT_REPO"],
             github=GithubConfig(
-                app_id=env["GITHUB_APP_ID"],
+                app_id=env.get("GITHUB_APP_ID", ""),
                 # tolera PEM em uma linha (\n escapado) vindo do vault/env
-                private_key=env["GITHUB_APP_PRIVATE_KEY"].replace("\\n", "\n"),
-                installation_id=env["GITHUB_APP_INSTALLATION_ID"],
-                webhook_secret=env["GITHUB_WEBHOOK_SECRET"],
+                private_key=env.get("GITHUB_APP_PRIVATE_KEY", "").replace("\\n", "\n"),
+                installation_id=env.get("GITHUB_APP_INSTALLATION_ID", ""),
+                webhook_secret=env.get("GITHUB_WEBHOOK_SECRET", ""),
+                api_token=env.get("GITHUB_API_TOKEN", ""),
             ),
             telegram=TelegramConfig(
                 bot_token=env["TELEGRAM_BOT_TOKEN"],
@@ -96,7 +103,7 @@ def load_config(env: Mapping[str, str]) -> Result[Config, Error]:
             ),
             models=ModelsConfig(
                 openrouter_api_key=env["OPENROUTER_API_KEY"],
-                stt_api_key=env["STT_API_KEY"],
+                stt_api_key=env.get("STT_API_KEY", ""),
                 stt_base_url=env.get("STT_BASE_URL", "https://api.openai.com/v1"),
             ),
             lease_seconds=int(lease_raw),

@@ -41,6 +41,29 @@ def test_missing_required_lists_them() -> None:
     assert "OPENROUTER_API_KEY" in result.error.message
 
 
+def _pat_env() -> dict[str, str]:
+    """Modo PAT: sem GitHub App, só um token para git + API."""
+    base = {k: v for k, v in _FULL.items() if not k.startswith("GITHUB_APP")}
+    base.pop("GITHUB_WEBHOOK_SECRET", None)
+    base["GITHUB_API_TOKEN"] = "github_pat_xxx"
+    return base
+
+
+def test_pat_mode_is_valid_without_app() -> None:
+    result = load_config(_pat_env())
+    assert isinstance(result, Ok)
+    assert result.value.github.api_token == "github_pat_xxx"
+    assert result.value.github.app_id == ""
+
+
+def test_no_github_auth_is_err() -> None:
+    env = _pat_env()
+    env.pop("GITHUB_API_TOKEN")
+    result = load_config(env)
+    assert isinstance(result, Err)
+    assert "GITHUB_API_TOKEN" in result.error.message
+
+
 def test_invalid_lease_is_err() -> None:
     result = load_config({**_FULL, "LEASE_SECONDS": "abc"})
     assert isinstance(result, Err)
