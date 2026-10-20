@@ -11,8 +11,9 @@ import os
 from datetime import UTC, datetime
 
 from roboto.app.compose import build_adapters
-from roboto.app.loops import poll_tick, run_periodic
+from roboto.app.loops import poll_tick, process_run_tick, run_periodic
 from roboto.config import load_config
+from roboto.engines.stub import StubEngine
 from roboto.orchestrator.core import publish_outbox, sweep
 from roboto.orchestrator.pg_store import PostgresStore
 from roboto.result import Err
@@ -48,13 +49,28 @@ async def main() -> int:
     import uvicorn  # import tardio: só o daemon precisa
 
     server = uvicorn.Server(uvicorn.Config(app, host="0.0.0.0", port=8080, log_level="info"))
+    tasks = [
+        server.serve(),
+        run_periodic(_poll, 2.0, stop),
+        run_periodic(lambda: publish_outbox(store, adapters.router, _now()), 1.0, stop),
+        run_periodic(lambda: sweep(store, _now()), 30.0, stop),
+    ]
+
+    # laço do motor de coding (D22/PoC N3), ligado por ROBOTO_ENGINE
+    if config.engine == "stub":
+        stub = StubEngine([])
+
+        async def _run_stub() -> None:
+            await process_run_tick(
+                stub, store, tenant=config.tenant, chat_id=config.chat_id, now=_now
+            )
+
+        tasks.append(run_periodic(_run_stub, 5.0, stop))
+    elif config.engine == "claude_code":
+        print("ROBOTO_ENGINE=claude_code: ClaudeCodeEngine ainda não implementado (ver N3 gap#2)")
+
     try:
-        await asyncio.gather(
-            server.serve(),
-            run_periodic(_poll, 2.0, stop),
-            run_periodic(lambda: publish_outbox(store, adapters.router, _now()), 1.0, stop),
-            run_periodic(lambda: sweep(store, _now()), 30.0, stop),
-        )
+        await asyncio.gather(*tasks)
     finally:
         await store.close()
     return 0

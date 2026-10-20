@@ -12,10 +12,11 @@ from roboto.llm.port import ChatMessage, Completion, Tier
 from roboto.orchestrator.model import Error
 from roboto.result import Err, Ok, Result
 
+# Mix pinado por medição (D16): Qwen via OpenRouter. big=qwen3-coder, small=qwen2.5 (ver N3/PoC).
 _DEFAULT_MODELS: dict[Tier, str] = {
-    Tier.CHEAP: "deepseek/deepseek-chat",
-    Tier.JUDGE: "deepseek/deepseek-chat",
-    Tier.FRONTIER: "anthropic/claude-opus-4-8",
+    Tier.CHEAP: "qwen/qwen-2.5-72b-instruct",
+    Tier.JUDGE: "qwen/qwen-2.5-72b-instruct",
+    Tier.FRONTIER: "qwen/qwen3-coder",
 }
 
 
