@@ -164,11 +164,12 @@ async def test_process_pr_run_tick_claims_and_sets_state() -> None:
         now=lambda: _T0,
     )
     assert store._runs[run.id].state is RunState.VERIFYING  # type: ignore[attr-defined]
-    # medição de token (llm_call): o uso do motor foi gravado
+    # medição de token (llm_call): grava o MOTOR (frontier) + o REVIEW (judge)
     calls = await store.llm_calls("acme", 10)
-    assert len(calls) == 1
-    assert (calls[0].tokens_in, calls[0].tokens_out) == (1000, 200)
-    assert calls[0].cost_usd > 0
+    assert len(calls) == 2
+    tiers = {c.tier for c in calls}
+    assert "frontier" in tiers and "judge" in tiers
+    assert sum(c.tokens_in + c.tokens_out for c in calls) == 1200  # do motor
 
 
 async def test_process_pr_run_tick_skeleton_asks_and_waits() -> None:

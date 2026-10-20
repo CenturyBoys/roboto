@@ -13,6 +13,7 @@ from datetime import datetime
 
 from roboto.agents.refiner import handle_inbound
 from roboto.agents.review import check_issue_readiness
+from roboto.app.metering import MeteredGateway
 from roboto.channels.model import InboundMessage
 from roboto.llm.port import ModelGateway, Transcriber
 from roboto.orchestrator.model import Error, GithubEvent, Run, RunState
@@ -41,7 +42,8 @@ async def refine_to_issue(
     if not created:
         return Ok(run)  # update duplicado do Telegram -> não reprocessa
 
-    refined = await handle_inbound(msg, gateway, transcriber)
+    metered = MeteredGateway(gateway, store, tenant=msg.tenant, run_id=run.id, now=now)
+    refined = await handle_inbound(msg, metered, transcriber)
     if isinstance(refined, Err):
         await store.set_state(run.id, RunState.FAILED, now)
         return Err(refined.error)
