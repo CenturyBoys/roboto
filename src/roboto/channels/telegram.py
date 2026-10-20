@@ -37,6 +37,14 @@ class TelegramChannel:
         self._timeout = timeout
         self._offset = 0
 
+    @property
+    def cursor(self) -> str | None:
+        return str(self._offset) if self._offset else None
+
+    @cursor.setter
+    def cursor(self, value: str | None) -> None:
+        self._offset = int(value) if value else 0
+
     async def poll(self) -> Result[list[InboundMessage], Error]:
         owns = self._client is None
         client = (

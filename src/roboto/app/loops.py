@@ -61,7 +61,13 @@ async def poll_tick(
     transcriber: Transcriber,
     now: Callable[[], datetime],
     github: IssueLister | None = None,
+    tenant: str | None = None,
 ) -> None:
+    # retoma o cursor persistido (D30): no restart não relê mensagens já processadas
+    if tenant is not None:
+        saved = await store.get_channel_offset(tenant, "telegram")
+        if saved is not None:
+            channel.cursor = str(saved)
     polled = await channel.poll()
     if isinstance(polled, Err):
         return
@@ -72,3 +78,5 @@ async def poll_tick(
         )
         if isinstance(result, Ok) and result.value.reply:
             await channel.send(OutboundMessage(chat_id=msg.chat_id, text=result.value.reply))
+    if tenant is not None and channel.cursor is not None:
+        await store.set_channel_offset(tenant, "telegram", int(channel.cursor), now())

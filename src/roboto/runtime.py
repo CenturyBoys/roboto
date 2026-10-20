@@ -45,6 +45,7 @@ async def main() -> int:
             transcriber=adapters.transcriber,
             now=_now,
             github=adapters.github,  # habilita o comando "issues" (listar) no Telegram
+            tenant=config.tenant,  # persiste o cursor do Telegram (não relê no restart)
         )
 
     import uvicorn  # import tardio: só o daemon precisa
