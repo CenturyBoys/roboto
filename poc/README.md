@@ -24,11 +24,11 @@ docker compose -f poc/compose.poc.yml --env-file poc/.env.poc up --build
 - **Fase 1 — motor vivo** (`ROBOTO_ENGINE=claude_code`): requer o `ClaudeCodeEngine` (próximo PR,
   N3 gap#2). Issue pequena → branch → PR → **CI do jo-ken-po** → review. Gate humano no merge.
 
-## A validar no 1º build (não exercitado sem rede/segredos)
-- Tag da imagem Playwright; nomes/versões de `@anthropic-ai/claude-code` e `@musistudio/claude-code-router`.
-- Porta do `ccr` (assumido 3456) e formato de `ccr.config.json` da versão instalada.
-- `pip install --break-system-packages` na imagem base.
-- IDs exatos dos modelos Qwen no OpenRouter (`qwen/qwen3-coder`, `qwen/qwen-2.5-72b-instruct`).
+## Validado (Fase 0, 2026-10-20)
+- Imagem **playwright:v1.48.0-noble** (Python 3.12 + venv). Claude Code 2.1.197, ccr 2.0.0, Playwright 1.64.1.
+- `claude-agent-sdk==0.2.168` (no extra `engine`); ccr v2 config com `transformer`+`NON_INTERACTIVE_MODE`, porta 3456.
+- **Resta confirmar ao vivo (Fase 1):** IDs exatos dos modelos Qwen no OpenRouter (valide em
+  openrouter.ai/models) e o comportamento de aprovação/retomada do motor.
 
 ## Segurança
 Container isolado; **nunca** commit direto em `main`/`develop` (branch+PR); gate humano no merge;

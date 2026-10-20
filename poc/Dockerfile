@@ -22,7 +22,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 WORKDIR /opt/roboto
 COPY pyproject.toml ./
 COPY src ./src
-RUN pip install -e .
+RUN pip install -e ".[engine]"  # inclui claude-agent-sdk (motor Claude Code)
 
 COPY poc/ccr.config.json /opt/roboto/poc/ccr.config.json
 COPY poc/smoke.py /opt/roboto/poc/smoke.py

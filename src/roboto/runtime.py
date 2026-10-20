@@ -69,7 +69,9 @@ async def main() -> int:
     elif config.engine == "claude_code":
         from roboto.engines.claude_code import ClaudeCodeEngine
 
-        claude = ClaudeCodeEngine()  # modelo roteado pelo ccr (ANTHROPIC_BASE_URL)
+        # modelo roteado pelo ccr. PoC: full-auto no container isolado — o gate humano real
+        # (NEEDS_APPROVAL via can_use_tool) é o TODO da Fase 1 (N2/N3).
+        claude = ClaudeCodeEngine(permission_mode="bypassPermissions")
 
         async def _run_claude() -> None:
             await process_run_tick(
