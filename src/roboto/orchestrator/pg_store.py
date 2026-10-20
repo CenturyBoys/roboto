@@ -19,6 +19,7 @@ from roboto.orchestrator.model import (
     Interaction,
     InteractionKind,
     InteractionStatus,
+    LlmCall,
     OutboxItem,
     Run,
     RunState,
@@ -354,3 +355,48 @@ class PostgresStore:
                 execution_id,
             )
             return [_row_to_interaction(r) for r in rows]
+
+    async def record_llm_call(
+        self,
+        *,
+        tenant: str,
+        run_id: int | None,
+        provider: str,
+        model: str,
+        tier: str,
+        tokens_in: int,
+        tokens_out: int,
+        cost_usd: float,
+        now: datetime,
+    ) -> None:
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO llm_call
+                    (tenant, run_id, provider, model, tier, tokens_in, tokens_out, cost_usd, at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                """,
+                tenant, run_id, provider, model, tier, tokens_in, tokens_out, cost_usd, now,
+            )
+
+    async def llm_calls(self, tenant: str, limit: int) -> list[LlmCall]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT id, tenant, run_id, model, tier, tokens_in, tokens_out, cost_usd, at "
+                "FROM llm_call WHERE tenant = $1 ORDER BY id LIMIT $2",
+                tenant, limit,
+            )
+            return [
+                LlmCall(
+                    id=r["id"],
+                    tenant=r["tenant"],
+                    run_id=r["run_id"],
+                    model=r["model"],
+                    tier=r["tier"],
+                    tokens_in=r["tokens_in"],
+                    tokens_out=r["tokens_out"],
+                    cost_usd=float(r["cost_usd"]),
+                    at=r["at"],
+                )
+                for r in rows
+            ]

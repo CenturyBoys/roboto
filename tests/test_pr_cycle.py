@@ -150,7 +150,7 @@ async def test_process_pr_run_tick_claims_and_sets_state() -> None:
 
     store = InMemoryStore()
     run = await _run(store)  # type: ignore[assignment]
-    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED, tokens_in=1000, tokens_out=200)])
     gw = _SeqGateway(["VEREDITO: aprovado"])
     await process_pr_run_tick(
         engine,
@@ -164,6 +164,11 @@ async def test_process_pr_run_tick_claims_and_sets_state() -> None:
         now=lambda: _T0,
     )
     assert store._runs[run.id].state is RunState.VERIFYING  # type: ignore[attr-defined]
+    # medição de token (llm_call): o uso do motor foi gravado
+    calls = await store.llm_calls("acme", 10)
+    assert len(calls) == 1
+    assert (calls[0].tokens_in, calls[0].tokens_out) == (1000, 200)
+    assert calls[0].cost_usd > 0
 
 
 async def test_process_pr_run_tick_skeleton_asks_and_waits() -> None:

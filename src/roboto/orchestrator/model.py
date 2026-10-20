@@ -110,6 +110,21 @@ class Interaction:
 
 
 @dataclass(frozen=True)
+class LlmCall:
+    """Registro de uso de modelo (D10/L) — tokens/custo por run, p/ medir economia (F)."""
+
+    id: int
+    tenant: str
+    run_id: int | None
+    model: str
+    tier: str
+    tokens_in: int
+    tokens_out: int
+    cost_usd: float
+    at: datetime
+
+
+@dataclass(frozen=True)
 class Error:
     """Erro como valor (D1). ``kind`` ∈ db | dispatch | effect | invalid_signature."""
 
