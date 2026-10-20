@@ -17,7 +17,7 @@ from roboto.app.human import handle_reply
 from roboto.app.refine import refine_to_issue
 from roboto.channels.model import InboundMessage
 from roboto.llm.port import ModelGateway, Transcriber
-from roboto.orchestrator.model import Error, GithubEvent
+from roboto.orchestrator.model import Error, GithubEvent, RunState
 from roboto.orchestrator.store import Store
 from roboto.result import Err, Ok, Result
 
@@ -92,8 +92,13 @@ async def _run_command(
             idempotency_key=f"tg:pick:{msg.tenant}:{arg}",
             origin_chat_id=msg.chat_id,  # feedback do loop volta pra este chat (D30)
         )
-        await store.insert_run_if_absent(event, now)  # entra na fila; o gate de DoR roda antes
-        reply = f"Ok, peguei a issue #{arg} — vou checar o DoR e, se completa, trabalhar."
+        run, created = await store.insert_run_if_absent(event, now)
+        if not created and run.state in (RunState.WAITING, RunState.FAILED):
+            # re-pegar retoma um run parado (ex.: você completou o DoR) -> volta pra fila
+            await store.set_state(run.id, RunState.QUEUED, now)
+            reply = f"Retomando a #{arg} — vou checar o DoR de novo e, se completa, trabalhar."
+        else:
+            reply = f"Ok, peguei a issue #{arg} — vou checar o DoR e, se completa, trabalhar."
         return Ok(InboundResult(InboundOutcome.PICKED, reply))
 
     # list
