@@ -51,6 +51,8 @@ async def test_refine_ready_issue_enqueues_issue_and_ack() -> None:
     issue = next(e for e in effects if e.kind == "create_issue")
     assert issue.payload["title"] == "Login"
     assert "## Critérios de aceite" in issue.payload["body"]
+    # medição: a chamada do refiner foi gravada no llm_call
+    assert len(await store.llm_calls("acme", 10)) == 1
 
 
 async def test_refine_incomplete_issue_asks_clarification() -> None:

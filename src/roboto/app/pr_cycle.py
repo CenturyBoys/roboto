@@ -112,8 +112,14 @@ async def run_pr_cycle(
         diff_text = diff.value if isinstance(diff, Ok) else ""
         return PullRequest(number=number, author=str(engine.engine), title=title, diff=diff_text)
 
+    review_gw: ModelGateway = gateway
+    if store is not None and now is not None:  # mede também o review (JUDGE) no llm_call
+        from roboto.app.metering import MeteredGateway
+
+        review_gw = MeteredGateway(gateway, store, tenant=run.tenant, run_id=run.id, now=now)
+
     async def review(pr: PullRequest) -> ReviewVerdict:
-        verdict = await review_pr(pr, gateway, reviewer=reviewer)
+        verdict = await review_pr(pr, review_gw, reviewer=reviewer)
         value = (
             verdict.value
             if isinstance(verdict, Ok)
