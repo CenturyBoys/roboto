@@ -56,6 +56,15 @@ def test_pat_mode_is_valid_without_app() -> None:
     assert result.value.github.app_id == ""
 
 
+def test_code_intel_default_on_and_toggle() -> None:
+    on = load_config(_FULL)
+    assert isinstance(on, Ok)
+    assert on.value.code_intel is True  # default ligado (F)
+    off = load_config({**_FULL, "ROBOTO_CODE_INTEL": "0"})
+    assert isinstance(off, Ok)
+    assert off.value.code_intel is False
+
+
 def test_repos_defaults_to_default_repo() -> None:
     result = load_config(_FULL)
     assert isinstance(result, Ok)

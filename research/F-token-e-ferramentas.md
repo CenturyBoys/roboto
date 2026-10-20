@@ -69,11 +69,20 @@ relevante **ou** que precisa de determinismo → promover. Medir antes/depois (c
 **Registro de ferramentas**: um `TOOLS.md`/índice para o fleet descobrir o que já existe e não
 reinventar (candidato a regra no AGENTS.md, Trilha E).
 
-## Perguntas em aberto
-- [ ] Adotamos busca semântica (AST+vetor) além do code-intel, ou code-intel + ripgrep bastam?
-- [ ] Qual o stack Rust base padrão do runtime (Trilha K)?
-- [ ] Formato do registro de ferramentas (`TOOLS.md`) e quem o mantém atualizado.
-- [ ] Orçamento de token por tipo de agente (amarra com observabilidade, Trilha H).
+## Ligado no fleet (2026-10-20)
+- ✅ **code-intel (`ide_cc`) no motor**: imagem instala `code-intel-mcp` (install.sh INSTALL_LSP=1);
+  `ClaudeCodeEngine(mcp_servers=...)` liga os 23 tools quando `ROBOTO_CODE_INTEL=1` (default).
+- ✅ **Base Rust**: `ripgrep`+`fd-find` na imagem (K).
+- ✅ **Regra de busca no prompt**: símbolos→code-intel, texto literal→ripgrep, evitar ler arquivo inteiro.
+- ✅ **`docs/TOOLS.md`**: registro de ferramentas (não reinventar).
+- ✅ **Rodar os checks do repo antes do PR** (reduz retrabalho/token — lição do #183).
+
+## Perguntas em aberto (ainda NÃO ligado)
+- [ ] Busca semântica AST+vetor **além** do code-intel, ou code-intel + ripgrep bastam?
+- [ ] **Medir** token antes/depois (via OpenRouter/`llm_call`, D10/L) p/ comprovar o ganho — não por fé.
+- [ ] **Warm container** p/ cache do índice do code-intel (~23×) — hoje efêmero (re-indexa por run, K).
+- [ ] Context engineering (compaction / note-taking G / subagents que retornam síntese).
+- [ ] Orçamento de token por tipo de agente (amarra H/L).
 
 ---
 

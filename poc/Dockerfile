@@ -7,9 +7,9 @@ FROM mcr.microsoft.com/playwright:v1.48.0-noble
 # Node já vem na imagem Playwright; habilita pnpm (versão do .nvmrc/engines do alvo).
 RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
 
-# Python + venv + git + gettext (envsubst)
+# Python + venv + git + gettext (envsubst) + base Rust de busca (ripgrep/fd) p/ token economy (F)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      python3 python3-venv git gettext-base \
+      python3 python3-venv git gettext-base curl ripgrep fd-find \
     && rm -rf /var/lib/apt/lists/*
 
 # Claude Code CLI + claude-code-router (validar nomes/versões dos pacotes npm)
@@ -39,5 +39,10 @@ RUN id -u pwuser >/dev/null 2>&1 || useradd -m -u 1000 pwuser
 RUN mkdir -p /work /home/pwuser && chown -R pwuser:pwuser /work /home/pwuser /opt/roboto
 ENV HOME=/home/pwuser
 USER pwuser
+
+# ide_cc (code-intel MCP): navegação/edição semântica verificada = menos token (F). Em ~/.local/bin.
+RUN curl -fsSL https://raw.githubusercontent.com/CenturyBoys/ide_cc/main/install.sh \
+      | INSTALL_LSP=1 bash || echo "aviso: ide_cc não instalado (segue sem code-intel)"
+ENV PATH="/home/pwuser/.local/bin:$PATH"
 
 ENTRYPOINT ["poc-entrypoint"]

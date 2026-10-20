@@ -53,6 +53,7 @@ class Config:
     base_branch: str = "main"  # branch base dos PRs (ROBOTO_BASE_BRANCH; jo-ken-po usa develop)
     trigger_label: str = "roboto"  # opt-in por label (ROBOTO_TRIGGER_LABEL); vazio = reage a tudo
     bot_login: str = ""  # opt-in por assignee (ROBOTO_BOT_LOGIN)
+    code_intel: bool = True  # liga o MCP code-intel (ide_cc) no motor — economia de token (F)
 
 
 _REQUIRED = (
@@ -120,5 +121,6 @@ def load_config(env: Mapping[str, str]) -> Result[Config, Error]:
             base_branch=env.get("ROBOTO_BASE_BRANCH", "main"),
             trigger_label=env.get("ROBOTO_TRIGGER_LABEL", "roboto"),
             bot_login=env.get("ROBOTO_BOT_LOGIN", ""),
+            code_intel=env.get("ROBOTO_CODE_INTEL", "1") not in ("0", "false", "no"),
         )
     )
