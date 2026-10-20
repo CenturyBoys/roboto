@@ -8,6 +8,8 @@ no real). Aprovação NÃO mergeia — gate humano (D7).
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from datetime import datetime
 from typing import Protocol
 
 from roboto.agents.review import PullRequest, ReviewVerdict, review_pr
@@ -15,7 +17,8 @@ from roboto.app.correction import CycleResult, correction_cycle
 from roboto.engines.port import CodingEngine, RunSpec
 from roboto.github.app import IssueRef
 from roboto.llm.port import ModelGateway
-from roboto.orchestrator.model import Error, Run
+from roboto.orchestrator.model import Error, Run, RunState
+from roboto.orchestrator.store import Store
 from roboto.result import Ok, Result
 
 
@@ -26,6 +29,8 @@ class GitOps(Protocol):
 
 
 class GithubPrOps(Protocol):
+    async def find_open_pr(self, repo: str, head_branch: str) -> Result[int | None, Error]: ...
+
     async def open_pr(
         self, repo: str, *, title: str, body: str, head: str, base: str = "main"
     ) -> Result[IssueRef, Error]: ...
@@ -66,10 +71,15 @@ async def run_pr_cycle(
         await git.commit_all(title if not feedback else f"{title} (correção)")
         await git.push(branch)
         if "pr" not in state:
-            opened = await github.open_pr(
-                run.repo, title=title, body="PR automático do fleet.", head=branch, base=base
-            )
-            state["pr"] = opened.value.number if isinstance(opened, Ok) else 0
+            # idempotência contra PR vivo: reaproveita o PR aberto do branch, se houver
+            existing = await github.find_open_pr(run.repo, branch)
+            if isinstance(existing, Ok) and existing.value is not None:
+                state["pr"] = existing.value
+            else:
+                opened = await github.open_pr(
+                    run.repo, title=title, body="PR automático do fleet.", head=branch, base=base
+                )
+                state["pr"] = opened.value.number if isinstance(opened, Ok) else 0
         number = state["pr"]
         diff = await github.get_pr_diff(run.repo, number)
         diff_text = diff.value if isinstance(diff, Ok) else ""
@@ -90,3 +100,42 @@ async def run_pr_cycle(
         return value
 
     return await correction_cycle(implement=implement, review=review, max_attempts=max_attempts)
+
+
+async def process_pr_run_tick(
+    engine: CodingEngine,
+    gateway: ModelGateway,
+    github: GithubPrOps,
+    store: Store,
+    *,
+    tenant: str,
+    workdir_root: str,
+    reviewer: str,
+    git_factory: Callable[[str], GitOps],
+    now: Callable[[], datetime],
+    base: str = "main",
+    lease_seconds: int = 3600,  # ciclo é longo; lease generoso p/ o sweeper não reclamar no meio
+) -> None:
+    """Pega o próximo run da fila e roda o ciclo. Aprovado -> VERIFYING; desistiu -> FAILED.
+
+    Recuperável (não se perde): run keyed no banco; em restart, lease expira -> sweeper re-enfileira
+    -> reprocessa (branch força-push, PR reaproveitado via find_open_pr). Merge = gate humano (D7).
+    """
+    moment = now()
+    run = await store.claim_next_queued(tenant, moment, lease_seconds)
+    if run is None:
+        return
+    workdir = f"{workdir_root}/{run.repo}"
+    result = await run_pr_cycle(
+        engine=engine,
+        gateway=gateway,
+        github=github,
+        git=git_factory(workdir),
+        run=run,
+        workdir=workdir,
+        reviewer=reviewer,
+        base=base,
+    )
+    await store.set_state(
+        run.id, RunState.VERIFYING if result.approved else RunState.FAILED, moment
+    )

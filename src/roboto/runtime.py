@@ -67,15 +67,26 @@ async def main() -> int:
 
         tasks.append(run_periodic(_run_stub, 5.0, stop))
     elif config.engine == "claude_code":
+        from roboto.app.git_ops import SubprocessGit
+        from roboto.app.pr_cycle import process_pr_run_tick
         from roboto.engines.claude_code import ClaudeCodeEngine
 
-        # imagem do PoC roda NÃO-root -> bypassPermissions liberado (full-auto: git/pnpm/abrir PR).
-        # gate humano real (NEEDS_APPROVAL via can_use_tool) = TODO (N2/N3).
+        # imagem roda NÃO-root -> bypassPermissions (full-auto: git/pnpm/abrir PR).
         claude = ClaudeCodeEngine(permission_mode="bypassPermissions")
 
         async def _run_claude() -> None:
-            await process_run_tick(
-                claude, store, tenant=config.tenant, chat_id=config.chat_id, now=_now
+            # ciclo completo: motor->git->PR->review(≠autor)->correção. Merge = gate humano (D7).
+            await process_pr_run_tick(
+                claude,
+                adapters.gateway,
+                adapters.github,
+                store,
+                tenant=config.tenant,
+                workdir_root="/work",
+                reviewer="review",
+                git_factory=lambda ws: SubprocessGit(ws),
+                now=_now,
+                base=config.base_branch,
             )
 
         tasks.append(run_periodic(_run_claude, 5.0, stop))

@@ -70,6 +70,38 @@ async def test_get_pr_diff_returns_text() -> None:
         await client.aclose()
 
 
+async def test_find_open_pr_returns_number_or_none() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path.endswith("/repos/acme/app/pulls")
+        assert request.url.params["head"] == "acme:feat/x"
+        return httpx.Response(200, json=[{"number": 7}])
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        gh = GithubAppClient(
+            app_id="1", private_key="", installation_id="1", client=client, token="tok"
+        )
+        found = await gh.find_open_pr("acme/app", "feat/x")
+        assert isinstance(found, Ok)
+        assert found.value == 7
+    finally:
+        await client.aclose()
+
+    def empty(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=[])
+
+    client2 = httpx.AsyncClient(transport=httpx.MockTransport(empty))
+    try:
+        gh2 = GithubAppClient(
+            app_id="1", private_key="", installation_id="1", client=client2, token="tok"
+        )
+        found2 = await gh2.find_open_pr("acme/app", "feat/x")
+        assert isinstance(found2, Ok)
+        assert found2.value is None
+    finally:
+        await client2.aclose()
+
+
 async def test_comment_pr_ok() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path.endswith("/repos/acme/app/issues/7/comments")

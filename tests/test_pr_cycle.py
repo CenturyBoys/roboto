@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from roboto.app.pr_cycle import run_pr_cycle
+from roboto.app.pr_cycle import process_pr_run_tick, run_pr_cycle
 from roboto.engines.port import EngineEvent, EngineEventKind
 from roboto.engines.stub import StubEngine
 from roboto.github.app import IssueRef
@@ -44,9 +44,13 @@ class _FakeGit:
 
 
 class _FakeGithub:
-    def __init__(self) -> None:
+    def __init__(self, existing_pr: int | None = None) -> None:
         self.opened = 0
         self.comments: list[str] = []
+        self._existing = existing_pr
+
+    async def find_open_pr(self, repo: str, head_branch: str) -> Result[int | None, Error]:
+        return Ok(self._existing)
 
     async def open_pr(
         self, repo: str, *, title: str, body: str, head: str, base: str = "main"
@@ -103,9 +107,69 @@ async def test_cycle_corrects_then_approves() -> None:
     assert "correções" in github.comments[0]  # 1º review pediu correção
 
 
+async def test_cycle_reuses_live_pr() -> None:
+    # já existe um PR aberto p/ o branch -> não abre outro (idempotência, repo vivo)
+    store = InMemoryStore()
+    run = await _run(store)
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    git, github = _FakeGit(), _FakeGithub(existing_pr=99)
+    gw = _SeqGateway(["VEREDITO: aprovado"])
+    result = await run_pr_cycle(
+        engine=engine,
+        gateway=gw,  # type: ignore[arg-type]
+        github=github,
+        git=git,
+        run=run,
+        workdir="/work/acme/app",
+        reviewer="review",
+    )
+    assert result.approved is True
+    assert github.opened == 0  # reaproveitou o PR #99, não abriu novo
+    assert result.pr is not None
+    assert result.pr.number == 99
+
+
 async def test_cycle_gives_up_at_max() -> None:
     gw = _SeqGateway(["VEREDITO: reprovado\n- bug", "VEREDITO: reprovado\n- bug ainda"])
     result, engine, git, github = await _cycle(gw, max_attempts=2)
     assert result.approved is False
     assert result.attempts == 2
     assert result.issues == ["bug ainda"]
+
+
+async def test_process_pr_run_tick_claims_and_sets_state() -> None:
+    from roboto.orchestrator.model import RunState
+
+    store = InMemoryStore()
+    run = await _run(store)  # type: ignore[assignment]
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    gw = _SeqGateway(["VEREDITO: aprovado"])
+    await process_pr_run_tick(
+        engine,
+        gw,  # type: ignore[arg-type]
+        _FakeGithub(),
+        store,
+        tenant="acme",
+        workdir_root="/work",
+        reviewer="review",
+        git_factory=lambda ws: _FakeGit(),
+        now=lambda: _T0,
+    )
+    assert store._runs[run.id].state is RunState.VERIFYING  # type: ignore[attr-defined]
+
+
+async def test_process_pr_run_tick_empty_queue_is_noop() -> None:
+    store = InMemoryStore()
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    await process_pr_run_tick(
+        engine,
+        _SeqGateway([]),  # type: ignore[arg-type]
+        _FakeGithub(),
+        store,
+        tenant="acme",
+        workdir_root="/work",
+        reviewer="review",
+        git_factory=lambda ws: _FakeGit(),
+        now=lambda: _T0,
+    )
+    assert engine.started == []  # fila vazia -> nada rodou
