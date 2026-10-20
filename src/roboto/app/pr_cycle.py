@@ -12,7 +12,8 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import Protocol
 
-from roboto.agents.review import PullRequest, ReviewVerdict, review_pr
+from roboto.agents.refiner import IssueDraft
+from roboto.agents.review import PullRequest, ReviewVerdict, check_issue_readiness, review_pr
 from roboto.app.correction import CycleResult, correction_cycle
 from roboto.engines.port import CodingEngine, RunSpec
 from roboto.github.app import IssueRef
@@ -29,6 +30,8 @@ class GitOps(Protocol):
 
 
 class GithubPrOps(Protocol):
+    async def get_issue(self, repo: str, number: int) -> Result[tuple[str, str], Error]: ...
+
     async def find_open_pr(self, repo: str, head_branch: str) -> Result[int | None, Error]: ...
 
     async def open_pr(
@@ -129,6 +132,20 @@ async def process_pr_run_tick(
     run = await store.claim_next_queued(tenant, moment, lease_seconds)
     if run is None:
         return
+
+    # gate de prontidão ANTES de implementar: issue esqueleto -> pede ao humano, NÃO chuta (D28)
+    if run.issue_id.isdigit():
+        issue = await github.get_issue(run.repo, int(run.issue_id))
+        if isinstance(issue, Ok):
+            title, body = issue.value
+            verdict = check_issue_readiness(IssueDraft(title=title, body=body))
+            if not verdict.ready:
+                falta = ", ".join(verdict.missing)
+                msg = f"Issue incompleta para dev — falta: {falta}. Complete e eu sigo."
+                await github.comment_pr(run.repo, int(run.issue_id), msg)
+                await store.set_state(run.id, RunState.WAITING, moment)
+                return
+
     workdir = f"{workdir_root}/{run.repo}"
     result = await run_pr_cycle(
         engine=engine,

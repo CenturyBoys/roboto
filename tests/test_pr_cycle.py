@@ -43,11 +43,19 @@ class _FakeGit:
         self.pushes.append(name)
 
 
+_READY_BODY = "## Contexto\nx\n## Escopo\ny\n## Critérios de aceite\n- [ ] z\n## DoD\n- [ ] ci"
+
+
 class _FakeGithub:
-    def __init__(self, existing_pr: int | None = None) -> None:
+    def __init__(self, existing_pr: int | None = None, ready_issue: bool = True) -> None:
         self.opened = 0
         self.comments: list[str] = []
         self._existing = existing_pr
+        self._ready = ready_issue
+
+    async def get_issue(self, repo: str, number: int) -> Result[tuple[str, str], Error]:
+        body = _READY_BODY if self._ready else "só um esqueleto"
+        return Ok(("título", body))
 
     async def find_open_pr(self, repo: str, head_branch: str) -> Result[int | None, Error]:
         return Ok(self._existing)
@@ -156,6 +164,29 @@ async def test_process_pr_run_tick_claims_and_sets_state() -> None:
         now=lambda: _T0,
     )
     assert store._runs[run.id].state is RunState.VERIFYING  # type: ignore[attr-defined]
+
+
+async def test_process_pr_run_tick_skeleton_asks_and_waits() -> None:
+    from roboto.orchestrator.model import RunState
+
+    store = InMemoryStore()
+    run = await _run(store)  # issue_id="7" (numérico) -> busca a issue e checa o DoR
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    github = _FakeGithub(ready_issue=False)  # issue esqueleto
+    await process_pr_run_tick(
+        engine,
+        _SeqGateway([]),  # type: ignore[arg-type]
+        github,
+        store,
+        tenant="acme",
+        workdir_root="/work",
+        reviewer="review",
+        git_factory=lambda ws: _FakeGit(),
+        now=lambda: _T0,
+    )
+    assert store._runs[run.id].state is RunState.WAITING  # type: ignore[attr-defined]
+    assert engine.started == []  # NÃO implementou (esqueleto)
+    assert any("incompleta" in c for c in github.comments)  # pediu ao humano
 
 
 async def test_process_pr_run_tick_empty_queue_is_noop() -> None:

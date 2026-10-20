@@ -70,6 +70,23 @@ async def test_get_pr_diff_returns_text() -> None:
         await client.aclose()
 
 
+async def test_get_issue_returns_title_body() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path.endswith("/repos/acme/app/issues/7")
+        return httpx.Response(200, json={"title": "feat: x", "body": "corpo da issue"})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        gh = GithubAppClient(
+            app_id="1", private_key="", installation_id="1", client=client, token="tok"
+        )
+        result = await gh.get_issue("acme/app", 7)
+        assert isinstance(result, Ok)
+        assert result.value == ("feat: x", "corpo da issue")
+    finally:
+        await client.aclose()
+
+
 async def test_find_open_pr_returns_number_or_none() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path.endswith("/repos/acme/app/pulls")
