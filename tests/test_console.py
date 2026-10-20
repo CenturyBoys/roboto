@@ -36,6 +36,27 @@ async def test_healthz_is_public() -> None:
         assert resp.json() == {"ok": True}
 
 
+async def test_viewer_is_served() -> None:
+    store = InMemoryStore()
+    async with _client(store) as c:
+        resp = await c.get("/")
+        assert resp.status_code == 200
+        assert "roboto" in resp.text  # a página (dados exigem o token via JS)
+
+
+async def test_costs_endpoint() -> None:
+    store = InMemoryStore()
+    await store.record_llm_call(
+        tenant="acme", run_id=1, provider="openrouter", model="qwen/qwen3-coder",
+        tier="frontier", tokens_in=1000, tokens_out=200, cost_usd=0.48, now=_T0,
+    )
+    async with _client(store) as c:
+        assert (await c.get("/costs")).status_code == 401  # exige token
+        data = (await c.get("/costs", headers=_AUTH)).json()
+        assert data["totals"]["tokens"] == 1200
+        assert len(data["calls"]) == 1
+
+
 async def test_requires_auth() -> None:
     store = InMemoryStore()
     await _seed(store)
