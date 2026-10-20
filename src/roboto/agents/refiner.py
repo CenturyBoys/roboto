@@ -16,8 +16,8 @@ from roboto.orchestrator.model import Error
 from roboto.result import Err, Ok, Result
 
 REFINE_SYSTEM = (
-    "Você é o agente de refinamento. A partir da mensagem do usuário, produza uma ISSUE COMPLETA e "
-    "acionável, pronta para desenvolvimento (DoR satisfeito). Nada será codado sem uma issue assim. "
+    "Você é o agente de refinamento. Produza uma ISSUE COMPLETA e acionável "
+    "(DoR satisfeito) — nada é codado sem uma issue assim. "
     "Responda EXATAMENTE neste formato, sem texto extra:\n"
     "TITLE: <título curto em Conventional Commits>\n"
     "BODY:\n"
