@@ -50,6 +50,7 @@ class Config:
     console_token: str = ""  # bearer do console web (D25); vazio = console desabilitado
     engine: str = ""  # ROBOTO_ENGINE: ""=sem motor | stub | claude_code (D22/PoC N3)
     chat_id: str = ""  # chat padrão p/ perguntas do motor (ROBOTO_CHAT_ID)
+    base_branch: str = "main"  # branch base dos PRs (ROBOTO_BASE_BRANCH; jo-ken-po usa develop)
 
 
 _REQUIRED = (
@@ -114,5 +115,6 @@ def load_config(env: Mapping[str, str]) -> Result[Config, Error]:
             console_token=env.get("CONSOLE_TOKEN", ""),
             engine=env.get("ROBOTO_ENGINE", ""),
             chat_id=env.get("ROBOTO_CHAT_ID", ""),
+            base_branch=env.get("ROBOTO_BASE_BRANCH", "main"),
         )
     )

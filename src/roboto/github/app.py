@@ -140,6 +140,32 @@ class GithubAppClient:
             if owns:
                 await client.aclose()
 
+    async def find_open_pr(self, repo: str, head_branch: str) -> Result[int | None, Error]:
+        """Nº do PR aberto do branch, ou None. Idempotência contra PRs vivos (não duplica)."""
+        owns = self._client is None
+        client = (
+            self._client if self._client is not None else httpx.AsyncClient(timeout=self._timeout)
+        )
+        try:
+            token = await self._installation_token(client)
+            head = f"{repo.split('/')[0]}:{head_branch}"
+            resp = await client.get(
+                f"{self._api}/repos/{repo}/pulls",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                },
+                params={"head": head, "state": "open"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return Ok(int(data[0]["number"]) if data else None)
+        except httpx.HTTPError as exc:
+            return Err(Error("github", f"find_open_pr {repo} {head_branch}: {exc}"))
+        finally:
+            if owns:
+                await client.aclose()
+
     async def _installation_token(self, client: httpx.AsyncClient) -> str:
         if self._token:
             return self._token

@@ -8,7 +8,7 @@ from roboto.app.git_ops import SubprocessGit
 from roboto.app.human import ReplyOutcome, handle_reply, request_human_input
 from roboto.app.inbound import InboundOutcome, dispatch_inbound
 from roboto.app.loops import poll_tick, process_run_tick, run_periodic
-from roboto.app.pr_cycle import GithubPrOps, GitOps, run_pr_cycle
+from roboto.app.pr_cycle import GithubPrOps, GitOps, process_pr_run_tick, run_pr_cycle
 from roboto.app.refine import refine_to_issue
 
 __all__ = [
@@ -29,6 +29,7 @@ __all__ = [
     "drive_turn",
     "handle_reply",
     "poll_tick",
+    "process_pr_run_tick",
     "process_run_tick",
     "refine_to_issue",
     "request_human_input",
