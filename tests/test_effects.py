@@ -50,7 +50,7 @@ async def test_outbox_materializes_issue_and_notifies() -> None:
     await refine_to_issue(
         msg,
         repo="acme/app",
-        gateway=StubModelGateway(reply="TITLE: Login\nBODY: corpo"),
+        gateway=StubModelGateway(),  # resposta default = issue completa (passa o gate DoR)
         transcriber=StubTranscriber(),
         store=store,
         now=_T0,
