@@ -4,7 +4,9 @@
 set -euo pipefail
 
 : "${OPENROUTER_API_KEY:?defina OPENROUTER_API_KEY no .env.poc}"
-: "${TARGET_REPO_URL:?defina TARGET_REPO_URL (ex.: git@github.com:arenavalendo/main.git)}"
+: "${TARGET_REPO_URL:?defina TARGET_REPO_URL (ex.: https://github.com/arenavalendo/main.git)}"
+# modo PAT: 1 token serve p/ API e clone — reaproveita GITHUB_API_TOKEN se CLONE não vier
+GITHUB_CLONE_TOKEN="${GITHUB_CLONE_TOKEN:-${GITHUB_API_TOKEN:-}}"
 
 # 1) config do router a partir do template (injeta a chave do OpenRouter)
 mkdir -p "$HOME/.claude-code-router"

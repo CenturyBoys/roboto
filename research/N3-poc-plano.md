@@ -47,6 +47,22 @@ Fase 0 passou no container: build (base **noble**/Python 3.12 + venv), Postgres,
   p/ headless; `api_base_url` termina em `/chat/completions`; porta **3456**; `ANTHROPIC_BASE_URL=
   http://127.0.0.1:3456` + setar `ANTHROPIC_API_KEY` **e** `ANTHROPIC_AUTH_TOKEN`. ccr.config.json corrigido.
 
+## 4.2 Fase 1 ✅ — PoC validado (2026-10-20)
+**Claude Code dirigido por Qwen (via ccr/OpenRouter) implementou a tarefa `isMatchPoint` no repo real
+`arenavalendo/main`:** 7 turnos, success; função + export + 4 testes, seguindo o estilo do repo.
+Premissa central (agente capaz em modelo chinês barato, repo real) **comprovada**.
+
+Aprendizados/fixes (aplicados):
+- **Container roda como root** ⇒ Claude Code **bloqueia `bypassPermissions`/`--dangerously-skip-permissions`**
+  (matava o SDK com exit 1 E o CLI). Fix: `permission_mode=acceptEdits` (libera edição, root-safe).
+  **Autonomia total (git/pnpm/abrir PR) exige imagem NÃO-root** → próximo passo.
+- Custo reportado pelo `claude` é **rótulo errado (Opus)**; sem credencial Anthropic no container, a
+  chamada real vai pro Qwen (barato). Usar `llm_call`/OpenRouter p/ custo real.
+- `GITHUB_CLONE_TOKEN` agora cai p/ `GITHUB_API_TOKEN` (1 PAT serve p/ API+clone).
+- `.env.poc` precisa de `ROBOTO_DEFAULT_REPO` (senão clona em `/work/target`).
+- SDK Python `query()` falhava pelo mesmo motivo (root+bypass); com `acceptEdits` deve ir — o **CLI**
+  `claude -p --output-format stream-json` é o caminho comprovado (fallback se o SDK insistir).
+
 ## 5. Fases
 - **Fase 0 — encanamento (sem LLM):** Docker builda; Postgres sobe; daemon sobe; clona jo-ken-po;
   `StubEngine` percorre claim→drive→(WAITING/VERIFYING); `pnpm install && pnpm test`/Playwright
