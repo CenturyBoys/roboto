@@ -10,10 +10,12 @@ set -euo pipefail
 mkdir -p "$HOME/.claude-code-router"
 envsubst < /opt/roboto/poc/ccr.config.json > "$HOME/.claude-code-router/config.json"
 
-# 2) sobe o ccr e aponta o Claude Code para ele (porta padrão 3456 — validar)
+# 2) sobe o ccr (porta 3456) e espera ficar pronto; aponta o Claude Code para ele
 ccr start >/tmp/ccr.log 2>&1 &
+for _ in $(seq 1 15); do ccr status >/dev/null 2>&1 && break; sleep 1; done
 export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:-http://127.0.0.1:3456}"
-export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-sk-ccr-noop}"  # ccr ignora; chave real = OPENROUTER
+export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-sk-ccr-noop}"      # ccr ignora; chave real = OPENROUTER
+export ANTHROPIC_AUTH_TOKEN="${ANTHROPIC_AUTH_TOKEN:-$ANTHROPIC_API_KEY}"  # redundância (bearer)
 
 # 3) checkout do repo-alvo (o motor roda com cwd neste diretório)
 #    repo privado: use GITHUB_CLONE_TOKEN (PAT fine-grained no PoC, ou token de instalação do App)

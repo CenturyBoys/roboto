@@ -67,9 +67,11 @@ class ClaudeCodeEngine:
             elif name == "ResultMessage":
                 self._session_id = str(getattr(message, "session_id", "") or "")
                 usage = getattr(message, "usage", {}) or {}
-                if getattr(message, "is_error", False):
+                subtype = str(getattr(message, "subtype", "success"))
+                if subtype != "success":  # ResultMessage usa subtype, não is_error
                     yield EngineEvent(
-                        EngineEventKind.FAILED, text=str(getattr(message, "result", "erro"))
+                        EngineEventKind.FAILED,
+                        text=str(getattr(message, "result", "") or subtype),
                     )
                 else:
                     yield EngineEvent(

@@ -36,6 +36,17 @@ são **a validar no primeiro build** — não deu pra exercitar sem rede/segredo
    o laço `process_run_tick`. Hoje o daemon roda poll/outbox/sweeper; falta plugar o laço de runs.
 4. ⏳ **git worktree por run** (checkout isolado, branch por issue) no runner — K.
 
+## 4.1 Fase 0 ✅ (2026-10-20) + achados validados
+Fase 0 passou no container: build (base **noble**/Python 3.12 + venv), Postgres, smoke claim→motor
+(StubEngine → VERIFYING), ferramentas: node 20.18, pnpm 9.12, Python 3.12.3, **Claude Code 2.1.197**,
+**claude-code-router 2.0.0**, Playwright 1.64.1. Validações que destravam a Fase 1:
+- **SDK:** `claude-agent-sdk==0.2.168` (bundla o CLI); `query()`/`ClaudeAgentOptions(cwd/permission_mode/
+  resume/model)` e blocks `TextBlock.text`/`ToolUseBlock.name`/`ResultMessage.session_id/usage`
+  confirmados. **`ResultMessage` usa `subtype` (não `is_error`)** — adapter corrigido.
+- **ccr v2.0.0:** provider OpenRouter exige `transformer:{use:["openrouter"]}`; `NON_INTERACTIVE_MODE:true`
+  p/ headless; `api_base_url` termina em `/chat/completions`; porta **3456**; `ANTHROPIC_BASE_URL=
+  http://127.0.0.1:3456` + setar `ANTHROPIC_API_KEY` **e** `ANTHROPIC_AUTH_TOKEN`. ccr.config.json corrigido.
+
 ## 5. Fases
 - **Fase 0 — encanamento (sem LLM):** Docker builda; Postgres sobe; daemon sobe; clona jo-ken-po;
   `StubEngine` percorre claim→drive→(WAITING/VERIFYING); `pnpm install && pnpm test`/Playwright
