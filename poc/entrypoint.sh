@@ -16,8 +16,14 @@ export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:-http://127.0.0.1:3456}"
 export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-sk-ccr-noop}"  # ccr ignora; chave real = OPENROUTER
 
 # 3) checkout do repo-alvo (o motor roda com cwd neste diretório)
+#    repo privado: use GITHUB_CLONE_TOKEN (PAT fine-grained no PoC, ou token de instalação do App)
+#    com URL https; sem token, usa TARGET_REPO_URL como está (ssh com chave montada).
 if [ ! -d /work/target/.git ]; then
-  git clone "$TARGET_REPO_URL" /work/target
+  if [ -n "${GITHUB_CLONE_TOKEN:-}" ]; then
+    git clone "https://x-access-token:${GITHUB_CLONE_TOKEN}@${TARGET_REPO_URL#https://}" /work/target
+  else
+    git clone "$TARGET_REPO_URL" /work/target
+  fi
 fi
 
 # 4) daemon (servidor ASGI + laços; laço do motor conforme ROBOTO_ENGINE)
