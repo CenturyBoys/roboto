@@ -27,12 +27,8 @@ services:
       DATABASE_URL: postgresql://roboto:${DB_PASSWORD:-dev-only-change-me}@db:5432/roboto
     ports:
       - "8080:8080" # servidor ASGI (webhook + console)
-    volumes:
-      - target_repo:/work # checkout do repo-alvo em /work/<owner>/<repo> (persiste entre runs)
+    # /work é efêmero (não-root): o container clona o repo a cada subida em /work/<owner>/<repo>.
     # recursos da máquina: ajuste conforme necessário
     # deploy:
     #   resources:
     #     limits: { cpus: "4", memory: 8g }
-
-volumes:
-  target_repo:
