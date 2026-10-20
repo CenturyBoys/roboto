@@ -17,3 +17,11 @@ class Channel(Protocol):
     async def send(self, msg: OutboundMessage) -> Result[str, Error]:
         """Envia e retorna o id da mensagem no canal (p/ reply-routing, D24)."""
         ...
+
+    @property
+    def cursor(self) -> str | None:
+        """Token opaco de retomada (ex.: offset). Persistido p/ não reprocessar no restart."""
+        ...
+
+    @cursor.setter
+    def cursor(self, value: str | None) -> None: ...

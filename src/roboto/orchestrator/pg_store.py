@@ -401,3 +401,25 @@ class PostgresStore:
                 )
                 for r in rows
             ]
+
+    async def get_channel_offset(self, tenant: str, channel: str) -> int | None:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT cursor_val FROM channel_cursor WHERE tenant = $1 AND channel = $2",
+                tenant, channel,
+            )
+            return int(row["cursor_val"]) if row is not None else None
+
+    async def set_channel_offset(
+        self, tenant: str, channel: str, offset: int, now: datetime
+    ) -> None:
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO channel_cursor (tenant, channel, cursor_val, updated_at)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (tenant, channel) DO UPDATE
+                    SET cursor_val = $3, updated_at = $4
+                """,
+                tenant, channel, offset, now,
+            )

@@ -109,6 +109,12 @@ class Store(Protocol):
 
     async def llm_calls(self, tenant: str, limit: int) -> list[LlmCall]: ...
 
+    async def get_channel_offset(self, tenant: str, channel: str) -> int | None: ...
+
+    async def set_channel_offset(
+        self, tenant: str, channel: str, offset: int, now: datetime
+    ) -> None: ...
+
 
 class InMemoryStore:
     """Store em memória para testes tier-1 e o MVP local."""
@@ -122,6 +128,7 @@ class InMemoryStore:
         self._interactions: dict[int, Interaction] = {}
         self._interaction_by_msg: dict[tuple[str, str], int] = {}
         self._llm_calls: list[LlmCall] = []
+        self._channel_cursor: dict[tuple[str, str], int] = {}
         self._run_seq = 0
         self._effect_seq = 0
         self._session_seq = 0
@@ -367,3 +374,11 @@ class InMemoryStore:
 
     async def llm_calls(self, tenant: str, limit: int) -> list[LlmCall]:
         return [c for c in self._llm_calls if c.tenant == tenant][:limit]
+
+    async def get_channel_offset(self, tenant: str, channel: str) -> int | None:
+        return self._channel_cursor.get((tenant, channel))
+
+    async def set_channel_offset(
+        self, tenant: str, channel: str, offset: int, now: datetime
+    ) -> None:
+        self._channel_cursor[(tenant, channel)] = offset
