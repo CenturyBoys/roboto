@@ -144,6 +144,7 @@ class InMemoryStore:
             idempotency_key=ev.idempotency_key,
             created_at=now,
             updated_at=now,
+            origin_chat_id=ev.origin_chat_id,
         )
         self._runs[run.id] = run
         self._run_by_key[key] = run.id

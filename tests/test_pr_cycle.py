@@ -195,6 +195,32 @@ async def test_process_pr_run_tick_skeleton_asks_and_waits() -> None:
     assert any("incompleta" in c for c in github.comments)  # pediu ao humano
 
 
+async def test_process_pr_run_tick_skeleton_echoes_to_telegram() -> None:
+    # run vindo do Telegram (origin_chat_id) -> DoR incompleto ecoa no chat, não só no GitHub (D30)
+    store = InMemoryStore()
+    event = GithubEvent(
+        tenant="acme", repo="acme/app", issue_id="7", agent="impl",
+        idempotency_key="k-tg", origin_chat_id="555",
+    )
+    await store.insert_run_if_absent(event, _T0)
+    await process_pr_run_tick(
+        StubEngine([EngineEvent(EngineEventKind.FINISHED)]),
+        _SeqGateway([]),  # type: ignore[arg-type]
+        _FakeGithub(ready_issue=False),
+        store,
+        tenant="acme",
+        workdir_root="/work",
+        reviewer="review",
+        git_factory=lambda ws: _FakeGit(),
+        now=lambda: _T0,
+    )
+    effects = await store.pending_effects(10)
+    tg = [e for e in effects if e.kind == "telegram_notify"]
+    assert len(tg) == 1
+    assert tg[0].payload["chat_id"] == "555"
+    assert "#7" in tg[0].payload["text"]
+
+
 async def test_process_pr_run_tick_empty_queue_is_noop() -> None:
     store = InMemoryStore()
     engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])

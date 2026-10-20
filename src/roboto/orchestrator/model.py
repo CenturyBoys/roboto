@@ -27,6 +27,7 @@ class GithubEvent:
     issue_id: str
     agent: str
     idempotency_key: str
+    origin_chat_id: str | None = None  # chat do Telegram que originou (feedback volta pra lá, D30)
 
 
 @dataclass(frozen=True)
@@ -42,6 +43,7 @@ class Run:
     created_at: datetime
     updated_at: datetime
     lease_until: datetime | None = None
+    origin_chat_id: str | None = None  # origem p/ ecoar status/pergunta no Telegram (D30)
 
 
 @dataclass(frozen=True)

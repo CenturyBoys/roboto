@@ -277,6 +277,26 @@ Legenda da decisão: ⬜ em aberto · ✅ aceita a proposta · ✏️ outra (ano
   (`_is_for_fleet`). Trabalho dos humanos (sem label/assignee do fleet) é **ignorado**. Nada se
   perde nem se intromete. Amarra B (gatilhos) + A (contratos).
 
+### D30 · Conversa pelo Telegram × registro na issue (editar corpo vs comentar)
+- **Pergunta (dono):** vamos discutir a issue pelo Telegram e depois ajustar — quando o Potter
+  **edita o corpo** da issue e quando só **comenta**? Regras claras.
+- **Decisão:** ✅
+  - **Telegram = a conversa (efêmera). GitHub (corpo da issue) = o registro canônico/contrato.**
+  - **Editar o corpo** (DoR: Contexto/Escopo/Critérios/DoD/Fora de escopo; ou mudança de escopo
+    acordada) → **SEMPRE pedir OK no Telegram antes**: Potter propõe o diff, só edita com o "ok".
+    Nada muda a spec sem aval humano explícito (alinha com "não chuta").
+  - **Comentar** → esclarecimento sem mudar spec, **status** (peguei/codando/PR #/bloqueado),
+    **pergunta ao humano**, **racional/decisão**.
+  - **No GitHub entra só o RESULTADO**: a edição final + **1 comentário de trilha** (o que mudou +
+    quem pediu). A discussão em si não é espelhada (menos ruído).
+  - **Invariantes:** (1) spec vive no **corpo**, nunca enterrada em comentário (o implementador lê o
+    corpo); (2) **toda edição de corpo gera comentário de trilha** (rastreável); (3) **todo retorno
+    relevante ecoa no Telegram** (status/pergunta/"editei"). Amarra D23/D24 (sessão/interação +
+    request_human_input) + A (contrato da issue) + D28 (gate).
+- **Build:** (i) run carrega o `chat_id` de origem → feedback do loop volta ao Telegram, não só ao
+  GitHub (conserta o gap atual do `pega #N`); (ii) conversa multi-turno amarrada à issue; (iii)
+  fluxo propor-diff → aguardar-OK → editar corpo + comentar trilha.
+
 ---
 
 ## Fora desta lista de propósito (medir no build, não decidir agora)

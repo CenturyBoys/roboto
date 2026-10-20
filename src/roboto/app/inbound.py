@@ -90,6 +90,7 @@ async def _run_command(
             issue_id=arg,
             agent="impl",
             idempotency_key=f"tg:pick:{msg.tenant}:{arg}",
+            origin_chat_id=msg.chat_id,  # feedback do loop volta pra este chat (D30)
         )
         await store.insert_run_if_absent(event, now)  # entra na fila; o gate de DoR roda antes
         reply = f"Ok, peguei a issue #{arg} — vou checar o DoR e, se completa, trabalhar."
