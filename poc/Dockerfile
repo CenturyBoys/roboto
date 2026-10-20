@@ -33,4 +33,10 @@ COPY migrations /opt/roboto/migrations
 COPY poc/entrypoint.sh /usr/local/bin/poc-entrypoint
 RUN chmod +x /usr/local/bin/poc-entrypoint
 
+# roda como NÃO-root: Claude Code exige isso p/ bypassPermissions (autonomia total: git/pnpm/PR).
+RUN id -u pwuser >/dev/null 2>&1 || useradd -m -u 1000 pwuser
+RUN mkdir -p /work /home/pwuser && chown -R pwuser:pwuser /work /home/pwuser /opt/roboto
+ENV HOME=/home/pwuser
+USER pwuser
+
 ENTRYPOINT ["poc-entrypoint"]
