@@ -1,4 +1,18 @@
-# Continuous Development (roboto)
+```
+          ███▛
+        ███▛
+      ███▛
+    ██████████
+        ▟██▛
+      ▟██▛
+    ▟██▛
+```
+
+# ⚡ Potter
+
+> **Nome:** **Potter** ⚡ — o fleet de desenvolvimento (repo `roboto`).
+> **Logo:** o **raio** do Harry Potter em traço *comic* — só o raio, nada mais.
+> *"Todo PR nasce com uma cicatriz."*
 
 Fleet de agentes cobrindo o **ciclo de vida inteiro de desenvolvimento de software**, tendo o
 **GitHub** como substrato (Issues = fonte da verdade, PR/CI = feedback loop). Objetivo de primeira
