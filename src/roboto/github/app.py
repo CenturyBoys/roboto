@@ -69,6 +69,77 @@ class GithubAppClient:
             if owns:
                 await client.aclose()
 
+    async def open_pr(
+        self, repo: str, *, title: str, body: str, head: str, base: str = "main"
+    ) -> Result[IssueRef, Error]:
+        owns = self._client is None
+        client = (
+            self._client if self._client is not None else httpx.AsyncClient(timeout=self._timeout)
+        )
+        try:
+            token = await self._installation_token(client)
+            resp = await client.post(
+                f"{self._api}/repos/{repo}/pulls",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                },
+                json={"title": title, "body": body, "head": head, "base": base},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return Ok(IssueRef(repo=repo, number=int(data["number"]), url=str(data["html_url"])))
+        except httpx.HTTPError as exc:
+            return Err(Error("github", f"open_pr {repo}: {exc}"))
+        finally:
+            if owns:
+                await client.aclose()
+
+    async def get_pr_diff(self, repo: str, number: int) -> Result[str, Error]:
+        owns = self._client is None
+        client = (
+            self._client if self._client is not None else httpx.AsyncClient(timeout=self._timeout)
+        )
+        try:
+            token = await self._installation_token(client)
+            resp = await client.get(
+                f"{self._api}/repos/{repo}/pulls/{number}",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github.v3.diff",
+                },
+            )
+            resp.raise_for_status()
+            return Ok(resp.text)
+        except httpx.HTTPError as exc:
+            return Err(Error("github", f"get_pr_diff {repo}#{number}: {exc}"))
+        finally:
+            if owns:
+                await client.aclose()
+
+    async def comment_pr(self, repo: str, number: int, body: str) -> Result[None, Error]:
+        owns = self._client is None
+        client = (
+            self._client if self._client is not None else httpx.AsyncClient(timeout=self._timeout)
+        )
+        try:
+            token = await self._installation_token(client)
+            resp = await client.post(
+                f"{self._api}/repos/{repo}/issues/{number}/comments",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                },
+                json={"body": body},
+            )
+            resp.raise_for_status()
+            return Ok(None)
+        except httpx.HTTPError as exc:
+            return Err(Error("github", f"comment_pr {repo}#{number}: {exc}"))
+        finally:
+            if owns:
+                await client.aclose()
+
     async def _installation_token(self, client: httpx.AsyncClient) -> str:
         if self._token:
             return self._token
