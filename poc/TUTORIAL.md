@@ -12,8 +12,9 @@ uma nova empresa, repita com outro `.env.poc` (mesma imagem — D27). Tudo que v
 | Variável | Para quê | Obrigatório | Onde conseguir (Parte 2) |
 |---|---|---|---|
 | `ROBOTO_TENANT` | nome curto da empresa | sim | você escolhe (ex.: `<empresa>`) |
-| `TARGET_REPO_URL` | repo-alvo (https) | sim | `https://github.com/<owner>/<repo>.git` |
-| `ROBOTO_DEFAULT_REPO` | `<owner>/<repo>` | sim | idem |
+| `TARGET_REPO_URL` | repo que o PoC clona no container | sim | `https://github.com/<owner>/<repo>.git` |
+| `ROBOTO_DEFAULT_REPO` | `<owner>/<repo>` onde nascem issues do Telegram | sim | idem |
+| `ROBOTO_REPOS` | **N repos da empresa** (vírgulas); vazio=só o default | não | `<owner>/a,<owner>/b` |
 | `ROBOTO_ENGINE` | `stub` (Fase 0) / `claude_code` (Fase 1) | sim | — |
 | `OPENROUTER_API_KEY` | modelos Qwen (motor + gateway) | sim | §2.1 |
 | `GITHUB_API_TOKEN` | API: abrir PR/issue | sim (modo PAT) | §2.2 |
@@ -24,6 +25,16 @@ uma nova empresa, repita com outro `.env.poc` (mesma imagem — D27). Tudo que v
 | `CONSOLE_TOKEN` | bearer do console web | opcional | você escolhe |
 | `STT_API_KEY` | transcrição de áudio | opcional | §2.4 |
 | `GITHUB_APP_*` | modo App (produção) | não (deixe vazio) | §2.5 |
+
+### 1.1 Vários repos da mesma empresa (D17)
+**Uma empresa = uma instância que atende N repos** — você **não** sobe uma por repo. Como informar:
+- **Trabalho reativo (webhook):** o repo vem no próprio evento do GitHub; você **não precisa listar**.
+  Basta a credencial (PAT/App) **cobrir** esses repos. Opcionalmente, liste em `ROBOTO_REPOS` e a
+  instância **só aceita** eventos desses repos (defesa a mais).
+- **Ideia nova pelo Telegram:** nasce no `ROBOTO_DEFAULT_REPO`.
+- Exemplo: `ROBOTO_REPOS=acme/web,acme/api,acme/infra` + um PAT com acesso aos três.
+
+> Múltiplas **empresas** = múltiplas instâncias (um `.env` cada), não `ROBOTO_REPOS` — ver §6 e o D27.
 
 ## 2. Como conseguir cada credencial
 

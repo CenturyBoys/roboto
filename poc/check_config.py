@@ -20,7 +20,8 @@ def main() -> int:
     gh = "PAT" if c.github.api_token else ("App" if c.github.app_id else "FALTA")
     print("CONFIG OK")
     print(f"  tenant       = {c.tenant}")
-    print(f"  repo-alvo    = {c.default_repo}")
+    print(f"  repo-alvo    = {c.default_repo} (default p/ Telegram)")
+    print(f"  repos (N)    = {', '.join(sorted(c.repos))}")
     print(f"  motor        = {c.engine or '(nenhum)'}")
     print(f"  github auth  = {gh}")
     print(
