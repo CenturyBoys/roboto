@@ -247,6 +247,17 @@ Legenda da decisão: ⬜ em aberto · ✅ aceita a proposta · ✏️ outra (ano
   (store quente vs log frio) quando o §8 chegar inteiro.**
 - **Decisão:** ⬜
 
+### D27 · Plano de controle multi-empresa (fleet manager) — camada acima do D17
+- **Pergunta:** com várias empresas, dá pra ter uma imagem genérica que "gera" instâncias por
+  empresa + um gerenciador com o registro e as configs de todas?
+- **Decisão (proposta):** ✅ sim, mas **uma imagem genérica → N containers** (1 por empresa, D17),
+  cada um parametrizado pela **config/vault da empresa** (o `load_config` já é 1 tenant por processo).
+  **Não** se gera imagem por empresa (desperdício). Um **control-plane/manager** mantém o **registro
+  de empresas** (repos, bot, ref do vault, orçamento, estado, saúde) e **provisiona/supervisiona** os
+  containers via Docker API / compose / k8s; console pode ser multi-empresa pro operador. Detalhe em
+  [`N4-controle-multiempresa.md`](N4-controle-multiempresa.md). **Pós-PoC** (o PoC valida 1 empresa primeiro).
+- **Decisão:** ⬜
+
 ---
 
 ## Fora desta lista de propósito (medir no build, não decidir agora)
