@@ -56,7 +56,8 @@ def test_normalize_pull_request_opened() -> None:
 
 
 def test_normalize_ignored_event_is_none() -> None:
-    assert normalize_event("issues", {"action": "labeled"}, "acme").value is None  # type: ignore[union-attr]
+    result = normalize_event("issues", {"action": "labeled"}, "acme")
+    assert result.value is None  # type: ignore[union-attr]
     assert normalize_event("star", {}, "acme").value is None  # type: ignore[union-attr]
 
 
