@@ -107,6 +107,19 @@ async def test_session_and_native_mapping(store: PostgresStore) -> None:
     assert stored == "nat-1"
 
 
+async def test_llm_call_record_and_query(store: PostgresStore) -> None:
+    run, _ = await store.insert_run_if_absent(_event(), _T0)
+    await store.record_llm_call(
+        tenant="acme", run_id=run.id, provider="openrouter", model="qwen/qwen3-coder",
+        tier="frontier", tokens_in=1000, tokens_out=200, cost_usd=0.48, now=_T0,
+    )
+    calls = await store.llm_calls("acme", 10)
+    assert len(calls) == 1
+    assert calls[0].tokens_in == 1000
+    assert calls[0].model == "qwen/qwen3-coder"
+    assert abs(calls[0].cost_usd - 0.48) < 1e-6
+
+
 async def test_interaction_routing_and_first_answer_wins(store: PostgresStore) -> None:
     run, _ = await store.insert_run_if_absent(_event(), _T0)
     interaction = await store.create_interaction(

@@ -16,6 +16,7 @@ from roboto.orchestrator.model import (
     Interaction,
     InteractionKind,
     InteractionStatus,
+    LlmCall,
     OutboxItem,
     Run,
     RunState,
@@ -92,6 +93,22 @@ class Store(Protocol):
 
     async def interactions_for_execution(self, execution_id: int) -> list[Interaction]: ...
 
+    async def record_llm_call(
+        self,
+        *,
+        tenant: str,
+        run_id: int | None,
+        provider: str,
+        model: str,
+        tier: str,
+        tokens_in: int,
+        tokens_out: int,
+        cost_usd: float,
+        now: datetime,
+    ) -> None: ...
+
+    async def llm_calls(self, tenant: str, limit: int) -> list[LlmCall]: ...
+
 
 class InMemoryStore:
     """Store em memória para testes tier-1 e o MVP local."""
@@ -104,6 +121,7 @@ class InMemoryStore:
         self._sessions: dict[int, Session] = {}
         self._interactions: dict[int, Interaction] = {}
         self._interaction_by_msg: dict[tuple[str, str], int] = {}
+        self._llm_calls: list[LlmCall] = []
         self._run_seq = 0
         self._effect_seq = 0
         self._session_seq = 0
@@ -318,3 +336,33 @@ class InMemoryStore:
             for i in sorted(self._interactions)
             if self._interactions[i].execution_id == execution_id
         ]
+
+    async def record_llm_call(
+        self,
+        *,
+        tenant: str,
+        run_id: int | None,
+        provider: str,
+        model: str,
+        tier: str,
+        tokens_in: int,
+        tokens_out: int,
+        cost_usd: float,
+        now: datetime,
+    ) -> None:
+        self._llm_calls.append(
+            LlmCall(
+                id=len(self._llm_calls) + 1,
+                tenant=tenant,
+                run_id=run_id,
+                model=model,
+                tier=tier,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                cost_usd=cost_usd,
+                at=now,
+            )
+        )
+
+    async def llm_calls(self, tenant: str, limit: int) -> list[LlmCall]:
+        return [c for c in self._llm_calls if c.tenant == tenant][:limit]

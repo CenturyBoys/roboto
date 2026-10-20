@@ -15,12 +15,14 @@ from typing import Protocol
 from roboto.agents.refiner import IssueDraft
 from roboto.agents.review import PullRequest, ReviewVerdict, check_issue_readiness, review_pr
 from roboto.app.correction import CycleResult, correction_cycle
-from roboto.engines.port import CodingEngine, RunSpec
+from roboto.engines.port import CodingEngine, EngineEventKind, RunSpec
 from roboto.github.app import IssueRef
 from roboto.llm.port import ModelGateway
 from roboto.orchestrator.model import Error, Run, RunState
 from roboto.orchestrator.store import Store
 from roboto.result import Ok, Result
+
+_COST_PER_MTOK = 0.4  # custo aprox. Qwen/OpenRouter ($/milhão de tokens) — medir/afinar (L)
 
 
 class GitOps(Protocol):
@@ -54,6 +56,8 @@ async def run_pr_cycle(
     reviewer: str,
     base: str = "main",
     max_attempts: int = 3,
+    store: Store | None = None,
+    now: datetime | None = None,
 ) -> CycleResult:
     branch = f"roboto/run-{run.id}"
     title = f"run {run.id}: {run.issue_id}"
@@ -74,8 +78,22 @@ async def run_pr_cycle(
             prompt += "\nCorrija os pontos do review:\n- " + "\n- ".join(feedback)
         spec = RunSpec(tenant=run.tenant, repo=run.repo, workdir=workdir, prompt=prompt)
         await engine.start(spec)
-        async for _event in engine.events():  # deixa o motor editar o repo
-            pass
+        tin = tout = 0
+        async for event in engine.events():  # deixa o motor editar o repo
+            if event.kind is EngineEventKind.FINISHED:
+                tin, tout = event.tokens_in, event.tokens_out
+        if store is not None and now is not None:  # medição de token (D10/L): uso real do motor
+            await store.record_llm_call(
+                tenant=run.tenant,
+                run_id=run.id,
+                provider="openrouter",
+                model="qwen/qwen3-coder",
+                tier="frontier",
+                tokens_in=tin,
+                tokens_out=tout,
+                cost_usd=(tin + tout) / 1_000_000 * _COST_PER_MTOK,
+                now=now,
+            )
         await git.prepare_branch(branch)
         await git.commit_all(title if not feedback else f"{title} (correção)")
         await git.push(branch)
@@ -158,6 +176,8 @@ async def process_pr_run_tick(
         workdir=workdir,
         reviewer=reviewer,
         base=base,
+        store=store,  # medição de token (llm_call)
+        now=moment,
     )
     await store.set_state(
         run.id, RunState.VERIFYING if result.approved else RunState.FAILED, moment
