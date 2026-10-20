@@ -3,15 +3,23 @@
 Tudo isolado num container: build/test do repo-alvo (Playwright), `roboto` (daemon), **Claude Code**
 backeado por **OpenRouter/Qwen** via **claude-code-router** (qwen3-coder big / qwen-2.5 small).
 
-## Como rodar
+## Fase 0 — encanamento (sem secrets, sem tocar o GitHub)
 ```bash
-cp poc/.env.poc.example poc/.env.poc   # preencha os secrets (gitignored)
+./poc/phase0.sh          # builda, sobe Postgres, checa ferramentas, roda o smoke do loop
+KEEP=1 ./poc/phase0.sh   # mantém os containers de pé no fim
+```
+Prova: imagem builda · Postgres sobe · ferramentas presentes (node/pnpm/python/claude/ccr/playwright)
+· `roboto` importa · o laço **claim→motor** roda com `StubEngine` (run → `VERIFYING`), via `poc/smoke.py`.
+**Não precisa de `.env.poc`** nem gasta token.
+
+## Fase 1 — motor vivo
+```bash
+cp poc/.env.poc.example poc/.env.poc   # preencha os secrets (gitignored); ROBOTO_ENGINE=claude_code
 docker compose -f poc/compose.poc.yml --env-file poc/.env.poc up --build
 ```
 
-## Fases
-- **Fase 0 — encanamento** (`ROBOTO_ENGINE=stub`): builda, sobe Postgres+daemon, clona o alvo,
-  `StubEngine` percorre claim→drive; valida o container (pnpm/Playwright disponíveis) **sem gastar
+## Fases (resumo)
+- **Fase 0 — encanamento** (`ROBOTO_ENGINE=stub`): `./poc/phase0.sh`. Valida o container **sem gastar
   token nem tocar o GitHub**.
 - **Fase 1 — motor vivo** (`ROBOTO_ENGINE=claude_code`): requer o `ClaudeCodeEngine` (próximo PR,
   N3 gap#2). Issue pequena → branch → PR → **CI do jo-ken-po** → review. Gate humano no merge.
