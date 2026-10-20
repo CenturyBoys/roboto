@@ -17,7 +17,7 @@ from roboto.app.human import handle_reply
 from roboto.app.refine import refine_to_issue
 from roboto.channels.model import InboundMessage
 from roboto.llm.port import ModelGateway, Transcriber
-from roboto.orchestrator.model import Error, GithubEvent, RunState
+from roboto.orchestrator.model import Error, GithubEvent, Interaction, InteractionKind, RunState
 from roboto.orchestrator.store import Store
 from roboto.result import Err, Ok, Result
 
@@ -25,9 +25,11 @@ from roboto.result import Err, Ok, Result
 class InboundOutcome(StrEnum):
     ANSWERED = "answered"  # reply roteou e respondeu uma interação
     UNROUTED = "unrouted"  # reply a algo desconhecido -> pedir esclarecimento
-    REFINED = "refined"  # mensagem nova -> rascunho de issue enfileirado
+    REFINED = "refined"  # mensagem nova -> rascunho de issue PROPOSTO (aguarda OK, D30)
     PICKED = "picked"  # operador pegou/atribuiu uma issue ao fleet
     LISTED = "listed"  # operador listou issues abertas
+    CREATED = "created"  # humano aprovou o rascunho (reply ok) -> issue enfileirada
+    DECLINED = "declined"  # humano não aprovou o rascunho -> descartado
 
 
 class IssueLister(Protocol):
@@ -61,6 +63,13 @@ async def dispatch_inbound(
         if isinstance(reply, Err):
             return Err(reply.error)
         if reply.value.matched:
+            inter = reply.value.interaction
+            if (
+                reply.value.accepted
+                and inter is not None
+                and inter.kind is InteractionKind.APPROVAL
+            ):
+                return await _resolve_issue_approval(inter, msg, store=store, now=now)
             return Ok(InboundResult(InboundOutcome.ANSWERED))
         clar = "Não localizei a pergunta — responda em *reply* à mensagem da decisão."
         return Ok(InboundResult(InboundOutcome.UNROUTED, clar))
@@ -71,6 +80,40 @@ async def dispatch_inbound(
     if isinstance(refined, Err):
         return Err(refined.error)
     return Ok(InboundResult(InboundOutcome.REFINED))
+
+
+_AFFIRM = {
+    "ok", "okay", "sim", "pode", "cria", "criar", "blz", "beleza", "yes", "y",
+    "s", "manda", "vai", "isso", "👍", "confirmo", "confirmar",
+}
+
+
+async def _resolve_issue_approval(
+    inter: Interaction, msg: InboundMessage, *, store: Store, now: datetime
+) -> Result[InboundResult, Error]:
+    """Humano respondeu à PROPOSTA de issue (D30): 'ok' cria; qualquer outra coisa descarta."""
+    run = await store.get_run(inter.execution_id)
+    if run is None:
+        return Ok(InboundResult(InboundOutcome.ANSWERED))
+    first = msg.text.strip().lower().split()[0].strip(".,!?") if msg.text.strip() else ""
+    if first not in _AFFIRM:
+        await store.set_state(run.id, RunState.ABANDONED, now)
+        return Ok(InboundResult(
+            InboundOutcome.DECLINED,
+            "Beleza, não criei. Me manda a ideia ajustada que eu reproponho.",
+        ))
+    title = inter.options[0] if inter.options else "(sem título)"
+    body = inter.options[1] if len(inter.options) > 1 else ""
+    await store.set_state(run.id, RunState.VERIFYING, now)
+    await store.enqueue_effect(
+        run.tenant, run.id, "create_issue",
+        {"repo": run.repo, "title": title, "body": body}, f"issue:{run.id}", now,
+    )
+    await store.enqueue_effect(
+        run.tenant, run.id, "telegram_notify",
+        {"chat_id": msg.chat_id, "text": f"✅ Issue criada: {title}"}, f"ack:{run.id}", now,
+    )
+    return Ok(InboundResult(InboundOutcome.CREATED))
 
 
 async def _run_command(

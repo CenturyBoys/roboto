@@ -11,12 +11,12 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from roboto.agents.refiner import handle_inbound
+from roboto.agents.refiner import IssueDraft, handle_inbound
 from roboto.agents.review import check_issue_readiness, review_issue_semantics
 from roboto.app.metering import MeteredGateway
 from roboto.channels.model import InboundMessage
 from roboto.llm.port import ModelGateway, Transcriber
-from roboto.orchestrator.model import Error, GithubEvent, Run, RunState
+from roboto.orchestrator.model import Error, GithubEvent, InteractionKind, Run, RunState
 from roboto.orchestrator.store import Store
 from roboto.result import Err, Ok, Result
 
@@ -82,21 +82,31 @@ async def refine_to_issue(
         )
         return Ok(run)
 
-    await store.set_state(run.id, RunState.VERIFYING, now)
-    await store.enqueue_effect(
-        msg.tenant,
-        run.id,
-        "create_issue",
-        {"repo": repo, "title": draft.title, "body": draft.body},
-        f"issue:{run.id}",
-        now,
+    # D30: o fleet NÃO cria issue sozinho — PROPÕE o rascunho e espera o OK humano (reply) p/ criar.
+    # O rascunho fica em options=[title, body] da interação; o "ok" no reply materializa a issue.
+    interaction = await store.create_interaction(
+        msg.tenant, run.id, InteractionKind.APPROVAL,
+        _proposal_text(draft), [draft.title, draft.body], now,
     )
+    await store.set_state(run.id, RunState.WAITING, now)  # AWAITING_HUMAN
     await store.enqueue_effect(
         msg.tenant,
         run.id,
-        "telegram_notify",
-        {"chat_id": msg.chat_id, "text": refined.value.ack.text},
-        f"ack:{run.id}",
+        "telegram_question",
+        {"chat_id": msg.chat_id, "text": _proposal_text(draft),
+         "interaction_id": interaction.id},
+        f"approve:{interaction.id}",
         now,
     )
     return Ok(run)
+
+
+def _proposal_text(draft: IssueDraft) -> str:
+    body = draft.body.strip()
+    if len(body) > 600:
+        body = body[:600] + "…"
+    return (
+        f"📋 Proponho criar esta issue:\n\n*{draft.title}*\n\n{body}\n\n"
+        "Responde em *reply* com *ok* que eu crio — ou diga o que ajustar "
+        "(não crio nada sem o seu ok)."
+    )

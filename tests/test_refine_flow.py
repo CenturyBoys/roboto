@@ -41,16 +41,19 @@ async def _refine(  # type: ignore[no-untyped-def]
     )
 
 
-async def test_refine_ready_issue_enqueues_issue_and_ack() -> None:
+async def test_refine_ready_issue_proposes_and_waits() -> None:
     store = InMemoryStore()
     result = await _refine(store, _msg("arruma o login"), reply=_READY)
     assert isinstance(result, Ok)
-    assert store._runs[result.value.id].state is RunState.VERIFYING
+    # D30: NÃO cria sozinho — propõe o rascunho e espera o OK (WAITING + pergunta no Telegram)
+    assert store._runs[result.value.id].state is RunState.WAITING
     effects = await store.pending_effects(10)
-    assert {e.kind for e in effects} == {"create_issue", "telegram_notify"}
-    issue = next(e for e in effects if e.kind == "create_issue")
-    assert issue.payload["title"] == "Login"
-    assert "## Critérios de aceite" in issue.payload["body"]
+    assert [e.kind for e in effects] == ["telegram_question"]
+    assert "Proponho" in effects[0].payload["text"]
+    # rascunho guardado na interação (options=[title, body]) p/ materializar no OK
+    inter = (await store.pending_interactions("acme", 10))[0]
+    assert inter.options[0] == "Login"
+    assert "## Critérios de aceite" in inter.options[1]
     # medição: refiner + juiz semântico, ambos gravados no llm_call
     assert len(await store.llm_calls("acme", 10)) == 2
 
@@ -89,7 +92,7 @@ async def test_refine_dedups_duplicate_message() -> None:
     assert isinstance(first, Ok)
     assert isinstance(second, Ok)
     assert second.value.id == first.value.id
-    assert len(await store.pending_effects(10)) == 2  # não duplica efeitos
+    assert len(await store.pending_effects(10)) == 1  # 1 proposta, não duplica no update repetido
 
 
 async def test_refine_empty_text_fails_run_without_effects() -> None:

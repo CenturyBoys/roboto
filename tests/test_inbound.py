@@ -48,7 +48,32 @@ async def test_new_message_refines() -> None:
     out = await _dispatch(store, _msg("quero uma feature"))
     assert isinstance(out, Ok)
     assert out.value.outcome is InboundOutcome.REFINED
-    assert len(await store.pending_effects(10)) == 2  # create_issue + ack
+    assert len(await store.pending_effects(10)) == 1  # D30: propõe (pergunta), não cria sozinho
+
+
+async def test_approval_ok_creates_issue() -> None:
+    # D30: refino propõe; humano responde "ok" em reply -> AÍ a issue é enfileirada
+    store = InMemoryStore()
+    await _dispatch(store, _msg("quero uma feature", mid="1"))
+    inter = (await store.pending_interactions("acme", 10))[0]
+    await store.set_interaction_message_id(inter.id, "900")  # pergunta "enviada"
+    out = await _dispatch(store, _msg("ok", reply_to="900", mid="2"))
+    assert isinstance(out, Ok)
+    assert out.value.outcome is InboundOutcome.CREATED
+    effects = await store.pending_effects(10)
+    assert any(e.kind == "create_issue" for e in effects)
+
+
+async def test_approval_decline_does_not_create() -> None:
+    store = InMemoryStore()
+    await _dispatch(store, _msg("quero uma feature", mid="1"))
+    inter = (await store.pending_interactions("acme", 10))[0]
+    await store.set_interaction_message_id(inter.id, "900")
+    out = await _dispatch(store, _msg("não, muda o escopo antes", reply_to="900", mid="2"))
+    assert isinstance(out, Ok)
+    assert out.value.outcome is InboundOutcome.DECLINED
+    effects = await store.pending_effects(10)
+    assert not any(e.kind == "create_issue" for e in effects)
 
 
 async def test_pick_command_enqueues_run() -> None:
