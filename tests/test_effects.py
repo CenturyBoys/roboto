@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 import httpx
 
 from roboto.app.effects import GithubIssuePublisher, TelegramPublisher
+from roboto.app.inbound import dispatch_inbound
 from roboto.app.refine import refine_to_issue
 from roboto.channels.model import InboundMessage, MessageKind
 from roboto.channels.telegram import TelegramChannel
@@ -54,6 +55,20 @@ async def test_outbox_materializes_issue_and_notifies() -> None:
         transcriber=StubTranscriber(),
         store=store,
         now=_T0,
+    )
+    # D30: refino PROPÕE — simula a pergunta enviada e o humano aprovando por reply ("ok")
+    inter = (await store.pending_interactions("acme", 10))[0]
+    await store.set_interaction_message_id(inter.id, "900")
+    for e in await store.pending_effects(10):  # a pergunta já foi entregue -> marca enviada
+        if e.kind == "telegram_question":
+            await store.mark_sent(e.id, _T0)
+    ok_reply = InboundMessage(
+        tenant="acme", chat_id="5", user_id="u1", kind=MessageKind.TEXT,
+        text="ok", message_id="12", reply_to_message_id="900",
+    )
+    await dispatch_inbound(
+        ok_reply, repo="acme/app", gateway=StubModelGateway(),
+        transcriber=StubTranscriber(), store=store, now=_T0,
     )
 
     posted = {"issues": 0, "send": 0}

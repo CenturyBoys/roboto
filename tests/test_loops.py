@@ -72,7 +72,7 @@ async def test_poll_tick_refines_new_and_clarifies_unrouted() -> None:
         channel, store, repo="acme/app",
         gateway=StubModelGateway(), transcriber=StubTranscriber(), now=lambda: _T0,
     )
-    # 1ª mensagem -> refino (2 efeitos no outbox); 2ª -> reply desconhecido -> esclarecimento
-    assert len(await store.pending_effects(10)) == 2
+    # 1ª msg -> refino PROPÕE (1 pergunta no outbox); 2ª -> reply desconhecido -> esclarecimento
+    assert len(await store.pending_effects(10)) == 1
     assert len(channel.sent) == 1
     assert "reply" in channel.sent[0].text
