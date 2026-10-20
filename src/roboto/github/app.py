@@ -140,6 +140,30 @@ class GithubAppClient:
             if owns:
                 await client.aclose()
 
+    async def get_issue(self, repo: str, number: int) -> Result[tuple[str, str], Error]:
+        """Retorna (title, body) da issue — p/ o gate de prontidão antes de implementar (D28)."""
+        owns = self._client is None
+        client = (
+            self._client if self._client is not None else httpx.AsyncClient(timeout=self._timeout)
+        )
+        try:
+            token = await self._installation_token(client)
+            resp = await client.get(
+                f"{self._api}/repos/{repo}/issues/{number}",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return Ok((str(data.get("title", "")), str(data.get("body") or "")))
+        except httpx.HTTPError as exc:
+            return Err(Error("github", f"get_issue {repo}#{number}: {exc}"))
+        finally:
+            if owns:
+                await client.aclose()
+
     async def find_open_pr(self, repo: str, head_branch: str) -> Result[int | None, Error]:
         """Nº do PR aberto do branch, ou None. Idempotência contra PRs vivos (não duplica)."""
         owns = self._client is None
