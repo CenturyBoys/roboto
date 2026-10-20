@@ -41,10 +41,11 @@ class ModelsConfig:
 class Config:
     tenant: str
     database_url: str
-    default_repo: str  # repo-alvo das issues do refino (owner/name)
+    default_repo: str  # repo-alvo das issues do refino via Telegram (owner/name)
     github: GithubConfig
     telegram: TelegramConfig
     models: ModelsConfig
+    repos: frozenset[str] = frozenset()  # N repos da instância (D17); vazio = só o default_repo
     lease_seconds: int = 300
     console_token: str = ""  # bearer do console web (D25); vazio = console desabilitado
     engine: str = ""  # ROBOTO_ENGINE: ""=sem motor | stub | claude_code (D22/PoC N3)
@@ -100,6 +101,9 @@ def load_config(env: Mapping[str, str]) -> Result[Config, Error]:
             telegram=TelegramConfig(
                 bot_token=env["TELEGRAM_BOT_TOKEN"],
                 allowlist=_allowlist(env.get("TELEGRAM_ALLOWLIST", "")),
+            ),
+            repos=(
+                _allowlist(env.get("ROBOTO_REPOS", "")) or frozenset({env["ROBOTO_DEFAULT_REPO"]})
             ),
             models=ModelsConfig(
                 openrouter_api_key=env["OPENROUTER_API_KEY"],

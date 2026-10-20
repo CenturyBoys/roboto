@@ -56,6 +56,18 @@ def test_pat_mode_is_valid_without_app() -> None:
     assert result.value.github.app_id == ""
 
 
+def test_repos_defaults_to_default_repo() -> None:
+    result = load_config(_FULL)
+    assert isinstance(result, Ok)
+    assert result.value.repos == frozenset({"acme/app"})  # vazio -> só o default
+
+
+def test_repos_list_parsed() -> None:
+    result = load_config({**_FULL, "ROBOTO_REPOS": "acme/app, acme/api ,acme/web"})
+    assert isinstance(result, Ok)
+    assert result.value.repos == frozenset({"acme/app", "acme/api", "acme/web"})
+
+
 def test_no_github_auth_is_err() -> None:
     env = _pat_env()
     env.pop("GITHUB_API_TOKEN")

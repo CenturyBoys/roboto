@@ -79,6 +79,7 @@ async def handle_webhook(
     body: bytes,
     store: Store,
     now: datetime,
+    repos: frozenset[str] = frozenset(),
 ) -> Result[Run | None, Error]:
     if not verify_signature(secret, body, signature):
         return Err(Error("invalid_signature", "assinatura do webhook inválida"))
@@ -92,6 +93,8 @@ async def handle_webhook(
     event = normalized.value
     if event is None:
         return Ok[Run | None](None)  # ignorado (202)
+    if repos and event.repo not in repos:
+        return Ok[Run | None](None)  # repo fora do escopo desta instância (D17)
     ingested = await ingest(store, event, now)
     if isinstance(ingested, Err):
         return Err(ingested.error)

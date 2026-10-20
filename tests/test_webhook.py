@@ -111,6 +111,25 @@ async def test_handle_webhook_bad_signature_is_err() -> None:
     assert result.error.kind == "invalid_signature"
 
 
+async def test_handle_webhook_repo_outside_scope_is_ignored() -> None:
+    store = InMemoryStore()
+    body = json.dumps(
+        {"action": "opened", "repository": {"full_name": "outra/coisa"}, "issue": {"number": 9}}
+    ).encode()
+    result = await handle_webhook(
+        secret=_SECRET,
+        tenant="acme",
+        event_type="issues",
+        signature=_sign(body),
+        body=body,
+        store=store,
+        now=_T0,
+        repos=frozenset({"acme/app", "acme/api"}),  # só esses; outra/coisa fica de fora
+    )
+    assert isinstance(result, Ok)
+    assert result.value is None
+
+
 async def test_handle_webhook_ignored_event_returns_none() -> None:
     store = InMemoryStore()
     body = json.dumps({"action": "deleted"}).encode()
