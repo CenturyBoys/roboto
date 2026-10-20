@@ -45,7 +45,11 @@ async def test_webhook_accepts_signed_issue() -> None:
     store = InMemoryStore()
     async with _app(store) as c:
         body = json.dumps(
-            {"action": "opened", "repository": {"full_name": "acme/app"}, "issue": {"number": 42}}
+            {
+                "action": "opened",
+                "repository": {"full_name": "acme/app"},
+                "issue": {"number": 42, "labels": [{"name": "roboto"}]},  # opt-in (D29)
+            }
         ).encode()
         resp = await c.post(
             "/webhook",

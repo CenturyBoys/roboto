@@ -112,6 +112,42 @@ async def test_handle_webhook_bad_signature_is_err() -> None:
     assert result.error.kind == "invalid_signature"
 
 
+def _ev(  # type: ignore[no-untyped-def]
+    payload: dict[str, object], event: str = "issues", **kw: str
+):
+    return normalize_event(event, payload, "acme", **kw).value  # type: ignore[union-attr]
+
+
+def test_opt_in_label_required_when_configured() -> None:
+    base = {"action": "opened", "repository": {"full_name": "acme/app"}}
+    with_label = {**base, "issue": {"number": 1, "labels": [{"name": "roboto"}]}}
+    without = {**base, "issue": {"number": 2, "labels": [{"name": "bug"}]}}
+    assert _ev(with_label, trigger_label="roboto") is not None  # tem o label -> age
+    assert _ev(without, trigger_label="roboto") is None  # sem o label -> ignora
+    assert _ev(without) is not None  # sem filtro (default "") -> reage a tudo (compat)
+
+
+def test_opt_in_by_assignee() -> None:
+    payload = {
+        "action": "opened",
+        "repository": {"full_name": "acme/app"},
+        "issue": {"number": 3, "assignees": [{"login": "roboto-bot"}]},
+    }
+    assert _ev(payload, bot_login="roboto-bot") is not None
+    assert _ev(payload, bot_login="outro") is None
+
+
+def test_opt_in_pr_label() -> None:
+    base = {"action": "opened", "repository": {"full_name": "acme/app"}}
+    com = {
+        **base,
+        "pull_request": {"number": 9, "head": {"sha": "x"}, "labels": [{"name": "roboto"}]},
+    }
+    sem = {**base, "pull_request": {"number": 9, "head": {"sha": "x"}, "labels": []}}
+    assert _ev(com, event="pull_request", trigger_label="roboto") is not None
+    assert _ev(sem, event="pull_request", trigger_label="roboto") is None
+
+
 async def test_handle_webhook_repo_outside_scope_is_ignored() -> None:
     store = InMemoryStore()
     body = json.dumps(

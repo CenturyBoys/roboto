@@ -28,14 +28,48 @@ def verify_signature(secret: str, body: bytes, signature_header: str) -> bool:
     return hmac.compare_digest(expected, signature_header)
 
 
+def _is_for_fleet(obj: dict[str, object], trigger_label: str, bot_login: str) -> bool:
+    """Opt-in: o fleet só age se a issue/PR tem o label-gatilho OU está atribuída ao bot.
+
+    Sem label/bot configurados -> reage a tudo (compat). Com gente trabalhando junto, configure
+    `trigger_label` (ex.: 'roboto') e/ou `bot_login` para NÃO mexer no que não é do fleet.
+    """
+    if not trigger_label and not bot_login:
+        return True
+    labels = obj.get("labels", [])
+    names = (
+        {x.get("name") for x in labels if isinstance(x, dict)}
+        if isinstance(labels, list)
+        else set()
+    )
+    assignees = obj.get("assignees", [])
+    logins = (
+        {x.get("login") for x in assignees if isinstance(x, dict)}
+        if isinstance(assignees, list)
+        else set()
+    )
+    return (bool(trigger_label) and trigger_label in names) or (
+        bool(bot_login) and bot_login in logins
+    )
+
+
 def normalize_event(
-    event_type: str, payload: dict[str, object], tenant: str
+    event_type: str,
+    payload: dict[str, object],
+    tenant: str,
+    *,
+    trigger_label: str = "",
+    bot_login: str = "",
 ) -> Result[GithubEvent | None, Error]:
-    """Mapeia evento do GitHub para `GithubEvent`. Evento não-acionável → `Ok(None)`."""
+    """Mapeia evento do GitHub para `GithubEvent`. Não-acionável / não-do-fleet → `Ok(None)`."""
     try:
         if event_type == "issues" and payload.get("action") == "opened":
+            issue = payload["issue"]
+            assert isinstance(issue, dict)
+            if not _is_for_fleet(issue, trigger_label, bot_login):
+                return Ok[GithubEvent | None](None)  # issue de humano, sem gatilho -> ignora
             repo = _repo(payload)
-            number = str(_issue_number(payload))
+            number = str(issue["number"])
             return Ok[GithubEvent | None](
                 GithubEvent(
                     tenant=tenant,
@@ -50,8 +84,10 @@ def normalize_event(
             agent = _PR_ACTIONS.get(action)
             if agent is None:
                 return Ok[GithubEvent | None](None)
-            repo = _repo(payload)
             pr = _pull_request(payload)
+            if not _is_for_fleet(pr, trigger_label, bot_login):
+                return Ok[GithubEvent | None](None)  # PR de humano, sem gatilho -> ignora
+            repo = _repo(payload)
             number = str(pr["number"])
             head = pr["head"]
             assert isinstance(head, dict)
@@ -80,6 +116,8 @@ async def handle_webhook(
     store: Store,
     now: datetime,
     repos: frozenset[str] = frozenset(),
+    trigger_label: str = "",
+    bot_login: str = "",
 ) -> Result[Run | None, Error]:
     if not verify_signature(secret, body, signature):
         return Err(Error("invalid_signature", "assinatura do webhook inválida"))
@@ -87,7 +125,9 @@ async def handle_webhook(
         payload = json.loads(body)
     except json.JSONDecodeError:
         return Err(Error("invalid", "payload não-JSON"))
-    normalized = normalize_event(event_type, payload, tenant)
+    normalized = normalize_event(
+        event_type, payload, tenant, trigger_label=trigger_label, bot_login=bot_login
+    )
     if isinstance(normalized, Err):
         return Err(normalized.error)
     event = normalized.value
@@ -105,12 +145,6 @@ def _repo(payload: dict[str, object]) -> str:
     repository = payload["repository"]
     assert isinstance(repository, dict)
     return str(repository["full_name"])
-
-
-def _issue_number(payload: dict[str, object]) -> int:
-    issue = payload["issue"]
-    assert isinstance(issue, dict)
-    return int(issue["number"])
 
 
 def _pull_request(payload: dict[str, object]) -> dict[str, object]:
