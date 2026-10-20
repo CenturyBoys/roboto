@@ -35,7 +35,7 @@ packages = ["roboto"]
 mypy_path = "src"
 
 [[tool.mypy.overrides]]
-module = ["uvicorn", "uvicorn.*"]
+module = ["uvicorn", "uvicorn.*", "claude_agent_sdk", "claude_agent_sdk.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

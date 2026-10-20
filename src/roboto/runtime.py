@@ -67,7 +67,16 @@ async def main() -> int:
 
         tasks.append(run_periodic(_run_stub, 5.0, stop))
     elif config.engine == "claude_code":
-        print("ROBOTO_ENGINE=claude_code: ClaudeCodeEngine ainda não implementado (ver N3 gap#2)")
+        from roboto.engines.claude_code import ClaudeCodeEngine
+
+        claude = ClaudeCodeEngine()  # modelo roteado pelo ccr (ANTHROPIC_BASE_URL)
+
+        async def _run_claude() -> None:
+            await process_run_tick(
+                claude, store, tenant=config.tenant, chat_id=config.chat_id, now=_now
+            )
+
+        tasks.append(run_periodic(_run_claude, 5.0, stop))
 
     try:
         await asyncio.gather(*tasks)
