@@ -17,17 +17,26 @@ export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:-http://127.0.0.1:3456}"
 export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-sk-ccr-noop}"      # ccr ignora; chave real = OPENROUTER
 export ANTHROPIC_AUTH_TOKEN="${ANTHROPIC_AUTH_TOKEN:-$ANTHROPIC_API_KEY}"  # redundância (bearer)
 
-# 3) checkout do repo-alvo (o motor roda com cwd neste diretório)
-#    repo privado: use GITHUB_CLONE_TOKEN (PAT fine-grained no PoC, ou token de instalação do App)
-#    com URL https; sem token, usa TARGET_REPO_URL como está (ssh com chave montada).
-if [ ! -d /work/target/.git ]; then
+# 3) checkout do repo-alvo em /work/<owner>/<repo> (o motor roda com cwd AQUI — casa com drive_turn).
+#    repo privado: GITHUB_CLONE_TOKEN (PAT) via https; sem token, usa TARGET_REPO_URL (ssh).
+TARGET_DIR="/work/${ROBOTO_DEFAULT_REPO:-target}"
+if [ ! -d "$TARGET_DIR/.git" ]; then
+  mkdir -p "$(dirname "$TARGET_DIR")"
   if [ -n "${GITHUB_CLONE_TOKEN:-}" ]; then
-    git clone "https://x-access-token:${GITHUB_CLONE_TOKEN}@${TARGET_REPO_URL#https://}" /work/target
+    git clone "https://x-access-token:${GITHUB_CLONE_TOKEN}@${TARGET_REPO_URL#https://}" "$TARGET_DIR"
   else
-    git clone "$TARGET_REPO_URL" /work/target
+    git clone "$TARGET_REPO_URL" "$TARGET_DIR"
   fi
 fi
+export TARGET_WORKDIR="$TARGET_DIR"
 
-# 4) daemon (servidor ASGI + laços; laço do motor conforme ROBOTO_ENGINE)
 cd /opt/roboto
+
+# 4a) smoke observável da Fase 1 (POC_TASK setado): roda só o motor e imprime eventos; sem DB/daemon
+if [ -n "${POC_TASK:-}" ]; then
+  exec python3 poc/run_engine.py "$POC_TASK"
+fi
+
+# 4b) daemon completo: aplica migrações e sobe servidor ASGI + laços (motor conforme ROBOTO_ENGINE)
+python3 poc/migrate.py
 exec python3 -m roboto

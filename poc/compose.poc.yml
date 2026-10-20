@@ -28,7 +28,7 @@ services:
     ports:
       - "8080:8080" # servidor ASGI (webhook + console)
     volumes:
-      - target_repo:/work/target # checkout do repo-alvo (persiste entre runs)
+      - target_repo:/work # checkout do repo-alvo em /work/<owner>/<repo> (persiste entre runs)
     # recursos da máquina: ajuste conforme necessário
     # deploy:
     #   resources:
