@@ -140,6 +140,37 @@ class GithubAppClient:
             if owns:
                 await client.aclose()
 
+    async def list_open_issues(
+        self, repo: str, *, limit: int = 20
+    ) -> Result[list[tuple[int, str]], Error]:
+        """Lista issues abertas (nº, título), excluindo PRs. Para consulta via Telegram/console."""
+        owns = self._client is None
+        client = (
+            self._client if self._client is not None else httpx.AsyncClient(timeout=self._timeout)
+        )
+        try:
+            token = await self._installation_token(client)
+            resp = await client.get(
+                f"{self._api}/repos/{repo}/issues",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                },
+                params={"state": "open", "per_page": limit},
+            )
+            resp.raise_for_status()
+            items = [
+                (int(x["number"]), str(x.get("title", "")))
+                for x in resp.json()
+                if isinstance(x, dict) and "pull_request" not in x  # exclui PRs
+            ]
+            return Ok(items)
+        except httpx.HTTPError as exc:
+            return Err(Error("github", f"list_open_issues {repo}: {exc}"))
+        finally:
+            if owns:
+                await client.aclose()
+
     async def get_issue(self, repo: str, number: int) -> Result[tuple[str, str], Error]:
         """Retorna (title, body) da issue — p/ o gate de prontidão antes de implementar (D28)."""
         owns = self._client is None

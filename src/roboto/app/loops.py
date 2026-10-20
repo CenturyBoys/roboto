@@ -12,15 +12,13 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime
 
 from roboto.app.engine_loop import drive_turn
-from roboto.app.inbound import InboundOutcome, dispatch_inbound
+from roboto.app.inbound import IssueLister, dispatch_inbound
 from roboto.channels.model import OutboundMessage
 from roboto.channels.port import Channel
 from roboto.engines.port import CodingEngine
 from roboto.llm.port import ModelGateway, Transcriber
 from roboto.orchestrator.store import Store
 from roboto.result import Err, Ok
-
-_CLARIFY = "Não localizei a pergunta — responda em *reply* à mensagem da decisão."
 
 
 async def run_periodic(
@@ -62,13 +60,15 @@ async def poll_tick(
     gateway: ModelGateway,
     transcriber: Transcriber,
     now: Callable[[], datetime],
+    github: IssueLister | None = None,
 ) -> None:
     polled = await channel.poll()
     if isinstance(polled, Err):
         return
     for msg in polled.value:
-        outcome = await dispatch_inbound(
-            msg, repo=repo, gateway=gateway, transcriber=transcriber, store=store, now=now()
+        result = await dispatch_inbound(
+            msg, repo=repo, gateway=gateway, transcriber=transcriber,
+            store=store, now=now(), github=github,
         )
-        if isinstance(outcome, Ok) and outcome.value is InboundOutcome.UNROUTED:
-            await channel.send(OutboundMessage(chat_id=msg.chat_id, text=_CLARIFY))
+        if isinstance(result, Ok) and result.value.reply:
+            await channel.send(OutboundMessage(chat_id=msg.chat_id, text=result.value.reply))
