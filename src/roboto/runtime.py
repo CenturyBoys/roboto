@@ -44,6 +44,7 @@ async def main() -> int:
             gateway=adapters.gateway,
             transcriber=adapters.transcriber,
             now=_now,
+            github=adapters.github,  # habilita o comando "issues" (listar) no Telegram
         )
 
     import uvicorn  # import tardio: só o daemon precisa

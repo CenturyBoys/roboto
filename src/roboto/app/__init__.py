@@ -6,7 +6,7 @@ from roboto.app.effects import GithubIssuePublisher, TelegramPublisher, Telegram
 from roboto.app.engine_loop import TurnOutcome, drive_turn
 from roboto.app.git_ops import SubprocessGit
 from roboto.app.human import ReplyOutcome, handle_reply, request_human_input
-from roboto.app.inbound import InboundOutcome, dispatch_inbound
+from roboto.app.inbound import InboundOutcome, InboundResult, dispatch_inbound
 from roboto.app.loops import poll_tick, process_run_tick, run_periodic
 from roboto.app.pr_cycle import GithubPrOps, GitOps, process_pr_run_tick, run_pr_cycle
 from roboto.app.refine import refine_to_issue
@@ -19,6 +19,7 @@ __all__ = [
     "GithubPrOps",
     "SubprocessGit",
     "InboundOutcome",
+    "InboundResult",
     "ReplyOutcome",
     "TelegramPublisher",
     "TelegramQuestionPublisher",
