@@ -73,7 +73,11 @@ async def main() -> int:
         from roboto.engines.claude_code import ClaudeCodeEngine
 
         # imagem roda NÃO-root -> bypassPermissions (full-auto: git/pnpm/abrir PR).
-        claude = ClaudeCodeEngine(permission_mode="bypassPermissions")
+        # code-intel (ide_cc) ligado por config -> navegação semântica, menos token (F).
+        mcp: dict[str, object] | None = (
+            {"code-intel": {"command": "code-intel-mcp"}} if config.code_intel else None
+        )
+        claude = ClaudeCodeEngine(permission_mode="bypassPermissions", mcp_servers=mcp)
 
         async def _run_claude() -> None:
             # ciclo completo: motor->git->PR->review(≠autor)->correção. Merge = gate humano (D7).

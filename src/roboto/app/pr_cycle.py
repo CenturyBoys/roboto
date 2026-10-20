@@ -62,7 +62,9 @@ async def run_pr_cycle(
         "Siga TODAS as regras do AGENTS.md — inclusive doc-in-sync (§5): mudança de regra/domínio "
         "exige atualizar a doc (.md/docs/ADR) no MESMO commit. "
         "Rode os checks do repo (lint, typecheck, testes, doc-sync) e corrija até passarem "
-        "ANTES de concluir."
+        "ANTES de concluir. "
+        "Economia de token (F): use code-intel (símbolos/refs/rename) e ripgrep (texto literal) "
+        "em vez de ler arquivos inteiros."
     )
     state: dict[str, int] = {}  # guarda o número do PR entre tentativas
 

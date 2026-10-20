@@ -37,3 +37,9 @@ async def test_respond_and_interrupt_are_ok() -> None:
     engine = ClaudeCodeEngine()
     assert isinstance(await engine.respond("2"), Ok)
     assert isinstance(await engine.interrupt(), Ok)
+
+
+def test_accepts_mcp_servers_for_code_intel() -> None:
+    mcp = {"code-intel": {"command": "code-intel-mcp"}}
+    engine = ClaudeCodeEngine(mcp_servers=mcp)  # type: ignore[arg-type]
+    assert engine._mcp_servers == mcp

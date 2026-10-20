@@ -26,10 +26,12 @@ class ClaudeCodeEngine:
         # Autonomia total (git/pnpm/PR) exige bypassPermissions -> rodar o container NÃO-root.
         permission_mode: str = "acceptEdits",
         allowed_tools: list[str] | None = None,
+        mcp_servers: dict[str, object] | None = None,  # ex.: code-intel (ide_cc) — F, menos token
     ) -> None:
         self._model = model
         self._permission_mode = permission_mode
         self._allowed_tools = allowed_tools or []
+        self._mcp_servers = mcp_servers
         self._spec: RunSpec | None = None
         self._session_id = ""
 
@@ -57,6 +59,7 @@ class ClaudeCodeEngine:
             allowed_tools=self._allowed_tools,
             resume=self._spec.resume_session_id or None,
             model=self._model or None,
+            mcp_servers=self._mcp_servers,  # code-intel (navegação semântica, F)
         )
         async for message in query(prompt=self._spec.prompt, options=options):
             name = type(message).__name__
