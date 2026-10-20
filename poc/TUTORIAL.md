@@ -88,6 +88,17 @@ ROBOTO_ENGINE=stub ./poc/phase0.sh
 # Fase 1 (motor vivo): preencha tudo, ROBOTO_ENGINE=claude_code
 docker compose -f poc/compose.poc.yml --env-file poc/.env.poc up --build
 ```
+
+### 5.1 Smoke observável da Fase 1 (recomendado primeiro)
+Antes do daemon completo, isole o motor: no `.env.poc` defina
+```bash
+POC_TASK="liste a estrutura do projeto e resuma a arquitetura em 3 linhas"
+```
+e suba. O container sobe o ccr, clona o repo e roda **só o motor** nessa tarefa, **imprimindo cada
+evento** (`[fase1] message/tool_call/finished ...`) — sem Postgres/Telegram. É o jeito mais claro de
+ver o Claude Code (via Qwen/ccr) rodando no repo. Comece com uma tarefa **read-only** (listar/resumir)
+e depois uma que **edita** (ex.: "adicione uma função util em packages/core com teste"). Deixe
+`POC_TASK` vazio p/ rodar o daemon completo (Telegram + console + laços).
 A partir daí: mande uma mensagem no Telegram do bot (vira issue), ou crie uma issue e dispare pelo
 chat. O console fica em `http://localhost:8080` (header `Authorization: Bearer <CONSOLE_TOKEN>`).
 
