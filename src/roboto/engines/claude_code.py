@@ -22,7 +22,9 @@ class ClaudeCodeEngine:
         self,
         *,
         model: str = "",
-        permission_mode: str = "default",
+        # acceptEdits: libera edição de arquivo sem a flag bloqueada como root (PoC validou).
+        # Autonomia total (git/pnpm/PR) exige bypassPermissions -> rodar o container NÃO-root.
+        permission_mode: str = "acceptEdits",
         allowed_tools: list[str] | None = None,
     ) -> None:
         self._model = model
