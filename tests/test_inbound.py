@@ -114,6 +114,15 @@ async def test_conversation_asks_then_proposes() -> None:
     assert any(i.kind is InteractionKind.APPROVAL for i in pend)  # agora PROPÕE
 
 
+async def test_greeting_returns_help_not_refine() -> None:
+    # saudação/"ajuda" -> guia (sem LLM, sem run); conserta o "ola" que virava issue-lixo
+    store = InMemoryStore()
+    out = await _dispatch(store, _msg("ola", mid="1"))
+    assert isinstance(out, Ok)
+    assert out.value.reply is not None and "Potter" in out.value.reply
+    assert len(store._runs) == 0  # NÃO virou refino/issue
+
+
 async def test_discuss_existing_issue_proposes_edit_not_create() -> None:
     # "sobre a issue 180" -> busca #180 e conversa; "ok" -> EDITA a existente (não cria nova) — D30
     store = InMemoryStore()

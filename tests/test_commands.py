@@ -23,6 +23,11 @@ def test_discuss_existing_issue_reference() -> None:
     assert parse_command("issue #7") == ("discuss", "7")
 
 
+def test_help_and_greetings() -> None:
+    for t in ["ajuda", "help", "/help", "/start", "oi", "olá", "ola", "comandos", "bom dia"]:
+        assert parse_command(t) == ("help", ""), t
+
+
 def test_new_idea_is_not_a_command() -> None:
     assert parse_command("quero um placar de vitórias por jogador") is None
     assert parse_command("adicionar botão de login") is None
