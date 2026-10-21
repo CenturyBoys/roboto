@@ -61,7 +61,7 @@ async def dispatch_inbound(
     command = parse_command(msg.text)
     if command is not None:
         return await _run_command(
-            command, msg, repo=repo, gateway=gateway, store=store, now=now, github=github
+            command, msg, repo=repo, store=store, now=now, github=github
         )
 
     if msg.reply_to_message_id:
@@ -162,7 +162,6 @@ async def _run_command(
     msg: InboundMessage,
     *,
     repo: str,
-    gateway: ModelGateway,
     store: Store,
     now: datetime,
     github: IssueLister | None,
@@ -179,8 +178,7 @@ async def _run_command(
             return Ok(InboundResult(InboundOutcome.ANSWERED, f"Não achei a issue #{arg}."))
         title, body = got.value
         disc = await discuss_issue(
-            msg, repo=repo, number=int(arg), title=title, body=body,
-            gateway=gateway, store=store, now=now,
+            msg, repo=repo, number=int(arg), title=title, body=body, store=store, now=now,
         )
         if isinstance(disc, Err):
             return Err(disc.error)

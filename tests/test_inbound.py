@@ -124,15 +124,25 @@ async def test_greeting_returns_help_not_refine() -> None:
 
 
 async def test_discuss_existing_issue_proposes_edit_not_create() -> None:
-    # "sobre a issue 180" -> busca #180 e conversa; "ok" -> EDITA a existente (não cria nova) — D30
+    # "sobre a #180" -> ABRE trazendo os detalhes (pergunta); reply -> propõe; "ok" -> EDITA (D30)
     store = InMemoryStore()
     out = await _dispatch(store, _msg("sobre a issue 180", mid="1"), github=_FakeLister())
     assert isinstance(out, Ok) and out.value.outcome is InboundOutcome.DISCUSSING
-    pend = await store.pending_interactions("acme", 10)
-    appr = next(i for i in pend if i.kind is InteractionKind.APPROVAL)
-    await store.set_interaction_message_id(appr.id, "900")
-    out2 = await _dispatch(store, _msg("ok", reply_to="900", mid="2"), github=_FakeLister())
-    assert isinstance(out2, Ok) and out2.value.outcome is InboundOutcome.EDITED
+    opening = (await store.pending_interactions("acme", 10))[0]
+    assert opening.kind is InteractionKind.QUESTION and "#180" in opening.prompt  # trouxe detalhes
+    await store.set_interaction_message_id(opening.id, "900")
+
+    m2 = _msg("ajusta o DoD", reply_to="900", mid="2")
+    out2 = await _dispatch(store, m2, github=_FakeLister())
+    assert isinstance(out2, Ok) and out2.value.outcome is InboundOutcome.REFINED
+    appr = next(
+        i for i in await store.pending_interactions("acme", 10)
+        if i.kind is InteractionKind.APPROVAL
+    )
+    await store.set_interaction_message_id(appr.id, "901")
+
+    out3 = await _dispatch(store, _msg("ok", reply_to="901", mid="3"), github=_FakeLister())
+    assert isinstance(out3, Ok) and out3.value.outcome is InboundOutcome.EDITED
     effects = await store.pending_effects(10)
     assert any(e.kind == "update_issue" and e.payload["number"] == "180" for e in effects)
     assert not any(e.kind == "create_issue" for e in effects)

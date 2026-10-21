@@ -69,9 +69,10 @@ async def refine_to_issue(
 
 async def discuss_issue(
     msg: InboundMessage, *, repo: str, number: int, title: str, body: str,
-    gateway: ModelGateway, store: Store, now: datetime,
+    store: Store, now: datetime,
 ) -> Result[Run, Error]:
-    """Fala sobre issue que JÁ existe (D30): conversa ancorada no corpo atual -> propõe edição."""
+    """Fala sobre issue que JÁ existe (D30): ABRE trazendo os detalhes dela (determinístico) e
+    pergunta o que o humano quer; a conversa segue no reply -> propõe edição com o OK."""
     key = f"tg:discuss:{msg.tenant}:{msg.chat_id}:{number}:{msg.message_id or 'x'}"
     event = GithubEvent(
         tenant=msg.tenant, repo=repo, issue_id=str(number), agent="refiner",
@@ -81,19 +82,34 @@ async def discuss_issue(
     if not created:
         return Ok(run)
 
+    # semente: contexto da issue + pedido (fica no transcript p/ a conversa a jusante)
     seed_text = (
-        f"Estamos AJUSTANDO a issue #{number} que JÁ existe (não crie outra). Corpo atual:\n"
-        f"TÍTULO: {title}\n{body}\n\n"
-        f"Pedido do humano: {msg.text}\n"
-        "Se faltar clareza, PERGUNTE; quando claro, proponha o NOVO corpo (TITLE/BODY) ajustado."
+        f"[Issue #{number} EXISTENTE — ajustar, nunca criar outra]\n"
+        f"TÍTULO: {title}\n{body}\n\n[Pedido do humano]: {msg.text}"
     )
     seed = await store.create_interaction(
         msg.tenant, run.id, InteractionKind.QUESTION, _SEED, [], now
     )
     await store.answer_interaction(seed.id, seed_text, msg.user_id, now)
-    metered = MeteredGateway(gateway, store, tenant=msg.tenant, run_id=run.id, now=now)
-    return await _ask_or_propose(run, [("user", seed_text)], chat_id=msg.chat_id, store=store,
-                                 gateway=metered, now=now)
+
+    # abertura DETERMINÍSTICA: traz os detalhes fiéis (sem LLM, sem alucinar) e pergunta a intenção
+    opening = _issue_opening(number, title, body)
+    inter = await store.create_interaction(
+        msg.tenant, run.id, InteractionKind.QUESTION, opening, [], now
+    )
+    await _enqueue_question(store, run, msg.chat_id, opening, inter.id, f"open:{run.id}", now)
+    return Ok(run)
+
+
+def _issue_opening(number: int, title: str, body: str) -> str:
+    excerpt = body.strip()
+    if len(excerpt) > 500:
+        excerpt = excerpt[:500] + "…"
+    return (
+        f"📋 *Issue #{number}: {title}*\n\n{excerpt}\n\n"
+        "O que você quer? Me diz o que *entender* ou *ajustar* (eu proponho a edição, você "
+        f"aprova), ou manda *pega #{number}* pra eu implementar."
+    )
 
 
 async def continue_conversation(
