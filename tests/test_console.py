@@ -41,7 +41,7 @@ async def test_viewer_is_served() -> None:
     async with _client(store) as c:
         resp = await c.get("/")
         assert resp.status_code == 200
-        assert "roboto" in resp.text  # a página (dados exigem o token via JS)
+        assert "Potter" in resp.text  # a página (dados exigem o token via JS)
 
 
 async def test_costs_endpoint() -> None:
