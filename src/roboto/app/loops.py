@@ -62,6 +62,7 @@ async def poll_tick(
     now: Callable[[], datetime],
     github: IssueLister | None = None,
     tenant: str | None = None,
+    engine_scope: bool = False,
 ) -> None:
     # retoma o cursor persistido (D30): no restart não relê mensagens já processadas
     if tenant is not None:
@@ -74,7 +75,7 @@ async def poll_tick(
     for msg in polled.value:
         result = await dispatch_inbound(
             msg, repo=repo, gateway=gateway, transcriber=transcriber,
-            store=store, now=now(), github=github,
+            store=store, now=now(), github=github, engine_scope=engine_scope,
         )
         if isinstance(result, Ok) and result.value.reply:
             await channel.send(OutboundMessage(chat_id=msg.chat_id, text=result.value.reply))

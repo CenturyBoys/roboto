@@ -145,19 +145,19 @@ class PostgresStore:
             return _row_to_run(existing), False
 
     async def claim_next_queued(
-        self, tenant: str, now: datetime, lease_seconds: int
+        self, tenant: str, now: datetime, lease_seconds: int, *, agent: str | None = None
     ) -> Run | None:
         lease_until = now + timedelta(seconds=lease_seconds)
         async with self._pool.acquire() as conn, conn.transaction():
             picked = await conn.fetchrow(
                 """
                 SELECT id FROM run
-                WHERE tenant = $1 AND state = 'queued'
+                WHERE tenant = $1 AND state = 'queued' AND ($2::text IS NULL OR agent = $2)
                 ORDER BY id
                 FOR UPDATE SKIP LOCKED
                 LIMIT 1
                 """,
-                tenant,
+                tenant, agent,
             )
             if picked is None:
                 return None

@@ -128,6 +128,35 @@ def _issue_opening(number: int, title: str, body: str, url: str) -> str:
     )
 
 
+async def start_scope(
+    msg: InboundMessage, *, repo: str, transcriber: Transcriber, store: Store, now: datetime
+) -> Result[Run, Error]:
+    """Enfileira um run de SCOPE (motor escaneia o repo e monta a issue) + ack 'explorando'."""
+    key = f"tg:scope:{msg.tenant}:{msg.chat_id}:{msg.message_id or 'x'}"
+    event = GithubEvent(
+        tenant=msg.tenant, repo=repo, issue_id=f"scope:{msg.chat_id}:{msg.message_id}",
+        agent="scope", idempotency_key=key, origin_chat_id=msg.chat_id,
+    )
+    run, created = await store.insert_run_if_absent(event, now)
+    if not created:
+        return Ok(run)
+    text = await _resolve_text(msg, transcriber)
+    if isinstance(text, Err) or not text.value.strip():
+        await store.set_state(run.id, RunState.FAILED, now)
+        return Err(text.error if isinstance(text, Err) else Error("invalid", "mensagem vazia"))
+    seed = await store.create_interaction(
+        msg.tenant, run.id, InteractionKind.QUESTION, _SEED, [], now
+    )
+    await store.answer_interaction(seed.id, text.value, msg.user_id, now)
+    await store.enqueue_effect(
+        msg.tenant, run.id, "telegram_notify",
+        {"chat_id": msg.chat_id,
+         "text": "🔍 Explorando o repo pra montar a issue… já te mando a proposta."},
+        f"scopeack:{run.id}", now,
+    )
+    return Ok(run)
+
+
 async def continue_conversation(
     run: Run, msg: InboundMessage, *, gateway: ModelGateway, store: Store, now: datetime
 ) -> Result[Run, Error]:
@@ -136,6 +165,30 @@ async def continue_conversation(
     metered = MeteredGateway(gateway, store, tenant=run.tenant, run_id=run.id, now=now)
     return await _ask_or_propose(run, transcript, chat_id=msg.chat_id, store=store,
                                  gateway=metered, now=now)
+
+
+async def propose_issue(
+    run: Run, draft: IssueDraft, *, chat_id: str, store: Store, now: datetime
+) -> Result[Run, Error]:
+    """Rascunho já pronto (ex.: do MOTOR que escaneou o repo) -> gate estrutural -> PROPÕE (D30)."""
+    verdict = check_issue_readiness(draft)
+    if not verdict.ready:
+        await store.set_state(run.id, RunState.WAITING, now)
+        falta = ", ".join(verdict.missing)
+        await store.enqueue_effect(
+            run.tenant, run.id, "telegram_notify",
+            {"chat_id": chat_id,
+             "text": f"Não montei uma issue completa — falta {falta}. Me dá mais contexto?"},
+            f"incompleta:{run.id}", now,
+        )
+        return Ok(run)
+    interaction = await store.create_interaction(
+        run.tenant, run.id, InteractionKind.APPROVAL,
+        _proposal_text(draft), [draft.title, draft.body], now,
+    )
+    await _enqueue_question(store, run, chat_id, _proposal_text(draft),
+                            interaction.id, f"approve:{interaction.id}", now)
+    return Ok(run)
 
 
 async def _ask_or_propose(
