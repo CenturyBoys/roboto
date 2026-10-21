@@ -17,6 +17,7 @@ from roboto.orchestrator.model import (
     InteractionKind,
     InteractionStatus,
     LlmCall,
+    MemoryFact,
     OutboxItem,
     Run,
     RunState,
@@ -115,6 +116,12 @@ class Store(Protocol):
         self, tenant: str, channel: str, offset: int, now: datetime
     ) -> None: ...
 
+    async def remember(
+        self, tenant: str, text: str, *, kind: str, ref: str, now: datetime
+    ) -> MemoryFact: ...
+
+    async def recall(self, tenant: str, query: str, limit: int) -> list[MemoryFact]: ...
+
 
 class InMemoryStore:
     """Store em memória para testes tier-1 e o MVP local."""
@@ -129,6 +136,8 @@ class InMemoryStore:
         self._interaction_by_msg: dict[tuple[str, str], int] = {}
         self._llm_calls: list[LlmCall] = []
         self._channel_cursor: dict[tuple[str, str], int] = {}
+        self._facts: list[MemoryFact] = []
+        self._fact_seq = 0
         self._run_seq = 0
         self._effect_seq = 0
         self._session_seq = 0
@@ -386,3 +395,26 @@ class InMemoryStore:
         self, tenant: str, channel: str, offset: int, now: datetime
     ) -> None:
         self._channel_cursor[(tenant, channel)] = offset
+
+    async def remember(
+        self, tenant: str, text: str, *, kind: str, ref: str, now: datetime
+    ) -> MemoryFact:
+        self._fact_seq += 1
+        fact = MemoryFact(
+            id=self._fact_seq, tenant=tenant, kind=kind, ref=ref, text=text, created_at=now
+        )
+        self._facts.append(fact)
+        return fact
+
+    async def recall(self, tenant: str, query: str, limit: int) -> list[MemoryFact]:
+        terms = [t for t in query.lower().split() if len(t) > 2]
+        scored: list[tuple[int, MemoryFact]] = []
+        for f in self._facts:
+            if f.tenant != tenant:
+                continue
+            low = f.text.lower()
+            score = sum(low.count(t) for t in terms)
+            if score:
+                scored.append((score, f))
+        scored.sort(key=lambda x: (-x[0], -x[1].id))
+        return [f for _, f in scored[:limit]]

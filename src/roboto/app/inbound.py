@@ -32,6 +32,7 @@ class InboundOutcome(StrEnum):
     DECLINED = "declined"  # humano não aprovou o rascunho -> descartado
     EDITED = "edited"  # humano aprovou EDIÇÃO de issue existente -> update enfileirado
     DISCUSSING = "discussing"  # conversa sobre issue existente aberta
+    REMEMBERED = "remembered"  # fato gravado no second brain (trilha G)
 
 
 class IssueLister(Protocol):
@@ -175,6 +176,10 @@ async def _run_command(
     kind, arg = command
     if kind == "help":
         return Ok(InboundResult(InboundOutcome.LISTED, _HELP_TEXT))
+
+    if kind == "remember":  # second brain (trilha G): grava um fato do projeto
+        await store.remember(msg.tenant, arg, kind="fato", ref="", now=now)
+        return Ok(InboundResult(InboundOutcome.REMEMBERED, "🧠 Anotado na memória do projeto."))
 
     if kind == "discuss":  # falar sobre issue que já existe -> busca e conversa SOBRE ela (D30)
         if github is None:

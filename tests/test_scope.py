@@ -27,6 +27,17 @@ def _msg(text: str, mid: str = "1") -> InboundMessage:
     )
 
 
+async def test_remember_and_recall() -> None:
+    # second brain: grava fatos; recall traz os relevantes por termo (determinístico, sem LLM)
+    store = InMemoryStore()
+    await store.remember("acme", "o rate limit usa Redis com janela deslizante", kind="decisão",
+                         ref="#180", now=_T0)
+    await store.remember("acme", "o deploy é no Fly.io", kind="fato", ref="", now=_T0)
+    hits = await store.recall("acme", "como funciona o rate limit", 5)
+    assert len(hits) == 1 and "Redis" in hits[0].text  # só o fato relevante
+    assert await store.recall("other", "rate limit", 5) == []  # isolado por tenant
+
+
 async def test_new_idea_with_engine_scope_enqueues_scope_run() -> None:
     store = InMemoryStore()
     out = await dispatch_inbound(
