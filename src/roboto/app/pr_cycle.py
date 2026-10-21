@@ -163,7 +163,7 @@ async def process_pr_run_tick(
     -> reprocessa (branch força-push, PR reaproveitado via find_open_pr). Merge = gate humano (D7).
     """
     moment = now()
-    run = await store.claim_next_queued(tenant, moment, lease_seconds)
+    run = await store.claim_next_queued(tenant, moment, lease_seconds, agent="impl")
     if run is None:
         return
 

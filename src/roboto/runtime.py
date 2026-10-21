@@ -46,6 +46,8 @@ async def main() -> int:
             now=_now,
             github=adapters.github,  # habilita o comando "issues" (listar) no Telegram
             tenant=config.tenant,  # persiste o cursor do Telegram (não relê no restart)
+            # ideia nova -> motor escaneia o repo e monta a issue (quando há motor de código)
+            engine_scope=(config.engine == "claude_code"),
         )
 
     import uvicorn  # import tardio: só o daemon precisa
@@ -71,6 +73,7 @@ async def main() -> int:
     elif config.engine == "claude_code":
         from roboto.app.git_ops import SubprocessGit
         from roboto.app.pr_cycle import process_pr_run_tick
+        from roboto.app.scope import process_scope_tick
         from roboto.engines.claude_code import ClaudeCodeEngine
 
         # imagem roda NÃO-root -> bypassPermissions (full-auto: git/pnpm/abrir PR).
@@ -95,7 +98,14 @@ async def main() -> int:
                 base=config.base_branch,
             )
 
+        async def _run_scope() -> None:
+            # motor escaneia o repo (leitura) e monta a issue -> proposta no Telegram (G/F/I)
+            await process_scope_tick(
+                claude, store, tenant=config.tenant, workdir_root="/work", now=_now
+            )
+
         tasks.append(run_periodic(_run_claude, 5.0, stop))
+        tasks.append(run_periodic(_run_scope, 5.0, stop))
 
     try:
         await asyncio.gather(*tasks)

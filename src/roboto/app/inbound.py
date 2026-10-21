@@ -14,7 +14,7 @@ from typing import Protocol
 
 from roboto.app.commands import parse_command
 from roboto.app.human import handle_reply
-from roboto.app.refine import continue_conversation, discuss_issue, refine_to_issue
+from roboto.app.refine import continue_conversation, discuss_issue, refine_to_issue, start_scope
 from roboto.channels.model import InboundMessage
 from roboto.llm.port import ModelGateway, Transcriber
 from roboto.orchestrator.model import Error, GithubEvent, Interaction, InteractionKind, RunState
@@ -57,6 +57,7 @@ async def dispatch_inbound(
     store: Store,
     now: datetime,
     github: IssueLister | None = None,
+    engine_scope: bool = False,
 ) -> Result[InboundResult, Error]:
     command = parse_command(msg.text)
     if command is not None:
@@ -86,6 +87,11 @@ async def dispatch_inbound(
         clar = "Não localizei a pergunta — responda em *reply* à mensagem da decisão."
         return Ok(InboundResult(InboundOutcome.UNROUTED, clar))
 
+    if engine_scope:  # ideia nova + motor disponível -> o Claude escaneia o repo e monta a issue
+        scoped = await start_scope(msg, repo=repo, transcriber=transcriber, store=store, now=now)
+        if isinstance(scoped, Err):
+            return Err(scoped.error)
+        return Ok(InboundResult(InboundOutcome.REFINED))
     refined = await refine_to_issue(
         msg, repo=repo, gateway=gateway, transcriber=transcriber, store=store, now=now
     )
