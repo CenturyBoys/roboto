@@ -145,9 +145,9 @@ def console_routes(
         run = await _owned_run(request)
         if run is None:
             return JSONResponse({"error": "not found"}, status_code=404)
-        url = f"{ttyd_base.rstrip('/')}/{run.id}" if ttyd_base else None
+        url = ttyd_base.rstrip("/") if ttyd_base else None
         return JSONResponse(
-            {"terminal_url": url, "note": "ttyd/Wetty por container; autenticado e isolado (D25)"}
+            {"terminal_url": url, "note": "terminal do container (ttyd+tmux); isolado por empresa"}
         )
 
     return [

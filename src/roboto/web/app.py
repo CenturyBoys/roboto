@@ -51,7 +51,8 @@ def build_app(
         )
 
     routes = console_routes(
-        store, tenant=config.tenant, token=config.console_token
+        store, tenant=config.tenant, token=config.console_token,
+        ttyd_base=config.ttyd_base or None,
     )
     routes.append(Route("/webhook", webhook, methods=["POST"]))
     return Starlette(routes=routes)

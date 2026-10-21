@@ -8,9 +8,12 @@ FROM mcr.microsoft.com/playwright:v1.48.0-noble
 RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
 
 # Python + venv + git + gettext (envsubst) + base Rust de busca (ripgrep/fd) p/ token economy (F)
+# + tmux (sessão observável) + ttyd (terminal web no browser, D25)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      python3 python3-venv git gettext-base curl ripgrep fd-find \
+      python3 python3-venv git gettext-base curl ripgrep fd-find tmux \
     && rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64 \
+      -o /usr/local/bin/ttyd && chmod +x /usr/local/bin/ttyd
 
 # Claude Code CLI + claude-code-router (validar nomes/versões dos pacotes npm)
 RUN npm install -g @anthropic-ai/claude-code @musistudio/claude-code-router
