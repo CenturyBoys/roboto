@@ -61,6 +61,43 @@ def _parse_draft(text: str) -> IssueDraft:
     return IssueDraft(title=title, body="\n".join(body_lines).strip())
 
 
+CONVERSE_SYSTEM = (
+    "Você é um PO entrevistando para montar uma ISSUE acionável (DoR: Contexto, Escopo, "
+    "Critérios de aceite verificáveis, DoD). Dada a conversa até aqui:\n"
+    "- Se FALTAR informação essencial, faça UMA pergunta objetiva começando com 'PERGUNTA:'.\n"
+    "- Se já dá pra montar a issue, responda SÓ a issue, sem texto extra:\n"
+    "TITLE: <título curto em Conventional Commits>\n"
+    "BODY:\n## Contexto\n<...>\n## Escopo\n<...>\n## Critérios de aceite\n- [ ] <verificável>\n"
+    "## DoD\n- [ ] testes · lint/typecheck · review · CI\n## Fora de escopo\n<...>\n"
+    "Uma pergunta por vez. Prefira PROPOR assim que tiver o suficiente — não interrogue à toa."
+)
+
+
+@dataclass(frozen=True)
+class ConversationStep:
+    """Passo da conversa de refino: ou uma pergunta ao humano, ou um rascunho pronto."""
+
+    question: str | None  # preenchido quando falta info
+    draft: IssueDraft | None  # preenchido quando já dá pra propor
+
+
+async def converse(
+    transcript: list[tuple[str, str]], gateway: ModelGateway
+) -> Result[ConversationStep, Error]:
+    """Entrevistador multi-turno: recebe o histórico e decide perguntar ou propor o rascunho."""
+    messages = [ChatMessage(role="system", content=CONVERSE_SYSTEM)]
+    messages.extend(ChatMessage(role=role, content=content) for role, content in transcript)
+    result = await gateway.complete(messages, Tier.CHEAP)
+    if isinstance(result, Err):
+        return Err(result.error)
+    text = result.value.text.strip()
+    first = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
+    if first.upper().startswith("PERGUNTA:"):
+        idx = text.upper().index("PERGUNTA:") + len("PERGUNTA:")
+        return Ok(ConversationStep(question=text[idx:].strip() or text, draft=None))
+    return Ok(ConversationStep(question=None, draft=_parse_draft(text)))
+
+
 async def refine(raw_text: str, gateway: ModelGateway) -> Result[IssueDraft, Error]:
     messages = [
         ChatMessage(role="system", content=REFINE_SYSTEM),
