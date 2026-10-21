@@ -25,6 +25,7 @@ _SCOPE_PROMPT = (
     "(AGENTS.md, código, issues). Economia de token (F): use code-intel (símbolos/refs) e ripgrep "
     "(texto literal) — não leia arquivos inteiros à toa.\n\n"
     "Pedido do humano:\n{idea}\n\n"
+    "Memória do projeto (fatos/decisões anteriores — use se relevante):\n{memory}\n\n"
     "Produza uma ISSUE acionável (DoR), respondendo SÓ neste formato, sem texto extra:\n"
     "TITLE: <título curto em Conventional Commits>\n"
     "BODY:\n## Contexto\n<por quê, com base no repo real>\n"
@@ -38,7 +39,10 @@ async def run_scope(
     engine: CodingEngine, run: Run, *, idea: str, workdir: str, store: Store, now: datetime
 ) -> IssueDraft:
     """Roda o motor em leitura pra transformar a ideia num rascunho fundamentado no repo."""
-    prompt = _SCOPE_PROMPT.format(repo=run.repo, workdir=workdir, idea=idea)
+    # second brain (trilha G): recall determinístico (FTS, sem LLM) dos fatos/decisões relevantes
+    facts = await store.recall(run.tenant, idea, 5)
+    memory = "\n".join(f"- [{f.kind}] {f.text}" for f in facts) or "(sem fatos registrados ainda)"
+    prompt = _SCOPE_PROMPT.format(repo=run.repo, workdir=workdir, idea=idea, memory=memory)
     started = await engine.start(
         RunSpec(tenant=run.tenant, repo=run.repo, workdir=workdir, prompt=prompt)
     )

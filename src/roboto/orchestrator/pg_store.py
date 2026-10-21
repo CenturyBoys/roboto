@@ -20,6 +20,7 @@ from roboto.orchestrator.model import (
     InteractionKind,
     InteractionStatus,
     LlmCall,
+    MemoryFact,
     OutboxItem,
     Run,
     RunState,
@@ -38,6 +39,13 @@ _INTERACTION_COLS = (
     "id, tenant, execution_id, session_id, kind, prompt, options, status, "
     "channel_message_id, answer, answered_by, created_at, expires_at, answered_at"
 )
+
+
+def _row_to_fact(row: Any) -> MemoryFact:
+    return MemoryFact(
+        id=row["id"], tenant=row["tenant"], kind=row["kind"], ref=row["ref"],
+        text=row["text"], created_at=row["created_at"],
+    )
 
 
 def _row_to_run(row: Any) -> Run:
@@ -401,6 +409,27 @@ class PostgresStore:
                 )
                 for r in rows
             ]
+
+    async def remember(
+        self, tenant: str, text: str, *, kind: str, ref: str, now: datetime
+    ) -> MemoryFact:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "INSERT INTO memory_fact (tenant, kind, ref, text, created_at) "
+                "VALUES ($1,$2,$3,$4,$5) RETURNING id,tenant,kind,ref,text,created_at",
+                tenant, kind, ref, text, now,
+            )
+            return _row_to_fact(row)
+
+    async def recall(self, tenant: str, query: str, limit: int) -> list[MemoryFact]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT id,tenant,kind,ref,text,created_at FROM memory_fact "
+                "WHERE tenant = $1 AND fts @@ websearch_to_tsquery('portuguese', $2) "
+                "ORDER BY ts_rank(fts, websearch_to_tsquery('portuguese', $2)) DESC LIMIT $3",
+                tenant, query, limit,
+            )
+            return [_row_to_fact(r) for r in rows]
 
     async def get_channel_offset(self, tenant: str, channel: str) -> int | None:
         async with self._pool.acquire() as conn:

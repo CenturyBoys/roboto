@@ -47,6 +47,18 @@ class Run:
 
 
 @dataclass(frozen=True)
+class MemoryFact:
+    """Fato/decisão do second brain (trilha G). Verdade = texto; recall por FTS derivado."""
+
+    id: int
+    tenant: str
+    kind: str  # decisão | fato | handoff | arquitetura
+    ref: str  # issue/PR/épico relacionado (pode ser vazio)
+    text: str
+    created_at: datetime
+
+
+@dataclass(frozen=True)
 class OutboxItem:
     id: int
     tenant: str

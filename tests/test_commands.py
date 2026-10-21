@@ -28,6 +28,11 @@ def test_help_and_greetings() -> None:
         assert parse_command(t) == ("help", ""), t
 
 
+def test_remember() -> None:
+    assert parse_command("lembra: o rate limit usa Redis") == ("remember", "o rate limit usa Redis")
+    assert parse_command("anota que o deploy é no Fly") == ("remember", "que o deploy é no Fly")
+
+
 def test_new_idea_is_not_a_command() -> None:
     assert parse_command("quero um placar de vitórias por jogador") is None
     assert parse_command("adicionar botão de login") is None

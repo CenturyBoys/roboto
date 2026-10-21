@@ -15,6 +15,10 @@ import re
 _HELP = re.compile(
     r"^/?(?:ajuda|help|comandos?|menu|start|oi+|ol[áa]|e[ai]+|bom\s+dia|boa\s+(?:tarde|noite))\b"
 )
+# second brain (trilha G): "lembra: X" / "anota X" grava um fato na memória do projeto
+_REMEMBER = re.compile(
+    r"^/?(?:lembra(?:r)?|anota(?:r)?|nota)\s*:?\s+(.+)", re.IGNORECASE | re.DOTALL
+)
 _PICK = re.compile(r"^/?(?:pegar|pega|assumir|assume|trabalh\w*)\s+#?(\d+)\b")
 _LIST = re.compile(
     r"^/?(?:"
@@ -30,13 +34,17 @@ _ISSUE_REF = re.compile(r"(?:(?:^|\s)#(\d+)\b|\bissue\s+#?(\d+)\b)")
 
 
 def parse_command(text: str) -> tuple[str, str] | None:
-    """-> ('help','') | ('pick','<N>') | ('discuss','<N>') | ('list','') | None.
+    """-> help | remember | pick | discuss | list | None.
 
-    Ordem importa: ``help`` > ``pick`` (pega #N) > ``discuss`` (ref a #N) > ``list`` (sem número).
+    Ordem: ``help`` > ``remember`` (lembra: X) > ``pick`` > ``discuss`` (ref a #N) > ``list``.
     """
-    t = text.strip().lower()
+    raw = text.strip()
+    t = raw.lower()
     if _HELP.match(t):
         return ("help", "")
+    r = _REMEMBER.match(raw)  # no raw p/ preservar o caso do fato
+    if r:
+        return ("remember", r.group(1).strip())
     m = _PICK.match(t)
     if m:
         return ("pick", m.group(1))
