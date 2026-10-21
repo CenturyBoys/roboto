@@ -34,6 +34,18 @@ class _FakeLister:
         return Ok([(1, "primeira"), (2, "segunda")])
 
 
+class _SeqGW:
+    """Gateway que devolve respostas em sequência (um complete por vez)."""
+
+    def __init__(self, replies: list[str]) -> None:
+        self._r = replies
+
+    async def complete(self, messages, tier):  # type: ignore[no-untyped-def]
+        from roboto.llm.port import Completion
+
+        return Ok(Completion(text=self._r.pop(0), model="stub", tokens_in=0, tokens_out=0))
+
+
 async def _dispatch(  # type: ignore[no-untyped-def]
     store: InMemoryStore, msg: InboundMessage, github: object = None
 ):
@@ -62,6 +74,33 @@ async def test_approval_ok_creates_issue() -> None:
     assert out.value.outcome is InboundOutcome.CREATED
     effects = await store.pending_effects(10)
     assert any(e.kind == "create_issue" for e in effects)
+
+
+async def test_conversation_asks_then_proposes() -> None:
+    # Inc 2: ideia vaga -> Potter PERGUNTA; humano responde em reply -> Potter PROPÕE
+    store = InMemoryStore()
+    draft = (
+        "TITLE: feat: placar\nBODY:\n## Contexto\nx\n## Escopo\ny\n"
+        "## Critérios de aceite\n- [ ] z\n## DoD\n- [ ] ci\n## Fora de escopo\nnada"
+    )
+    gw = _SeqGW(["PERGUNTA: qual o escopo e os critérios?", draft, "VEREDITO: aprovado"])
+
+    async def _disp(m: InboundMessage):  # type: ignore[no-untyped-def]
+        return await dispatch_inbound(
+            m, repo="acme/app", gateway=gw, transcriber=StubTranscriber(),  # type: ignore[arg-type]
+            store=store, now=_T0,
+        )
+
+    out1 = await _disp(_msg("quero um placar", mid="1"))
+    assert isinstance(out1, Ok) and out1.value.outcome is InboundOutcome.REFINED
+    q = (await store.pending_interactions("acme", 10))[0]
+    assert q.kind is InteractionKind.QUESTION  # pediu mais info
+    await store.set_interaction_message_id(q.id, "900")
+
+    out2 = await _disp(_msg("escopo auth, critério: entra", reply_to="900", mid="2"))
+    assert isinstance(out2, Ok) and out2.value.outcome is InboundOutcome.REFINED
+    pend = await store.pending_interactions("acme", 10)
+    assert any(i.kind is InteractionKind.APPROVAL for i in pend)  # agora PROPÕE
 
 
 async def test_approval_decline_does_not_create() -> None:

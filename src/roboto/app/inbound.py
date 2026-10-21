@@ -14,7 +14,7 @@ from typing import Protocol
 
 from roboto.app.commands import parse_command
 from roboto.app.human import handle_reply
-from roboto.app.refine import refine_to_issue
+from roboto.app.refine import continue_conversation, refine_to_issue
 from roboto.channels.model import InboundMessage
 from roboto.llm.port import ModelGateway, Transcriber
 from roboto.orchestrator.model import Error, GithubEvent, Interaction, InteractionKind, RunState
@@ -64,12 +64,18 @@ async def dispatch_inbound(
             return Err(reply.error)
         if reply.value.matched:
             inter = reply.value.interaction
-            if (
-                reply.value.accepted
-                and inter is not None
-                and inter.kind is InteractionKind.APPROVAL
-            ):
-                return await _resolve_issue_approval(inter, msg, store=store, now=now)
+            if reply.value.accepted and inter is not None:
+                if inter.kind is InteractionKind.APPROVAL:
+                    return await _resolve_issue_approval(inter, msg, store=store, now=now)
+                if inter.kind is InteractionKind.QUESTION:
+                    run = await store.get_run(inter.execution_id)
+                    if run is not None and run.agent == "refiner":  # conversa de refino (Inc 2)
+                        cont = await continue_conversation(
+                            run, msg, gateway=gateway, store=store, now=now
+                        )
+                        if isinstance(cont, Err):
+                            return Err(cont.error)
+                        return Ok(InboundResult(InboundOutcome.REFINED))
             return Ok(InboundResult(InboundOutcome.ANSWERED))
         clar = "Não localizei a pergunta — responda em *reply* à mensagem da decisão."
         return Ok(InboundResult(InboundOutcome.UNROUTED, clar))

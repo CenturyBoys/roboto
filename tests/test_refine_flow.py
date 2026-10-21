@@ -70,19 +70,19 @@ async def test_refine_semantic_reject_asks_clarification() -> None:
     assert isinstance(result, Ok)
     assert store._runs[result.value.id].state is RunState.WAITING
     effects = await store.pending_effects(10)
-    assert [e.kind for e in effects] == ["telegram_notify"]
-    assert "ajuste" in effects[0].payload["text"].lower()
+    assert [e.kind for e in effects] == ["telegram_question"]
+    assert "ajustar" in effects[0].payload["text"].lower()
 
 
 async def test_refine_incomplete_issue_asks_clarification() -> None:
     store = InMemoryStore()
     result = await _refine(store, _msg("faz algo"), reply="TITLE: X\nBODY: só uma linha")
     assert isinstance(result, Ok)
-    # gate barrou: execução em espera, SEM create_issue — só o pedido de esclarecimento
+    # gate barrou: conversa em espera, SEM create_issue — faz uma PERGUNTA pedindo o que falta
     assert store._runs[result.value.id].state is RunState.WAITING
     effects = await store.pending_effects(10)
-    assert [e.kind for e in effects] == ["telegram_notify"]
-    assert "incompleta" in effects[0].payload["text"].lower()
+    assert [e.kind for e in effects] == ["telegram_question"]
+    assert "falta" in effects[0].payload["text"].lower()
 
 
 async def test_refine_dedups_duplicate_message() -> None:
