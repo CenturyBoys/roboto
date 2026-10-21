@@ -164,6 +164,10 @@ async def test_process_pr_run_tick_claims_and_sets_state() -> None:
         now=lambda: _T0,
     )
     assert store._runs[run.id].state is RunState.VERIFYING  # type: ignore[attr-defined]
+    # sessão do motor (D23) gravada com o id nativo
+    sessions = await store.sessions_for_execution(run.id)
+    assert len(sessions) == 1
+    assert sessions[0].native_session_id == "stub-session"
     # medição de token (llm_call): grava o MOTOR (frontier) + o REVIEW (judge)
     calls = await store.llm_calls("acme", 10)
     assert len(calls) == 2
