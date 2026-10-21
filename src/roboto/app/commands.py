@@ -4,6 +4,7 @@ Parsing puro e determinístico (intenção, D30/Inc 2):
 - ``list``  — listar issues abertas (inclui perguntas tipo "qual issue dá pra fazer").
 - ``pick``  — pegar/atribuir a issue N ao fleet (dispara o ciclo).
 - ``discuss`` — falar sobre uma issue que JÁ existe (#N / "issue N"): buscar e conversar sobre ela.
+- ``help`` — saudação/ajuda ("ajuda", "/start", "oi"): manda o guia de uso (sem LLM).
 - ``None`` — texto sem comando = ideia NOVA (vai pro refino conversacional).
 """
 
@@ -11,6 +12,9 @@ from __future__ import annotations
 
 import re
 
+_HELP = re.compile(
+    r"^/?(?:ajuda|help|comandos?|menu|start|oi+|ol[áa]|e[ai]+|bom\s+dia|boa\s+(?:tarde|noite))\b"
+)
 _PICK = re.compile(r"^/?(?:pegar|pega|assumir|assume|trabalh\w*)\s+#?(\d+)\b")
 _LIST = re.compile(
     r"^/?(?:"
@@ -26,11 +30,13 @@ _ISSUE_REF = re.compile(r"(?:(?:^|\s)#(\d+)\b|\bissue\s+#?(\d+)\b)")
 
 
 def parse_command(text: str) -> tuple[str, str] | None:
-    """-> ('pick','<N>') | ('discuss','<N>') | ('list','') | None (não é comando).
+    """-> ('help','') | ('pick','<N>') | ('discuss','<N>') | ('list','') | None.
 
-    Ordem importa: ``pick`` (pega #N) > ``discuss`` (ref a #N/issue N) > ``list`` (sem número).
+    Ordem importa: ``help`` > ``pick`` (pega #N) > ``discuss`` (ref a #N) > ``list`` (sem número).
     """
     t = text.strip().lower()
+    if _HELP.match(t):
+        return ("help", "")
     m = _PICK.match(t)
     if m:
         return ("pick", m.group(1))

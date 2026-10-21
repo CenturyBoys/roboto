@@ -94,6 +94,22 @@ async def dispatch_inbound(
     return Ok(InboundResult(InboundOutcome.REFINED))
 
 
+_HELP_TEXT = (
+    "⚡ *Potter* — como falar comigo:\n\n"
+    "💡 *Ideia nova* (vira issue)\n"
+    "   ex.: \"quero um placar de vitórias por jogador\"\n"
+    "   eu entrevisto, proponho a issue e só crio com seu *ok*.\n\n"
+    "📋 *Falar de uma issue que já existe*\n"
+    "   ex.: \"sobre a #180\" · \"a #180 precisa cobrir X\"\n"
+    "   eu busco a issue e converso sobre ela; edito só com seu *ok*.\n\n"
+    "🔎 *Listar*\n"
+    "   \"issues\" · \"qual issue dá pra fazer\"\n\n"
+    "🛠️ *Trabalhar / implementar*\n"
+    "   \"pega #180\" — checo o DoR; se faltar, te peço aqui.\n\n"
+    "Regras: responda minhas perguntas em *reply*; eu nunca crio/edito/mergeio "
+    "sem seu *ok*. Mande \"ajuda\" pra ver isso de novo."
+)
+
 _AFFIRM = {
     "ok", "okay", "sim", "pode", "cria", "criar", "blz", "beleza", "yes", "y",
     "s", "manda", "vai", "isso", "👍", "confirmo", "confirmar",
@@ -152,6 +168,9 @@ async def _run_command(
     github: IssueLister | None,
 ) -> Result[InboundResult, Error]:
     kind, arg = command
+    if kind == "help":
+        return Ok(InboundResult(InboundOutcome.LISTED, _HELP_TEXT))
+
     if kind == "discuss":  # falar sobre issue que já existe -> busca e conversa SOBRE ela (D30)
         if github is None:
             return Ok(InboundResult(InboundOutcome.ANSWERED, "Não consigo acessar as issues."))
