@@ -9,7 +9,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from roboto.app.effects import GithubIssuePublisher, TelegramPublisher, TelegramQuestionPublisher
+from roboto.app.effects import (
+    GithubIssuePublisher,
+    GithubIssueUpdater,
+    TelegramPublisher,
+    TelegramQuestionPublisher,
+)
 from roboto.channels.telegram import TelegramChannel
 from roboto.config import Config
 from roboto.github.app import GithubAppClient
@@ -46,6 +51,7 @@ def build_adapters(config: Config, store: Store | None = None) -> Adapters:
     )
     handlers: dict[str, Publisher] = {
         "create_issue": GithubIssuePublisher(github),
+        "update_issue": GithubIssueUpdater(github),
         "telegram_notify": TelegramPublisher(channel),
     }
     if store is not None:  # perguntas precisam guardar o message_id na interação (D24)

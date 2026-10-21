@@ -27,11 +27,22 @@ def _msg(text: str, *, reply_to: str | None = None, mid: str = "1") -> InboundMe
     )
 
 
+_ISSUE_BODY = (
+    "## Contexto\nx\n## Escopo\ny\n## Critérios de aceite\n- [ ] z\n## DoD\n- [ ] ci"
+)
+
+
 class _FakeLister:
+    def __init__(self) -> None:
+        self.updated: list[tuple[int, str]] = []
+
     async def list_open_issues(
         self, repo: str, *, limit: int = 20
     ) -> Result[list[tuple[int, str]], Error]:
         return Ok([(1, "primeira"), (2, "segunda")])
+
+    async def get_issue(self, repo: str, number: int) -> Result[tuple[str, str], Error]:
+        return Ok((f"feat: issue {number}", _ISSUE_BODY))
 
 
 class _SeqGW:
@@ -101,6 +112,21 @@ async def test_conversation_asks_then_proposes() -> None:
     assert isinstance(out2, Ok) and out2.value.outcome is InboundOutcome.REFINED
     pend = await store.pending_interactions("acme", 10)
     assert any(i.kind is InteractionKind.APPROVAL for i in pend)  # agora PROPÕE
+
+
+async def test_discuss_existing_issue_proposes_edit_not_create() -> None:
+    # "sobre a issue 180" -> busca #180 e conversa; "ok" -> EDITA a existente (não cria nova) — D30
+    store = InMemoryStore()
+    out = await _dispatch(store, _msg("sobre a issue 180", mid="1"), github=_FakeLister())
+    assert isinstance(out, Ok) and out.value.outcome is InboundOutcome.DISCUSSING
+    pend = await store.pending_interactions("acme", 10)
+    appr = next(i for i in pend if i.kind is InteractionKind.APPROVAL)
+    await store.set_interaction_message_id(appr.id, "900")
+    out2 = await _dispatch(store, _msg("ok", reply_to="900", mid="2"), github=_FakeLister())
+    assert isinstance(out2, Ok) and out2.value.outcome is InboundOutcome.EDITED
+    effects = await store.pending_effects(10)
+    assert any(e.kind == "update_issue" and e.payload["number"] == "180" for e in effects)
+    assert not any(e.kind == "create_issue" for e in effects)
 
 
 async def test_approval_decline_does_not_create() -> None:
