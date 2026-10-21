@@ -42,6 +42,10 @@ async def test_viewer_is_served() -> None:
         resp = await c.get("/")
         assert resp.status_code == 200
         assert "Potter" in resp.text  # a página (dados exigem o token via JS)
+        fav = await c.get("/favicon.svg")
+        assert fav.status_code == 200
+        assert fav.headers["content-type"].startswith("image/svg")
+        assert "path" in fav.text  # o raio
 
 
 async def test_costs_endpoint() -> None:
