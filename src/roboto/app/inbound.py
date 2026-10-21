@@ -14,7 +14,7 @@ from typing import Protocol
 
 from roboto.app.commands import parse_command
 from roboto.app.human import handle_reply
-from roboto.app.refine import continue_conversation, refine_to_issue
+from roboto.app.refine import continue_conversation, discuss_issue, refine_to_issue
 from roboto.channels.model import InboundMessage
 from roboto.llm.port import ModelGateway, Transcriber
 from roboto.orchestrator.model import Error, GithubEvent, Interaction, InteractionKind, RunState
@@ -30,12 +30,16 @@ class InboundOutcome(StrEnum):
     LISTED = "listed"  # operador listou issues abertas
     CREATED = "created"  # humano aprovou o rascunho (reply ok) -> issue enfileirada
     DECLINED = "declined"  # humano não aprovou o rascunho -> descartado
+    EDITED = "edited"  # humano aprovou EDIÇÃO de issue existente -> update enfileirado
+    DISCUSSING = "discussing"  # conversa sobre issue existente aberta
 
 
 class IssueLister(Protocol):
     async def list_open_issues(
         self, repo: str, *, limit: int = 20
     ) -> Result[list[tuple[int, str]], Error]: ...
+
+    async def get_issue(self, repo: str, number: int) -> Result[tuple[str, str], Error]: ...
 
 
 @dataclass(frozen=True)
@@ -56,7 +60,9 @@ async def dispatch_inbound(
 ) -> Result[InboundResult, Error]:
     command = parse_command(msg.text)
     if command is not None:
-        return await _run_command(command, msg, repo=repo, store=store, now=now, github=github)
+        return await _run_command(
+            command, msg, repo=repo, gateway=gateway, store=store, now=now, github=github
+        )
 
     if msg.reply_to_message_id:
         reply = await handle_reply(store, msg, now)
@@ -111,7 +117,20 @@ async def _resolve_issue_approval(
     title = inter.options[0] if inter.options else "(sem título)"
     body = inter.options[1] if len(inter.options) > 1 else ""
     await store.set_state(run.id, RunState.VERIFYING, now)
-    await store.enqueue_effect(
+    if run.issue_id.isdigit():  # EDIÇÃO de issue existente (discuss) — D30: corpo + trilha
+        note = f"Editado via Telegram a pedido do operador (chat {msg.chat_id})."
+        await store.enqueue_effect(
+            run.tenant, run.id, "update_issue",
+            {"repo": run.repo, "number": run.issue_id, "title": title, "body": body, "note": note},
+            f"update:{run.id}", now,
+        )
+        await store.enqueue_effect(
+            run.tenant, run.id, "telegram_notify",
+            {"chat_id": msg.chat_id, "text": f"✅ Issue #{run.issue_id} atualizada."},
+            f"ack:{run.id}", now,
+        )
+        return Ok(InboundResult(InboundOutcome.EDITED))
+    await store.enqueue_effect(  # CRIAÇÃO de issue nova
         run.tenant, run.id, "create_issue",
         {"repo": run.repo, "title": title, "body": body}, f"issue:{run.id}", now,
     )
@@ -127,11 +146,27 @@ async def _run_command(
     msg: InboundMessage,
     *,
     repo: str,
+    gateway: ModelGateway,
     store: Store,
     now: datetime,
     github: IssueLister | None,
 ) -> Result[InboundResult, Error]:
     kind, arg = command
+    if kind == "discuss":  # falar sobre issue que já existe -> busca e conversa SOBRE ela (D30)
+        if github is None:
+            return Ok(InboundResult(InboundOutcome.ANSWERED, "Não consigo acessar as issues."))
+        got = await github.get_issue(repo, int(arg))
+        if isinstance(got, Err):
+            return Ok(InboundResult(InboundOutcome.ANSWERED, f"Não achei a issue #{arg}."))
+        title, body = got.value
+        disc = await discuss_issue(
+            msg, repo=repo, number=int(arg), title=title, body=body,
+            gateway=gateway, store=store, now=now,
+        )
+        if isinstance(disc, Err):
+            return Err(disc.error)
+        return Ok(InboundResult(InboundOutcome.DISCUSSING))
+
     if kind == "pick":
         event = GithubEvent(
             tenant=msg.tenant,

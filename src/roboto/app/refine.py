@@ -67,6 +67,35 @@ async def refine_to_issue(
                                  gateway=metered, now=now)
 
 
+async def discuss_issue(
+    msg: InboundMessage, *, repo: str, number: int, title: str, body: str,
+    gateway: ModelGateway, store: Store, now: datetime,
+) -> Result[Run, Error]:
+    """Fala sobre issue que JÁ existe (D30): conversa ancorada no corpo atual -> propõe edição."""
+    key = f"tg:discuss:{msg.tenant}:{msg.chat_id}:{number}:{msg.message_id or 'x'}"
+    event = GithubEvent(
+        tenant=msg.tenant, repo=repo, issue_id=str(number), agent="refiner",
+        idempotency_key=key, origin_chat_id=msg.chat_id,
+    )
+    run, created = await store.insert_run_if_absent(event, now)
+    if not created:
+        return Ok(run)
+
+    seed_text = (
+        f"Estamos AJUSTANDO a issue #{number} que JÁ existe (não crie outra). Corpo atual:\n"
+        f"TÍTULO: {title}\n{body}\n\n"
+        f"Pedido do humano: {msg.text}\n"
+        "Se faltar clareza, PERGUNTE; quando claro, proponha o NOVO corpo (TITLE/BODY) ajustado."
+    )
+    seed = await store.create_interaction(
+        msg.tenant, run.id, InteractionKind.QUESTION, _SEED, [], now
+    )
+    await store.answer_interaction(seed.id, seed_text, msg.user_id, now)
+    metered = MeteredGateway(gateway, store, tenant=msg.tenant, run_id=run.id, now=now)
+    return await _ask_or_propose(run, [("user", seed_text)], chat_id=msg.chat_id, store=store,
+                                 gateway=metered, now=now)
+
+
 async def continue_conversation(
     run: Run, msg: InboundMessage, *, gateway: ModelGateway, store: Store, now: datetime
 ) -> Result[Run, Error]:

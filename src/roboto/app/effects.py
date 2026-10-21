@@ -30,6 +30,26 @@ class GithubIssuePublisher:
         return Ok(None)
 
 
+class GithubIssueUpdater:
+    """Efeito ``update_issue`` (D30) -> edita o corpo da issue + comenta a trilha (quem/por quê)."""
+
+    def __init__(self, client: GithubAppClient) -> None:
+        self._client = client
+
+    async def send(self, item: OutboxItem) -> Result[None, Error]:
+        p = item.payload
+        number = int(p["number"])
+        upd = await self._client.update_issue(
+            str(p["repo"]), number, title=str(p["title"]), body=str(p["body"])
+        )
+        if isinstance(upd, Err):
+            return Err(upd.error)
+        note = str(p.get("note") or "")
+        if note:  # 1 comentário de trilha (invariante D30: toda edição deixa rastro)
+            await self._client.comment_pr(str(p["repo"]), number, note)
+        return Ok(None)
+
+
 class TelegramPublisher:
     """Efeito ``telegram_notify`` -> envia mensagem pelo canal (descarta o message_id)."""
 

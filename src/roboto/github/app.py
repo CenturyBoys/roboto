@@ -140,6 +140,31 @@ class GithubAppClient:
             if owns:
                 await client.aclose()
 
+    async def update_issue(
+        self, repo: str, number: int, *, title: str, body: str
+    ) -> Result[None, Error]:
+        owns = self._client is None
+        client = (
+            self._client if self._client is not None else httpx.AsyncClient(timeout=self._timeout)
+        )
+        try:
+            token = await self._installation_token(client)
+            resp = await client.patch(
+                f"{self._api}/repos/{repo}/issues/{number}",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                },
+                json={"title": title, "body": body},
+            )
+            resp.raise_for_status()
+            return Ok(None)
+        except httpx.HTTPError as exc:
+            return Err(Error("github", f"update_issue {repo}#{number}: {exc}"))
+        finally:
+            if owns:
+                await client.aclose()
+
     async def list_open_issues(
         self, repo: str, *, limit: int = 20
     ) -> Result[list[tuple[int, str]], Error]:
