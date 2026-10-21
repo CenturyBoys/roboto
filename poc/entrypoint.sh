@@ -39,6 +39,14 @@ if [ -n "${POC_TASK:-}" ]; then
   exec python3 poc/run_engine.py "$POC_TASK"
 fi
 
-# 4b) daemon completo: aplica migrações e sobe servidor ASGI + laços (motor conforme ROBOTO_ENGINE)
+# 4b) terminal web (ttyd) servindo um tmux no /work — pra assistir/operar o container no browser (D25)
+if command -v ttyd >/dev/null 2>&1; then
+  cd /work 2>/dev/null || true
+  ttyd -p 7681 -W -t fontSize=14 -t 'theme={"background":"#0f1115"}' \
+    tmux new -A -s potter >/tmp/ttyd.log 2>&1 &
+  cd /opt/roboto
+fi
+
+# 4c) daemon completo: aplica migrações e sobe servidor ASGI + laços (motor conforme ROBOTO_ENGINE)
 python3 poc/migrate.py
 exec python3 -m roboto
