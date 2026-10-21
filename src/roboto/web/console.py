@@ -12,12 +12,19 @@ from datetime import UTC, datetime
 
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse
+from starlette.responses import HTMLResponse, JSONResponse, Response
 from starlette.routing import Route
 
 from roboto.orchestrator.model import Interaction, LlmCall, Run, RunState, Session
 from roboto.orchestrator.store import Store
 from roboto.web.viewer import VIEWER_HTML
+
+# favicon: raio ⚡ (amarelo Potter) em quadrado escuro arredondado
+_FAVICON_SVG = (
+    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>"
+    "<rect width='32' height='32' rx='7' fill='#0f1115'/>"
+    "<path d='M19 3 L8 18 h6 l-3 11 L24 13 h-7 z' fill='#ffd21e'/></svg>"
+)
 
 
 def _run_dict(run: Run) -> dict[str, object]:
@@ -79,6 +86,9 @@ def console_routes(
 
     async def viewer(request: Request) -> HTMLResponse:
         return HTMLResponse(VIEWER_HTML)  # página pública; os dados exigem o bearer (via JS)
+
+    async def favicon(request: Request) -> Response:
+        return Response(_FAVICON_SVG, media_type="image/svg+xml")
 
     async def healthz(request: Request) -> JSONResponse:
         return JSONResponse({"ok": True})
@@ -152,6 +162,8 @@ def console_routes(
 
     return [
         Route("/", viewer),
+        Route("/favicon.svg", favicon),
+        Route("/favicon.ico", favicon),
         Route("/healthz", healthz),
         Route("/executions", list_executions),
         Route("/executions/{run_id:int}", execution_detail),

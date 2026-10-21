@@ -7,6 +7,8 @@ cancelar/retentar/terminal por execução.
 
 VIEWER_HTML = """<!doctype html>
 <html lang="pt"><head><meta charset="utf-8"><title>Potter · console</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="/favicon.ico">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
  :root{--bg:#0f1115;--card:#171a21;--fg:#e8e9ec;--muted:#8a909c;--accent:#ffd21e;--line:#272b35}
