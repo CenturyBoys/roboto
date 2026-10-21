@@ -102,14 +102,29 @@ async def discuss_issue(
     return Ok(run)
 
 
+def _digest(body: str) -> str:
+    """Resumo curto e legível no celular: 1 linha por seção (## X -> '• X: ...'), fiel."""
+    sections: list[str] = []
+    current: str | None = None
+    for raw in body.splitlines():
+        s = raw.strip()
+        if s.startswith("#"):
+            current = s.lstrip("# ").strip()
+        elif s and current is not None:
+            val = s.lstrip("-*[] ").strip()
+            if val:
+                sections.append(f"• {current}: {val[:90]}")
+                current = None  # só a 1ª linha de cada seção
+    if sections:
+        return "\n".join(sections[:5])
+    flat = " ".join(body.split())
+    return flat[:200] + ("…" if len(flat) > 200 else "")
+
+
 def _issue_opening(number: int, title: str, body: str, url: str) -> str:
-    excerpt = body.strip()
-    if len(excerpt) > 500:
-        excerpt = excerpt[:500] + "…"
     return (
-        f"📋 *Issue #{number}: {title}*\n🔗 {url}\n\n{excerpt}\n\n"
-        "O que você quer? Me diz o que *entender* ou *ajustar* (eu proponho a edição, você "
-        f"aprova), ou manda *pega #{number}* pra eu implementar."
+        f"📋 *#{number}* · {title}\n🔗 {url}\n\n{_digest(body)}\n\n"
+        f"O que você quer? *entender* · *ajustar* · *pega #{number}*"
     )
 
 
@@ -198,11 +213,7 @@ async def _resolve_text(msg: InboundMessage, transcriber: Transcriber) -> Result
 
 
 def _proposal_text(draft: IssueDraft) -> str:
-    body = draft.body.strip()
-    if len(body) > 600:
-        body = body[:600] + "…"
     return (
-        f"📋 Proponho criar esta issue:\n\n*{draft.title}*\n\n{body}\n\n"
-        "Responde em *reply* com *ok* que eu crio — ou diga o que ajustar "
-        "(não crio nada sem o seu ok)."
+        f"📋 Proponho criar:\n*{draft.title}*\n\n{_digest(draft.body)}\n\n"
+        "Responde *ok* (em reply) que eu crio — ou diga o que ajustar."
     )
