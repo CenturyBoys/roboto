@@ -77,12 +77,20 @@ async def run_pr_cycle(
         if feedback:
             prompt += "\nCorrija os pontos do review:\n- " + "\n- ".join(feedback)
         spec = RunSpec(tenant=run.tenant, repo=run.repo, workdir=workdir, prompt=prompt)
-        await engine.start(spec)
+        started = await engine.start(spec)
         tin = tout = 0
         async for event in engine.events():  # deixa o motor editar o repo
             if event.kind is EngineEventKind.FINISHED:
                 tin, tout = event.tokens_in, event.tokens_out
-        if store is not None and now is not None:  # medição de token (D10/L): uso real do motor
+        if store is not None and now is not None:
+            # sessão do motor (D23): registra a sessão + o id NATIVO do Claude Code (p/ resume)
+            session = await store.create_session(run.tenant, run.id, engine.engine, now)
+            native = getattr(engine, "session_id", "") or (
+                started.value if isinstance(started, Ok) else ""
+            )
+            if native:
+                await store.set_native_session(session.id, native, now)
+            # medição de token (D10/L): uso real do motor
             await store.record_llm_call(
                 tenant=run.tenant,
                 run_id=run.id,
