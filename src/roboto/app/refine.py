@@ -93,7 +93,8 @@ async def discuss_issue(
     await store.answer_interaction(seed.id, seed_text, msg.user_id, now)
 
     # abertura DETERMINÍSTICA: traz os detalhes fiéis (sem LLM, sem alucinar) e pergunta a intenção
-    opening = _issue_opening(number, title, body)
+    url = f"https://github.com/{repo}/issues/{number}"
+    opening = _issue_opening(number, title, body, url)
     inter = await store.create_interaction(
         msg.tenant, run.id, InteractionKind.QUESTION, opening, [], now
     )
@@ -101,12 +102,12 @@ async def discuss_issue(
     return Ok(run)
 
 
-def _issue_opening(number: int, title: str, body: str) -> str:
+def _issue_opening(number: int, title: str, body: str, url: str) -> str:
     excerpt = body.strip()
     if len(excerpt) > 500:
         excerpt = excerpt[:500] + "…"
     return (
-        f"📋 *Issue #{number}: {title}*\n\n{excerpt}\n\n"
+        f"📋 *Issue #{number}: {title}*\n🔗 {url}\n\n{excerpt}\n\n"
         "O que você quer? Me diz o que *entender* ou *ajustar* (eu proponho a edição, você "
         f"aprova), ou manda *pega #{number}* pra eu implementar."
     )
