@@ -205,8 +205,13 @@ grande (determinismo + baixo custo de manutenção/token).
    **SSE** em `GET /executions/{id}/events` (backlog + live, bearer + isolamento). No front, painel
    "Feed ao vivo" no detalhe consome via fetch-stream (EventSource não manda Authorization). *Ver o
    que o Claude faz sem terminal cru.* Validado sob uvicorn real (curl `-N`).
-3. **HITL no front** — unificar o ciclo real com o protocolo de interação (`drive_turn`) + endpoint
-   p/ responder interação + inbox priorizada. → *responder o motor sem Telegram*.
+3. ✅ **HITL no front** *(feito 2026-10-22)* — inbox de interações pendentes com resposta pelo
+   cockpit: decisão (botões por opção) ou pergunta aberta (texto). Endpoint
+   `POST /interactions/{id}/answer` (bearer + isolamento D17) usa o **mesmo `answer_interaction`** do
+   reply do Telegram (1ª resposta válida vence, §6). *Responder o motor sem Telegram.*
+   **Pendente (quando a interatividade do motor entrar):** unificar `run_pr_cycle` com o protocolo do
+   `drive_turn` pra que as perguntas do caminho real cheguem à inbox, e o **resume** pós-resposta
+   (hoje a resposta é registrada como no Telegram; retomar é do motor — D22, casa com a Fatia 5).
 4. **Custo agregado + diff** — agregação por issue/execução; surfacar `get_pr_diff` (+ comentário→agente).
 5. **Co-piloto (Modo B)** — PoC `ClaudeSDKClient` (`respond`/`interrupt` reais) → chat bidirecional.
 

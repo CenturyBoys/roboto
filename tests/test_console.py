@@ -169,6 +169,34 @@ async def test_events_endpoint_auth_and_isolation() -> None:
         assert (await c.get(f"/executions/{other}/events", headers=_AUTH)).status_code == 404
 
 
+async def test_answer_interaction_from_console() -> None:
+    store = InMemoryStore()
+    run_id = await _seed(store)
+    it = await store.create_interaction("acme", run_id, InteractionKind.QUESTION, "qual?", [], _T0)
+    path = f"/interactions/{it.id}/answer"
+    async with _client(store) as c:
+        assert (await c.post(path, json={"answer": "x"})).status_code == 401  # sem token
+        assert (await c.post(path, headers=_AUTH, json={"answer": " "})).status_code == 400  # vazio
+        ausente = await c.post("/interactions/9999/answer", headers=_AUTH, json={"answer": "x"})
+        assert ausente.status_code == 404
+        ok = await c.post(path, headers=_AUTH, json={"answer": "Redis"})
+        assert ok.status_code == 200
+        assert ok.json() == {"id": it.id, "accepted": True, "status": "answered"}
+        segunda = (await c.post(path, headers=_AUTH, json={"answer": "DB"})).json()
+        assert segunda["accepted"] is False  # 1ª resposta válida vence (§6)
+    answered = await store.get_interaction(it.id)
+    assert answered is not None and answered.answer == "Redis"
+
+
+async def test_answer_interaction_tenant_isolation() -> None:
+    store = InMemoryStore()
+    other_run = await _seed(store, tenant="other", key="k2")
+    it = await store.create_interaction("other", other_run, InteractionKind.QUESTION, "q", [], _T0)
+    async with _client(store) as c:  # console é do tenant acme
+        resp = await c.post(f"/interactions/{it.id}/answer", headers=_AUTH, json={"answer": "x"})
+        assert resp.status_code == 404
+
+
 async def test_pending_interactions_and_terminal() -> None:
     store = InMemoryStore()
     run_id = await _seed(store)

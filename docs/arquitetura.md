@@ -89,7 +89,8 @@ run (running)
 | Endpoint | Mostra | Plotado no viewer? |
 |---|---|---|
 | `/executions` | lista de runs | ✅ |
-| `/interactions` | interações pendentes | ✅ |
+| `/interactions` | interações pendentes (inbox) | ✅ |
+| `/interactions/{id}/answer` | **responder HITL** pelo cockpit (Fatia 3; 1ª válida vence) | ✅ (inbox) |
 | `/costs` | tokens/custo (llm_call) | ✅ |
 | `/executions/{id}` | **detalhe**: run + **sessões** + **conversa completa** | ✅ (botão "ver") |
 | `/executions/{id}/terminal` | terminal do container (ttyd+tmux, D25) | ✅ (botão "Terminal") |

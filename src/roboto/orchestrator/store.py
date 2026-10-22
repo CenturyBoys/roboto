@@ -77,6 +77,8 @@ class Store(Protocol):
         self, interaction_id: int, channel_message_id: str
     ) -> None: ...
 
+    async def get_interaction(self, interaction_id: int) -> Interaction | None: ...
+
     async def get_interaction_by_message_id(
         self, tenant: str, channel_message_id: str
     ) -> Interaction | None: ...
@@ -325,6 +327,9 @@ class InMemoryStore:
             interaction, channel_message_id=channel_message_id
         )
         self._interaction_by_msg[(interaction.tenant, channel_message_id)] = interaction_id
+
+    async def get_interaction(self, interaction_id: int) -> Interaction | None:
+        return self._interactions.get(interaction_id)
 
     async def get_interaction_by_message_id(
         self, tenant: str, channel_message_id: str

@@ -21,6 +21,7 @@ export interface Session {
 
 export interface Interaction {
   id: number
+  execution_id: number
   kind: string
   prompt: string
   options: string[]
