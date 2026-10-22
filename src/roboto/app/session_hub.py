@@ -75,6 +75,19 @@ class LiveSession:
     def interrupt_requested(self) -> bool:
         return self._interrupt.is_set()
 
+    async def wait_control(self) -> None:
+        """Desbloqueia no INSTANTE em que interromper OU encerrar é pedido (fora do loop de stream),
+        pra o driver cortar o motor na hora — controles de parada são prioridade máxima."""
+        waiters = [
+            asyncio.ensure_future(self._interrupt.wait()),
+            asyncio.ensure_future(self._ended.wait()),
+        ]
+        try:
+            await asyncio.wait(waiters, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            for w in waiters:
+                w.cancel()
+
 
 class SessionHub:
     """Mapa execução→sessão viva. Compartilhado entre o driver do motor e o console."""
