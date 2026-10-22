@@ -4,6 +4,7 @@ import type {
   ExecutionDetail,
   Health,
   Interaction,
+  PrDiff,
   SetupStatus,
   Terminal,
 } from '@/types'
@@ -45,6 +46,7 @@ export const answerInteraction = (id: number, answer: string) =>
     body: JSON.stringify({ answer }),
   })
 export const getTerminal = (id: number) => api<Terminal>(`/executions/${id}/terminal`)
+export const getPrDiff = (id: number) => api<PrDiff>(`/executions/${id}/diff`)
 export const cancelExecution = (id: number) =>
   api<{ id: number; state: string }>(`/executions/${id}/cancel`, { method: 'POST' })
 export const retryExecution = (id: number) =>

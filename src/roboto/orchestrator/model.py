@@ -156,6 +156,17 @@ class SessionEvent:
 
 
 @dataclass(frozen=True)
+class ExecutionPr:
+    """PR + diff de uma execução — cache operacional p/ o cockpit (trilha O, Fatia 4)."""
+
+    execution_id: int
+    number: int
+    url: str
+    diff: str
+    updated_at: datetime
+
+
+@dataclass(frozen=True)
 class Error:
     """Erro como valor (D1). ``kind`` ∈ db | dispatch | effect | invalid_signature."""
 

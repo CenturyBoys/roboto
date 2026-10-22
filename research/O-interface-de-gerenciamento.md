@@ -212,7 +212,11 @@ grande (determinismo + baixo custo de manutenção/token).
    **Pendente (quando a interatividade do motor entrar):** unificar `run_pr_cycle` com o protocolo do
    `drive_turn` pra que as perguntas do caminho real cheguem à inbox, e o **resume** pós-resposta
    (hoje a resposta é registrada como no Telegram; retomar é do motor — D22, casa com a Fatia 5).
-4. **Custo agregado + diff** — agregação por issue/execução; surfacar `get_pr_diff` (+ comentário→agente).
+4. ✅ **Custo agregado + diff** *(feito 2026-10-22)* — `/costs` agrega **por execução** (`by_execution`)
+   e o detalhe mostra o **custo da execução** (`cost_for_execution`). Diff do PR persistido por
+   execução (`execution_pr`, migração `0008`) pelo ciclo de review; `GET /executions/{id}/diff` e
+   painel no detalhe (linhas +/−/@@ coloridas). **Pendente:** comentário-no-diff→agente (gate de
+   review interativo) fica pra depois da interatividade do motor (casa com a Fatia 5).
 5. **Co-piloto (Modo B)** — PoC `ClaudeSDKClient` (`respond`/`interrupt` reais) → chat bidirecional.
 
 ## 8. Perguntas em aberto (para o dono)

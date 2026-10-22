@@ -21,6 +21,34 @@ export function Costs() {
       <p className="mb-2 font-bold text-accent">
         Total: {data.totals.tokens} tokens · ${data.totals.cost_usd.toFixed(4)}
       </p>
+
+      {data.by_execution.length > 0 && (
+        <div className="mb-4">
+          <p className="mb-1 text-sm text-muted">Por execução</p>
+          <TableWrap>
+            <table className="w-full min-w-[320px] text-sm">
+              <thead>
+                <tr className="text-muted">
+                  <Th>execução</Th>
+                  <Th>tokens</Th>
+                  <Th>$</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.by_execution.map((e) => (
+                  <tr key={e.run_id} className="border-t border-border">
+                    <Td mono>E-{e.run_id}</Td>
+                    <Td mono>{e.tokens}</Td>
+                    <Td mono>${e.cost_usd.toFixed(4)}</Td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableWrap>
+        </div>
+      )}
+
+      <p className="mb-1 text-sm text-muted">Chamadas</p>
       <TableWrap>
       <table className="w-full min-w-[640px] text-sm">
         <thead>

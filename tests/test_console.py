@@ -103,6 +103,44 @@ async def test_costs_endpoint() -> None:
         assert len(data["calls"]) == 1
 
 
+async def test_costs_by_execution_aggregation() -> None:
+    store = InMemoryStore()
+    for rid, tin in ((1, 100), (1, 50), (2, 10)):
+        await store.record_llm_call(
+            tenant="acme", run_id=rid, provider="openrouter", model="m", tier="t",
+            tokens_in=tin, tokens_out=0, cost_usd=tin / 1000, now=_T0,
+        )
+    async with _client(store) as c:
+        data = (await c.get("/costs", headers=_AUTH)).json()
+        by = {e["run_id"]: e for e in data["by_execution"]}
+        assert by[1]["tokens"] == 150 and by[2]["tokens"] == 10  # soma por execução
+
+
+async def test_execution_detail_includes_cost() -> None:
+    store = InMemoryStore()
+    run_id = await _seed(store)
+    await store.record_llm_call(
+        tenant="acme", run_id=run_id, provider="o", model="m", tier="t",
+        tokens_in=300, tokens_out=200, cost_usd=0.5, now=_T0,
+    )
+    async with _client(store) as c:
+        detail = (await c.get(f"/executions/{run_id}", headers=_AUTH)).json()
+        assert detail["cost"] == {"tokens": 500, "cost_usd": 0.5}
+
+
+async def test_pr_diff_endpoint() -> None:
+    store = InMemoryStore()
+    run_id = await _seed(store)
+    async with _client(store) as c:
+        assert (await c.get(f"/executions/{run_id}/diff")).status_code == 401  # sem token
+        empty = (await c.get(f"/executions/{run_id}/diff", headers=_AUTH)).json()
+        assert empty["number"] is None and empty["diff"] == ""  # sem PR ainda
+    await store.set_execution_pr(run_id, 42, "https://gh/x/pull/42", "diff --git\n+ok", _T0)
+    async with _client(store) as c:
+        d = (await c.get(f"/executions/{run_id}/diff", headers=_AUTH)).json()
+        assert d["number"] == 42 and "+ok" in d["diff"]
+
+
 async def test_requires_auth() -> None:
     store = InMemoryStore()
     await _seed(store)
