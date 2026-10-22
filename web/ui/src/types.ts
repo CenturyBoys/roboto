@@ -50,6 +50,7 @@ export interface ExecutionDetail {
   sessions: Session[]
   interactions: Interaction[]
   cost: Money
+  live: boolean
 }
 
 export interface Costs {

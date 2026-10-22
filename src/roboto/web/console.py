@@ -235,12 +235,14 @@ def console_routes(
         sessions = await store.sessions_for_execution(run.id)
         interactions = await store.interactions_for_execution(run.id)
         tokens, cost = await store.cost_for_execution(run.id)  # custo da execução (Fatia 4)
+        live = hub is not None and hub.get(run.id) is not None  # co-piloto só em sessão interativa
         return JSONResponse(
             {
                 "execution": _run_dict(run),
                 "sessions": [_session_dict(s) for s in sessions],
                 "interactions": [_interaction_dict(i) for i in interactions],
                 "cost": {"tokens": tokens, "cost_usd": round(cost, 6)},
+                "live": live,
             }
         )
 
