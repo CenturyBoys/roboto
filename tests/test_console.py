@@ -8,7 +8,10 @@ from pathlib import Path
 import httpx
 import pytest
 
+from roboto.app.loops import process_refine_tick
 from roboto.app.session_hub import SessionHub
+from roboto.engines.port import EngineEvent, EngineEventKind
+from roboto.engines.stub import StubEngine
 from roboto.llm.port import ChatMessage, Completion, Tier
 from roboto.orchestrator.model import Engine, Error, GithubEvent, InteractionKind, RunState
 from roboto.orchestrator.store import InMemoryStore
@@ -225,6 +228,39 @@ async def test_issue_refine_without_model_is_409() -> None:
     async with _console(store) as c:  # sem gateway
         r = await c.post("/issues/1/refine", headers=_AUTH, json={"transcript": []})
         assert r.status_code == 409
+
+
+async def test_refine_engine_enqueues_run() -> None:
+    store = InMemoryStore()
+    async with _console(store, default_repo="acme/app") as c:
+        r = await c.post("/issues/180/refine-engine", headers=_AUTH)
+        assert r.status_code == 200
+        run = store._runs[r.json()["run_id"]]
+        assert run.agent == "refine" and run.issue_id == "180" and run.repo == "acme/app"
+
+
+async def test_process_refine_tick_drives_engine_reading_issue() -> None:
+    store = InMemoryStore()
+    ev = GithubEvent(
+        tenant="acme", repo="acme/app", issue_id="180", agent="refine", idempotency_key="k"
+    )
+    run, _ = await store.insert_run_if_absent(ev, _T0)
+    engine = StubEngine(
+        [
+            EngineEvent(EngineEventKind.MESSAGE, text="PROPOSTA: Contexto…"),
+            EngineEvent(EngineEventKind.FINISHED),
+        ]
+    )
+    github = _FakeIssues([], body="rate limit por IP")  # fornece get_issue
+    await process_refine_tick(
+        engine, store, github, tenant="acme", chat_id="c", now=lambda: _T0
+    )
+    # motor iniciado com prompt de refino que injeta o corpo da issue (contexto real)
+    assert engine.started and "Refine a issue #180" in engine.started[0].prompt
+    assert "rate limit por IP" in engine.started[0].prompt
+    # eventos do motor viraram feed ao vivo (session_event)
+    events = await store.session_events(run.id, 0, 10)
+    assert any(e.kind == "message" for e in events)
 
 
 async def test_requires_auth() -> None:

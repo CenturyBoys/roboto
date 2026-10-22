@@ -27,6 +27,7 @@ from roboto.app.session_hub import SessionHub
 from roboto.llm.port import ModelGateway
 from roboto.orchestrator.model import (
     Error,
+    GithubEvent,
     Interaction,
     InteractionKind,
     LlmCall,
@@ -428,6 +429,25 @@ def console_routes(
             )
         return JSONResponse({"question": s.question, "draft": None})
 
+    async def refine_with_engine(request: Request) -> JSONResponse:
+        # Refino engine-scoped (Fatia 6/C): enfileira run que o motor pega p/ ler o repo e propor.
+        if _unauthorized(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        repo = request.query_params.get("repo") or default_repo
+        number = int(request.path_params["number"])
+        if not repo:
+            return JSONResponse({"error": "repo não configurado"}, status_code=409)
+        when = datetime.now(UTC)
+        ev = GithubEvent(
+            tenant=tenant,
+            repo=repo,
+            issue_id=str(number),
+            agent="refine",
+            idempotency_key=f"refine:{repo}:{number}:{when.isoformat()}",
+        )
+        run, _ = await store.insert_run_if_absent(ev, when)
+        return JSONResponse({"run_id": run.id})
+
     return [
         *shell_routes(),
         Route("/healthz", healthz),
@@ -443,6 +463,7 @@ def console_routes(
         Route("/issues", list_issues),
         Route("/issues/{number:int}", issue_detail),
         Route("/issues/{number:int}/refine", issue_refine, methods=["POST"]),
+        Route("/issues/{number:int}/refine-engine", refine_with_engine, methods=["POST"]),
         Route("/interactions", pending_interactions),
         Route("/interactions/{interaction_id:int}/answer", answer_interaction, methods=["POST"]),
         Route("/costs", costs),

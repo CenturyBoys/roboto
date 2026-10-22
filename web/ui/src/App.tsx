@@ -116,7 +116,15 @@ export default function App() {
               <IssuesList onSelect={setSelectedIssue} />
             )}
             {view === 'issues' && selectedIssue !== null && (
-              <IssueRefine number={selectedIssue} onBack={() => setSelectedIssue(null)} />
+              <IssueRefine
+                number={selectedIssue}
+                onBack={() => setSelectedIssue(null)}
+                onOpenRun={(runId) => {
+                  setSelectedIssue(null)
+                  setView('execs')
+                  setSelected(runId)
+                }}
+              />
             )}
             {view === 'interactions' && <Interactions />}
             {view === 'costs' && <Costs />}

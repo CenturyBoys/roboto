@@ -52,6 +52,41 @@ async def process_run_tick(
     await drive_turn(engine, store, run=run, chat_id=chat_id, now=moment)
 
 
+async def process_refine_tick(
+    engine: CodingEngine,
+    store: Store,
+    github: IssueLister,
+    *,
+    tenant: str,
+    chat_id: str,
+    now: Callable[[], datetime],
+    lease_seconds: int = 1800,
+) -> None:
+    """Refino ENGINE-SCOPED (trilha O, Fatia 6/C): o motor LÊ o repo e propõe a issue fundamentada.
+
+    Pega um run `agent='refine'`, injeta o corpo atual da issue como contexto e roda o motor com um
+    prompt read-only (lê o repo, NÃO edita). Os eventos viram feed ao vivo (session_event). Fecha a
+    reclamação do refino cego: aqui o agente realmente lê o código (env.ts, usos de X, etc.).
+    """
+    moment = now()
+    run = await store.claim_next_queued(tenant, moment, lease_seconds, agent="refine")
+    if run is None:
+        return
+    contexto = ""
+    if run.issue_id.isdigit():
+        got = await github.get_issue(run.repo, int(run.issue_id))
+        if isinstance(got, Ok):
+            title, body = got.value
+            contexto = f"\n\nIssue atual — título: {title}\nCorpo atual:\n{body}"
+    prompt = (
+        f"Refine a issue #{run.issue_id} do repo {run.repo}.{contexto}\n\n"
+        "LEIA o repositório (código, AGENTS.md, arquivos citados) com Read/Grep para fundamentar. "
+        "NÃO edite arquivos nem abra PR. No fim, proponha a issue COMPLETA, com as seções "
+        "**Contexto**, **Escopo**, **Critérios de aceite** (itens '- [ ]') e **DoD**."
+    )
+    await drive_turn(engine, store, run=run, chat_id=chat_id, now=moment, prompt=prompt)
+
+
 async def poll_tick(
     channel: Channel,
     store: Store,
