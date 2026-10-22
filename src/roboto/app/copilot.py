@@ -74,11 +74,22 @@ async def drive_session(
     ) -> dict[str, object]:
         return {}  # workaround (SDK >=0.2.140): hook PreToolUse mantém o stream p/ o can_use_tool
 
+    # co-piloto CONVERSACIONAL (não agente autônomo): responde direto, lê o mínimo, não varre o repo
+    # sem o humano pedir. `max_turns` é o teto por mensagem (evita o motor "não parar").
+    copilot_system = (
+        "Você é um co-piloto conversacional dentro do cockpit, ajudando a discutir e refinar a "
+        "issue em contexto. Responda de forma DIRETA e CONCISA. Leia o repositório só quando for "
+        "necessário pra responder (Read/Grep pontuais) — NÃO faça varreduras longas nem trabalho "
+        "autônomo extenso sem o humano pedir. Ao refinar: faça no máximo UMA pergunta por vez OU "
+        "proponha um trecho curto, e pergunte antes de qualquer ação grande."
+    )
     options = ClaudeAgentOptions(
         cwd=workdir,
         permission_mode="default",  # é o que faz o can_use_tool ser chamado (não bypass)
         can_use_tool=can_use_tool,
         hooks={"PreToolUse": [HookMatcher(matcher=None, hooks=[_keep_stream_open])]},
+        system_prompt=copilot_system,
+        max_turns=10,  # teto de passos por mensagem — contém o "faz coisa demais"
         model=model or None,
         mcp_servers=mcp_servers,
     )
