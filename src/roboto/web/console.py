@@ -317,6 +317,19 @@ def console_routes(
         live.request_interrupt()
         return JSONResponse({"ok": True})
 
+    async def end_session(request: Request) -> JSONResponse:
+        # Encerrar a sessão viva (co-piloto): acaba a conversa; o driver sai do laço e fecha.
+        if _unauthorized(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        run = await _owned_run(request)
+        if run is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        live = hub.get(run.id) if hub is not None else None
+        if live is None:
+            return JSONResponse({"error": "sessão não está viva"}, status_code=409)
+        live.request_end()
+        return JSONResponse({"ok": True})
+
     async def cancel(request: Request) -> JSONResponse:
         if _unauthorized(request):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
@@ -476,6 +489,7 @@ def console_routes(
         Route("/executions/{run_id:int}/diff", pr_diff),
         Route("/executions/{run_id:int}/message", steer_message, methods=["POST"]),
         Route("/executions/{run_id:int}/interrupt", interrupt_session, methods=["POST"]),
+        Route("/executions/{run_id:int}/end", end_session, methods=["POST"]),
         Route("/issues", list_issues),
         Route("/issues/{number:int}", issue_detail),
         Route("/issues/{number:int}/refine", issue_refine, methods=["POST"]),

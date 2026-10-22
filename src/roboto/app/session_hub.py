@@ -25,16 +25,31 @@ class LiveSession:
     _inbox: asyncio.Queue[str] = field(default_factory=asyncio.Queue)
     _approvals: dict[int, asyncio.Future[bool]] = field(default_factory=dict)
     _interrupt: asyncio.Event = field(default_factory=asyncio.Event)
+    _ended: asyncio.Event = field(default_factory=asyncio.Event)
 
     async def steer(self, text: str) -> None:
         await self._inbox.put(text)
 
-    async def next_input(self) -> str:
-        """Próxima mensagem humana (bloqueia até haver uma) — o driver chama entre turnos."""
-        return await self._inbox.get()
+    async def next_input(self) -> str | None:
+        """Próxima mensagem humana entre turnos; `None` se a sessão foi encerrada (parar)."""
+        getter: asyncio.Task[str] = asyncio.ensure_future(self._inbox.get())
+        ender: asyncio.Task[bool] = asyncio.ensure_future(self._ended.wait())
+        done, pending = await asyncio.wait({getter, ender}, return_when=asyncio.FIRST_COMPLETED)
+        for task in pending:
+            task.cancel()
+        if getter in done and not getter.cancelled():
+            return getter.result()
+        return None
 
     def has_input(self) -> bool:
         return not self._inbox.empty()
+
+    def request_end(self) -> None:
+        self._ended.set()
+
+    @property
+    def ended(self) -> bool:
+        return self._ended.is_set()
 
     def request_approval(self, interaction_id: int) -> asyncio.Future[bool]:
         """Driver: cria o Future que o `can_use_tool` vai aguardar (allow=True/deny=False)."""
@@ -52,6 +67,9 @@ class LiveSession:
 
     def request_interrupt(self) -> None:
         self._interrupt.set()
+
+    def clear_interrupt(self) -> None:
+        self._interrupt.clear()
 
     @property
     def interrupt_requested(self) -> bool:
