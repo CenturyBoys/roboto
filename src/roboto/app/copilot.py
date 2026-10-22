@@ -21,9 +21,8 @@ import asyncio
 from collections.abc import Callable
 from datetime import datetime
 
-from roboto.app.human import request_human_input
 from roboto.app.session_hub import SessionHub
-from roboto.orchestrator.model import Engine, InteractionKind, Run
+from roboto.orchestrator.model import Engine, Run
 from roboto.orchestrator.store import Store
 
 
@@ -40,40 +39,12 @@ async def drive_session(
     initial_prompt: str | None = None,
 ) -> None:
     # lazy: só o PoC do co-piloto precisa do SDK (tier-1 não importa isto)
-    from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, HookMatcher
-    from claude_agent_sdk.types import PermissionResultAllow, PermissionResultDeny
+    from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
     # Reutiliza a sessão que o starter já abriu (evita corrida: o console precisa
     # enxergar a LiveSession na PRÓXIMA mensagem, antes deste task rodar). Se
     # ninguém pré-abriu, abre aqui.
     live = hub.get(run.id) or hub.open(run.id)
-
-    async def can_use_tool(
-        tool_name: str, input_data: dict[str, object], context: object
-    ) -> object:
-        # vira aprovação humana (D24) e ESPERA a decisão (console/Telegram resolve o Future do hub)
-        summary = str(input_data.get("command") or input_data.get("file_path") or "")
-        created = await request_human_input(
-            store,
-            tenant=run.tenant,
-            execution_id=run.id,
-            chat_id=chat_id,
-            kind=InteractionKind.APPROVAL,
-            prompt=f"Aprovar {tool_name}? {summary}".strip(),
-            options=["aprovar", "negar"],
-            now=now(),
-        )
-        if not hasattr(created, "value"):  # falha ao registrar -> nega por segurança (H)
-            return PermissionResultDeny(message="não consegui registrar a aprovação")
-        approved = await live.request_approval(created.value.id)
-        if approved:
-            return PermissionResultAllow(updated_input=input_data)
-        return PermissionResultDeny(message="humano negou no cockpit")
-
-    async def _keep_stream_open(
-        input_data: object, tool_use_id: object, context: object
-    ) -> dict[str, object]:
-        return {}  # workaround (SDK >=0.2.140): hook PreToolUse mantém o stream p/ o can_use_tool
 
     # co-piloto CONVERSACIONAL (não agente autônomo): responde direto, lê o mínimo, não varre o repo
     # sem o humano pedir. `max_turns` é o teto por mensagem (evita o motor "não parar").
@@ -84,11 +55,11 @@ async def drive_session(
         "autônomo extenso sem o humano pedir. Ao refinar: faça no máximo UMA pergunta por vez OU "
         "proponha um trecho curto, e pergunte antes de qualquer ação grande."
     )
+    # bypassPermissions: leitura FLUIDA (não trava pedindo aprovação a cada ação, o que deixava o
+    # run em "awaiting" e impedia o interromper). O humano controla por interromper/encerrar.
     options = ClaudeAgentOptions(
         cwd=workdir,
-        permission_mode="default",  # é o que faz o can_use_tool ser chamado (não bypass)
-        can_use_tool=can_use_tool,
-        hooks={"PreToolUse": [HookMatcher(matcher=None, hooks=[_keep_stream_open])]},
+        permission_mode="bypassPermissions",
         system_prompt=copilot_system,
         max_turns=10,  # teto de passos por mensagem — contém o "faz coisa demais"
         model=model or None,
