@@ -67,6 +67,7 @@ export interface PrDiff {
 export interface Issue {
   number: number
   title: string
+  labels: string[]
 }
 
 export interface IssueList {

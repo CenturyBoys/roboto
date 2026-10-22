@@ -144,18 +144,20 @@ async def test_pr_diff_endpoint() -> None:
 
 
 class _FakeIssues:
-    def __init__(self, items: list[tuple[int, str]]) -> None:
+    def __init__(self, items: list[tuple[int, str, list[str]]]) -> None:
         self._items = items
 
-    async def list_open_issues(
+    async def list_open_issues_rich(
         self, repo: str, *, limit: int = 20
-    ) -> Result[list[tuple[int, str]], Error]:
+    ) -> Result[list[tuple[int, str, list[str]]], Error]:
         return Ok(self._items)
 
 
 async def test_issues_endpoint_lists_open() -> None:
     store = InMemoryStore()
-    src = _FakeIssues([(180, "rate limit distribuído"), (112, "targeting por parceiro")])
+    src = _FakeIssues(
+        [(180, "rate limit distribuído", ["feat", "roboto"]), (112, "targeting", ["feat"])]
+    )
     app = build_console(store, tenant="acme", token=_TOKEN, issues=src, default_repo="acme/app")
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://console"
@@ -165,6 +167,7 @@ async def test_issues_endpoint_lists_open() -> None:
         assert data["repo"] == "acme/app"
         assert [i["number"] for i in data["issues"]] == [180, 112]
         assert data["issues"][0]["title"] == "rate limit distribuído"
+        assert data["issues"][0]["labels"] == ["feat", "roboto"]
 
 
 async def test_issues_endpoint_unconfigured() -> None:

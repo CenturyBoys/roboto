@@ -38,11 +38,11 @@ from roboto.web.viewer import VIEWER_HTML
 
 
 class IssueSource(Protocol):
-    """O mínimo que o console usa do GitHub: listar issues abertas (nº, título)."""
+    """O mínimo que o console usa do GitHub: issues abertas com labels (nº, título, labels)."""
 
-    async def list_open_issues(
+    async def list_open_issues_rich(
         self, repo: str, *, limit: int = 20
-    ) -> Result[list[tuple[int, str]], Error]: ...
+    ) -> Result[list[tuple[int, str, list[str]]], Error]: ...
 
 # SPA buildado pelo front (web/ui → vite build). Se presente, o console serve o app React; senão,
 # cai no viewer legado embutido (dev/teste sem Node não quebram). Ver research/O §7.
@@ -362,11 +362,16 @@ def console_routes(
         repo = request.query_params.get("repo") or default_repo
         if issues is None or not repo:
             return JSONResponse({"repo": repo, "issues": [], "note": "GitHub não configurado"})
-        result = await issues.list_open_issues(repo, limit=50)
+        result = await issues.list_open_issues_rich(repo, limit=50)
         if isinstance(result, Err):
             return JSONResponse({"repo": repo, "issues": [], "error": result.error.message})
         return JSONResponse(
-            {"repo": repo, "issues": [{"number": n, "title": t} for n, t in result.value]}
+            {
+                "repo": repo,
+                "issues": [
+                    {"number": n, "title": t, "labels": lbls} for n, t, lbls in result.value
+                ],
+            }
         )
 
     return [

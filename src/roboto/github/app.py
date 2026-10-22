@@ -168,7 +168,19 @@ class GithubAppClient:
     async def list_open_issues(
         self, repo: str, *, limit: int = 20
     ) -> Result[list[tuple[int, str]], Error]:
-        """Lista issues abertas (nº, título), excluindo PRs. Para consulta via Telegram/console."""
+        """Lista issues abertas (nº, título), excluindo PRs. Contrato usado pelo Telegram."""
+        rich = await self.list_open_issues_rich(repo, limit=limit)
+        if isinstance(rich, Err):
+            return rich
+        return Ok([(n, t) for n, t, _ in rich.value])
+
+    async def list_open_issues_rich(
+        self, repo: str, *, limit: int = 20
+    ) -> Result[list[tuple[int, str, list[str]]], Error]:
+        """Issues abertas com labels (nº, título, labels), excluindo PRs. Para o cockpit (Fatia 6).
+
+        Só `state=open` — issues `closed` NUNCA entram; PRs também são excluídos.
+        """
         owns = self._client is None
         client = (
             self._client if self._client is not None else httpx.AsyncClient(timeout=self._timeout)
@@ -184,11 +196,16 @@ class GithubAppClient:
                 params={"state": "open", "per_page": limit},
             )
             resp.raise_for_status()
-            items = [
-                (int(x["number"]), str(x.get("title", "")))
-                for x in resp.json()
-                if isinstance(x, dict) and "pull_request" not in x  # exclui PRs
-            ]
+            items: list[tuple[int, str, list[str]]] = []
+            for x in resp.json():
+                if not isinstance(x, dict) or "pull_request" in x:  # exclui PRs
+                    continue
+                labels = [
+                    str(lbl.get("name", ""))
+                    for lbl in x.get("labels", [])
+                    if isinstance(lbl, dict)
+                ]
+                items.append((int(x["number"]), str(x.get("title", "")), labels))
             return Ok(items)
         except httpx.HTTPError as exc:
             return Err(Error("github", f"list_open_issues {repo}: {exc}"))
