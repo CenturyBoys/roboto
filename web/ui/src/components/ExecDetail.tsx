@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   ApiError,
   cancelExecution,
+  endExecution,
   getExecution,
   getPrDiff,
   getTerminal,
@@ -68,9 +69,10 @@ export function ExecDetail({ id, onBack }: { id: number; onBack: () => void }) {
     try {
       await steerExecution(id, t)
       setSteerText('')
-      setSteerMsg('enviado ✓')
-    } catch (e) {
-      setSteerMsg(e instanceof ApiError && e.status === 409 ? 'sessão não está viva' : 'erro ao enviar')
+      setSteerMsg(data?.live ? 'enviado ✓' : 'sessão iniciada — o motor vai trabalhar ⚡')
+      await load() // atualiza o "live" e o resto do detalhe
+    } catch {
+      setSteerMsg('erro ao enviar (motor interativo disponível?)')
     }
   }
 
@@ -78,6 +80,16 @@ export function ExecDetail({ id, onBack }: { id: number; onBack: () => void }) {
     try {
       await interruptExecution(id)
       setSteerMsg('interrupção pedida')
+    } catch (e) {
+      setSteerMsg(e instanceof ApiError && e.status === 409 ? 'sessão não está viva' : 'erro')
+    }
+  }
+
+  async function endSession() {
+    try {
+      await endExecution(id)
+      setSteerMsg('sessão encerrada')
+      await load()
     } catch (e) {
       setSteerMsg(e instanceof ApiError && e.status === 409 ? 'sessão não está viva' : 'erro')
     }
@@ -121,9 +133,13 @@ export function ExecDetail({ id, onBack }: { id: number; onBack: () => void }) {
         </dl>
       </Card>
 
-      {data.live && (
       <Card>
-        <CardLabel>Co-piloto — conversar com a sessão viva</CardLabel>
+        <CardLabel>
+          Co-piloto — conversar com a sessão do motor{' '}
+          <span className={data.live ? 'text-green-300' : 'text-muted'}>
+            · {data.live ? 'sessão viva' : 'a 1ª mensagem inicia a sessão'}
+          </span>
+        </CardLabel>
         <div className="flex flex-wrap gap-2">
           <input
             value={steerText}
@@ -131,19 +147,25 @@ export function ExecDetail({ id, onBack }: { id: number; onBack: () => void }) {
             onKeyDown={(e) => {
               if (e.key === 'Enter') void steer()
             }}
-            placeholder="mensagem pra sessão (steer)…"
+            placeholder={data.live ? 'responder/ajustar…' : 'inicie a conversa com o motor…'}
             className="min-w-60 flex-1 rounded-lg border border-border bg-background px-2.5 py-2 text-sm outline-none focus:border-accent"
           />
           <Button variant="default" onClick={() => void steer()}>
             enviar
           </Button>
-          <Button variant="outline" onClick={() => void interrupt()}>
-            interromper
-          </Button>
+          {data.live && (
+            <>
+              <Button variant="outline" onClick={() => void interrupt()}>
+                interromper
+              </Button>
+              <Button variant="outline" onClick={() => void endSession()}>
+                encerrar
+              </Button>
+            </>
+          )}
         </div>
         {steerMsg && <p className="mt-1 text-xs text-muted">{steerMsg}</p>}
       </Card>
-      )}
 
       <Card>
         <CardLabel>Sessões do motor (Claude Code)</CardLabel>

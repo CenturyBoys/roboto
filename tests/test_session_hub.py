@@ -32,8 +32,17 @@ async def test_approval_future_resolves() -> None:
     assert live.resolve_approval(42, True) is False  # já consumido
 
 
-async def test_interrupt_flag() -> None:
+async def test_interrupt_flag_set_and_clear() -> None:
     live = SessionHub().open(9)
     assert live.interrupt_requested is False
     live.request_interrupt()
     assert live.interrupt_requested is True
+    live.clear_interrupt()  # após cortar o turno, limpa p/ o próximo não ser interrompido
+    assert live.interrupt_requested is False
+
+
+async def test_next_input_returns_none_when_ended() -> None:
+    live = SessionHub().open(11)
+    live.request_end()  # "encerrar": o driver sai do laço
+    assert await live.next_input() is None
+    assert live.ended is True

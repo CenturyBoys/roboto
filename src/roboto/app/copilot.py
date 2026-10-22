@@ -96,6 +96,7 @@ async def drive_session(
                 async for message in client.receive_response():
                     if live.interrupt_requested:
                         await client.interrupt()
+                        live.clear_interrupt()  # corta o turno atual; sessão segue viva
                     name = type(message).__name__
                     # Mapeia a sessão nativa -> interna (D23) assim que o id aparece —
                     # o SDK o expõe já no SystemMessage de init (início do stream), não
@@ -118,7 +119,10 @@ async def drive_session(
                                 await store.append_session_event(
                                     run.tenant, run.id, "tool_call", now(), tool=str(block.name)
                                 )
-                # turno concluído: espera a próxima mensagem humana (steer) e segue a MESMA sessão
-                prompt = await live.next_input()
+                # turno concluído: espera a próxima mensagem humana (steer); None = encerrar
+                nxt = await live.next_input()
+                if nxt is None:
+                    break
+                prompt = nxt
     finally:
         hub.close(run.id)

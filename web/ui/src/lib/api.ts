@@ -71,6 +71,8 @@ export const steerExecution = (id: number, text: string) =>
   })
 export const interruptExecution = (id: number) =>
   api<{ ok: boolean }>(`/executions/${id}/interrupt`, { method: 'POST' })
+export const endExecution = (id: number) =>
+  api<{ ok: boolean }>(`/executions/${id}/end`, { method: 'POST' })
 export const cancelExecution = (id: number) =>
   api<{ id: number; state: string }>(`/executions/${id}/cancel`, { method: 'POST' })
 export const retryExecution = (id: number) =>

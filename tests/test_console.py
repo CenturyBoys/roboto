@@ -418,6 +418,19 @@ async def test_interrupt_live_session() -> None:
     assert live.interrupt_requested is True
 
 
+async def test_end_live_session() -> None:
+    store = InMemoryStore()
+    run_id = await _seed(store)
+    hub = SessionHub()
+    async with _client_hub(store, hub) as c:
+        semvivo = await c.post(f"/executions/{run_id}/end", headers=_AUTH)
+        assert semvivo.status_code == 409  # sem sessão viva
+        live = hub.open(run_id)
+        r = await c.post(f"/executions/{run_id}/end", headers=_AUTH)
+        assert r.status_code == 200
+    assert live.ended is True
+
+
 async def test_answer_resolves_tool_approval() -> None:
     store = InMemoryStore()
     run_id = await _seed(store)
