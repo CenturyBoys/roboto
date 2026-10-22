@@ -228,10 +228,12 @@ grande (determinismo + baixo custo de manutenção/token).
 6. ◑ **Refino no cockpit** *(iniciado 2026-10-22)* — pedido do dono: fazer o ciclo da issue pela UI,
    não só pelo Telegram. **Feito:** lista de **issues abertas** no cockpit (`GET /issues` via
    `GithubAppClient.list_open_issues_rich` — só `state=open`, **closed/PR nunca entram**; com **labels**;
-   aba "Issues" com **filtro** por nº/título/label; repo do `default_repo`/`?repo=`). **Próximos:**
-   escolher a issue → **conversa de refino** (refiner/OpenRouter, stateful) → **DoR**
-   (`check_issue_readiness`) → **atualizar a issue** (com OK) → **mandar o agente trabalhar**
-   (enfileira run) e acompanhar pelo feed/co-piloto. Fecha a migração Telegram→cockpit do refino.
+   aba "Issues" com **filtro** por nº/título/label; repo do `default_repo`/`?repo=`).
+   **Também feito:** issue **clicável** → painel com corpo + **DoR** (`check_issue_readiness`,
+   `GET /issues/{n}`) e **conversa de refino** (`POST /issues/{n}/refine` → `converse` do refiner via
+   OpenRouter; stateless, o front manda o transcript) que pergunta até propor um **rascunho** + DoR.
+   **Próximos:** **atualizar a issue** no GitHub (com OK) a partir do rascunho → **mandar o agente
+   trabalhar** (enfileira run) e acompanhar pelo feed/co-piloto. Fecha a migração Telegram→cockpit.
 
 ## 8. Perguntas em aberto (para o dono)
 

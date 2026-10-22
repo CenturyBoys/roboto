@@ -4,8 +4,10 @@ import type {
   ExecutionDetail,
   Health,
   Interaction,
+  IssueDetail,
   IssueList,
   PrDiff,
+  RefineStep,
   SetupStatus,
   Terminal,
 } from '@/types'
@@ -40,6 +42,13 @@ export const listExecutions = () => api<{ executions: Execution[] }>('/execution
 export const getExecution = (id: number) => api<ExecutionDetail>(`/executions/${id}`)
 export const getCosts = () => api<Costs>('/costs')
 export const listIssues = () => api<IssueList>('/issues')
+export const getIssue = (n: number) => api<IssueDetail>(`/issues/${n}`)
+export const refineIssue = (n: number, transcript: [string, string][]) =>
+  api<RefineStep>(`/issues/${n}/refine`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ transcript }),
+  })
 export const listInteractions = () => api<{ interactions: Interaction[] }>('/interactions')
 export const answerInteraction = (id: number, answer: string) =>
   api<{ id: number; accepted: boolean; status: string }>(`/interactions/${id}/answer`, {

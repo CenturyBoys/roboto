@@ -7,6 +7,7 @@ import { ExecDetail } from '@/components/ExecDetail'
 import { Costs } from '@/components/Costs'
 import { Interactions } from '@/components/Interactions'
 import { IssuesList } from '@/components/IssuesList'
+import { IssueRefine } from '@/components/IssueRefine'
 import { Setup } from '@/components/Setup'
 
 type View = 'execs' | 'issues' | 'interactions' | 'costs'
@@ -17,6 +18,7 @@ export default function App() {
   const [saved, setSaved] = useState(false)
   const [view, setView] = useState<View>('execs')
   const [selected, setSelected] = useState<number | null>(null)
+  const [selectedIssue, setSelectedIssue] = useState<number | null>(null)
   const [auto, setAuto] = useState(false)
   const [mode, setMode] = useState<Mode>('loading')
   const [canInstall, install] = useInstallPrompt()
@@ -34,6 +36,7 @@ export default function App() {
   }
   function go(v: View) {
     setSelected(null)
+    setSelectedIssue(null)
     setAuto(false)
     setView(v)
   }
@@ -109,7 +112,12 @@ export default function App() {
             {view === 'execs' && selected !== null && (
               <ExecDetail id={selected} onBack={() => setSelected(null)} />
             )}
-            {view === 'issues' && <IssuesList />}
+            {view === 'issues' && selectedIssue === null && (
+              <IssuesList onSelect={setSelectedIssue} />
+            )}
+            {view === 'issues' && selectedIssue !== null && (
+              <IssueRefine number={selectedIssue} onBack={() => setSelectedIssue(null)} />
+            )}
             {view === 'interactions' && <Interactions />}
             {view === 'costs' && <Costs />}
           </>

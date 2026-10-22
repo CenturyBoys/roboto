@@ -21,7 +21,10 @@ from starlette.responses import HTMLResponse, JSONResponse, Response, StreamingR
 from starlette.routing import BaseRoute, Mount, Route
 from starlette.staticfiles import StaticFiles
 
+from roboto.agents.refiner import IssueDraft, converse
+from roboto.agents.review import check_issue_readiness
 from roboto.app.session_hub import SessionHub
+from roboto.llm.port import ModelGateway
 from roboto.orchestrator.model import (
     Error,
     Interaction,
@@ -38,11 +41,13 @@ from roboto.web.viewer import VIEWER_HTML
 
 
 class IssueSource(Protocol):
-    """O mínimo que o console usa do GitHub: issues abertas com labels (nº, título, labels)."""
+    """O que o console usa do GitHub: issues abertas (com labels) e o corpo de uma issue."""
 
     async def list_open_issues_rich(
         self, repo: str, *, limit: int = 20
     ) -> Result[list[tuple[int, str, list[str]]], Error]: ...
+
+    async def get_issue(self, repo: str, number: int) -> Result[tuple[str, str], Error]: ...
 
 # SPA buildado pelo front (web/ui → vite build). Se presente, o console serve o app React; senão,
 # cai no viewer legado embutido (dev/teste sem Node não quebram). Ver research/O §7.
@@ -177,6 +182,7 @@ def console_routes(
     hub: SessionHub | None = None,
     issues: IssueSource | None = None,
     default_repo: str = "",
+    gateway: ModelGateway | None = None,
 ) -> list[BaseRoute]:
     def _unauthorized(request: Request) -> bool:
         return not token or request.headers.get("authorization") != f"Bearer {token}"
@@ -374,6 +380,54 @@ def console_routes(
             }
         )
 
+    async def issue_detail(request: Request) -> JSONResponse:
+        # Corpo da issue + check de DoR (determinístico, sem LLM) — base do refino (Fatia 6).
+        if _unauthorized(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        repo = request.query_params.get("repo") or default_repo
+        number = int(request.path_params["number"])
+        if issues is None or not repo:
+            return JSONResponse({"error": "GitHub não configurado"}, status_code=409)
+        got = await issues.get_issue(repo, number)
+        if isinstance(got, Err):
+            return JSONResponse({"error": got.error.message}, status_code=502)
+        title, body = got.value
+        v = check_issue_readiness(IssueDraft(title=title, body=body))
+        return JSONResponse(
+            {
+                "number": number,
+                "title": title,
+                "body": body,
+                "dor": {"ready": v.ready, "missing": v.missing},
+            }
+        )
+
+    async def issue_refine(request: Request) -> JSONResponse:
+        # Conversa de refino (refiner/OpenRouter): transcript -> pergunta OU rascunho (Fatia 6).
+        if _unauthorized(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        if gateway is None:
+            return JSONResponse({"error": "modelo não configurado"}, status_code=409)
+        payload = await request.json()
+        raw = payload.get("transcript", []) if isinstance(payload, dict) else []
+        transcript = [
+            (str(t[0]), str(t[1])) for t in raw if isinstance(t, list) and len(t) == 2
+        ]
+        step = await converse(transcript, gateway)
+        if isinstance(step, Err):
+            return JSONResponse({"error": step.error.message}, status_code=502)
+        s = step.value
+        if s.draft is not None:
+            v = check_issue_readiness(s.draft)
+            return JSONResponse(
+                {
+                    "question": None,
+                    "draft": {"title": s.draft.title, "body": s.draft.body},
+                    "dor": {"ready": v.ready, "missing": v.missing},
+                }
+            )
+        return JSONResponse({"question": s.question, "draft": None})
+
     return [
         *shell_routes(),
         Route("/healthz", healthz),
@@ -387,6 +441,8 @@ def console_routes(
         Route("/executions/{run_id:int}/message", steer_message, methods=["POST"]),
         Route("/executions/{run_id:int}/interrupt", interrupt_session, methods=["POST"]),
         Route("/issues", list_issues),
+        Route("/issues/{number:int}", issue_detail),
+        Route("/issues/{number:int}/refine", issue_refine, methods=["POST"]),
         Route("/interactions", pending_interactions),
         Route("/interactions/{interaction_id:int}/answer", answer_interaction, methods=["POST"]),
         Route("/costs", costs),
@@ -402,10 +458,11 @@ def build_console(
     hub: SessionHub | None = None,
     issues: IssueSource | None = None,
     default_repo: str = "",
+    gateway: ModelGateway | None = None,
 ) -> Starlette:
     return Starlette(
         routes=console_routes(
             store, tenant=tenant, token=token, ttyd_base=ttyd_base, hub=hub,
-            issues=issues, default_repo=default_repo,
+            issues=issues, default_repo=default_repo, gateway=gateway,
         )
     )

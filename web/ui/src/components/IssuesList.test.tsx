@@ -27,7 +27,7 @@ afterEach(() => {
 })
 
 test('lista as issues abertas do repo com labels', async () => {
-  render(<IssuesList />)
+  render(<IssuesList onSelect={() => {}} />)
   expect(await screen.findByText('rate limit distribuído')).toBeInTheDocument()
   expect(screen.getByText('#112')).toBeInTheDocument()
   expect(screen.getByText('roboto')).toBeInTheDocument() // chip de label

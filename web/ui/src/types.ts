@@ -77,6 +77,24 @@ export interface IssueList {
   error?: string
 }
 
+export interface Dor {
+  ready: boolean
+  missing: string[]
+}
+
+export interface IssueDetail {
+  number: number
+  title: string
+  body: string
+  dor: Dor
+}
+
+export interface RefineStep {
+  question: string | null
+  draft: { title: string; body: string } | null
+  dor?: Dor
+}
+
 export interface Terminal {
   terminal_url: string | null
   note?: string

@@ -5,7 +5,7 @@ import { Card } from './ui/card'
 
 // Issues abertas do repo (entry point do refino no cockpit, Fatia 6). Só `state=open` (closed não
 // entra). Filtro client-side por nº/título/label. Clicar vai abrir a conversa de refino (próximo).
-export function IssuesList() {
+export function IssuesList({ onSelect }: { onSelect: (n: number) => void }) {
   const [data, setData] = useState<IssueList | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [q, setQ] = useState('')
@@ -48,7 +48,11 @@ export function IssuesList() {
         </span>
       </div>
       {filtered.map((i) => (
-        <Card key={i.number} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <Card
+          key={i.number}
+          onClick={() => onSelect(i.number)}
+          className="flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 hover:border-accent"
+        >
           <span className="font-mono text-sm text-accent">#{i.number}</span>
           <span className="min-w-0 flex-1 text-sm">{i.title}</span>
           {i.labels.map((l) => (
@@ -64,6 +68,7 @@ export function IssuesList() {
             href={`https://github.com/${data.repo}/issues/${i.number}`}
             target="_blank"
             rel="noopener"
+            onClick={(e) => e.stopPropagation()}
           >
             ↗ GitHub
           </a>

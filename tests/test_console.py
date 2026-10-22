@@ -9,6 +9,7 @@ import httpx
 import pytest
 
 from roboto.app.session_hub import SessionHub
+from roboto.llm.port import ChatMessage, Completion, Tier
 from roboto.orchestrator.model import Engine, Error, GithubEvent, InteractionKind, RunState
 from roboto.orchestrator.store import InMemoryStore
 from roboto.result import Ok, Result
@@ -144,13 +145,31 @@ async def test_pr_diff_endpoint() -> None:
 
 
 class _FakeIssues:
-    def __init__(self, items: list[tuple[int, str, list[str]]]) -> None:
+    def __init__(
+        self, items: list[tuple[int, str, list[str]]], body: str = "corpo da issue"
+    ) -> None:
         self._items = items
+        self._body = body
 
     async def list_open_issues_rich(
         self, repo: str, *, limit: int = 20
     ) -> Result[list[tuple[int, str, list[str]]], Error]:
         return Ok(self._items)
+
+    async def get_issue(self, repo: str, number: int) -> Result[tuple[str, str], Error]:
+        return Ok((f"issue #{number}", self._body))
+
+
+class _FakeGateway:
+    """Gateway de modelo fake: devolve um texto canônico (sem rede) p/ testar o refino."""
+
+    def __init__(self, text: str) -> None:
+        self._text = text
+
+    async def complete(
+        self, messages: list[ChatMessage], tier: Tier
+    ) -> Result[Completion, Error]:
+        return Ok(Completion(text=self._text, model="fake"))
 
 
 async def test_issues_endpoint_lists_open() -> None:
@@ -175,6 +194,37 @@ async def test_issues_endpoint_unconfigured() -> None:
     async with _client(store) as c:  # sem issue source nem repo
         data = (await c.get("/issues", headers=_AUTH)).json()
         assert data["issues"] == [] and "note" in data
+
+
+def _console(store: InMemoryStore, **kw: object) -> httpx.AsyncClient:
+    app = build_console(store, tenant="acme", token=_TOKEN, **kw)  # type: ignore[arg-type]
+    return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://console")
+
+
+async def test_issue_detail_with_dor() -> None:
+    store = InMemoryStore()
+    src = _FakeIssues([], body="corpo sem seções nem critérios")
+    async with _console(store, issues=src, default_repo="acme/app") as c:
+        d = (await c.get("/issues/180", headers=_AUTH)).json()
+        assert d["number"] == 180 and d["title"] == "issue #180"
+        assert d["dor"]["ready"] is False and d["dor"]["missing"]  # DoR incompleto
+
+
+async def test_issue_refine_returns_question() -> None:
+    store = InMemoryStore()
+    async with _console(store, gateway=_FakeGateway("PERGUNTA: qual o DoD?")) as c:
+        r = await c.post(
+            "/issues/1/refine", headers=_AUTH, json={"transcript": [["user", "quero um placar"]]}
+        )
+        body = r.json()
+        assert body["question"] == "qual o DoD?" and body["draft"] is None
+
+
+async def test_issue_refine_without_model_is_409() -> None:
+    store = InMemoryStore()
+    async with _console(store) as c:  # sem gateway
+        r = await c.post("/issues/1/refine", headers=_AUTH, json={"transcript": []})
+        assert r.status_code == 409
 
 
 async def test_requires_auth() -> None:
