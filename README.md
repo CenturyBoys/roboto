@@ -29,6 +29,7 @@ classe: **economia de token** e sessões curtas em vez de sessões gigantes de c
 > [`docs/arquitetura.md`](docs/arquitetura.md) (esquemático: sessão + Telegram) ·
 > [`docs/responsabilidades.md`](docs/responsabilidades.md) (quem faz o quê, IA-first) ·
 > [`docs/telegram-guia.md`](docs/telegram-guia.md) (operar pelo Telegram) ·
+> [`docs/status-implementacao.md`](docs/status-implementacao.md) (o que está feito × falta) ·
 > decisões em [`research/DECISOES-A-FECHAR.md`](research/DECISOES-A-FECHAR.md) (D1–D32).
 
 ## Princípios-guia
