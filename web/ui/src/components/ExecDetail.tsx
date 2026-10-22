@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
-import { cancelExecution, getExecution, getPrDiff, getTerminal, retryExecution } from '@/lib/api'
+import {
+  ApiError,
+  cancelExecution,
+  getExecution,
+  getPrDiff,
+  getTerminal,
+  interruptExecution,
+  retryExecution,
+  steerExecution,
+} from '@/lib/api'
 import type { ExecutionDetail, PrDiff, Terminal } from '@/types'
 import { Button } from './ui/button'
 import { Card, CardLabel, CardTitle } from './ui/card'
@@ -12,6 +21,8 @@ export function ExecDetail({ id, onBack }: { id: number; onBack: () => void }) {
   const [term, setTerm] = useState<Terminal | null>(null)
   const [diff, setDiff] = useState<PrDiff | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [steerText, setSteerText] = useState('')
+  const [steerMsg, setSteerMsg] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -51,6 +62,27 @@ export function ExecDetail({ id, onBack }: { id: number; onBack: () => void }) {
     }
   }
 
+  async function steer() {
+    const t = steerText.trim()
+    if (!t) return
+    try {
+      await steerExecution(id, t)
+      setSteerText('')
+      setSteerMsg('enviado ✓')
+    } catch (e) {
+      setSteerMsg(e instanceof ApiError && e.status === 409 ? 'sessão não está viva' : 'erro ao enviar')
+    }
+  }
+
+  async function interrupt() {
+    try {
+      await interruptExecution(id)
+      setSteerMsg('interrupção pedida')
+    } catch (e) {
+      setSteerMsg(e instanceof ApiError && e.status === 409 ? 'sessão não está viva' : 'erro')
+    }
+  }
+
   if (error) return <p className="text-muted">{error}</p>
   if (!data) return <p className="text-muted">carregando…</p>
   const e = data.execution
@@ -87,6 +119,28 @@ export function ExecDetail({ id, onBack }: { id: number; onBack: () => void }) {
             {data.cost.tokens} tokens · ${data.cost.cost_usd.toFixed(4)}
           </dd>
         </dl>
+      </Card>
+
+      <Card>
+        <CardLabel>Co-piloto — conversar com a sessão viva</CardLabel>
+        <div className="flex flex-wrap gap-2">
+          <input
+            value={steerText}
+            onChange={(e) => setSteerText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void steer()
+            }}
+            placeholder="mensagem pra sessão (steer)…"
+            className="min-w-60 flex-1 rounded-lg border border-border bg-background px-2.5 py-2 text-sm outline-none focus:border-accent"
+          />
+          <Button variant="default" onClick={() => void steer()}>
+            enviar
+          </Button>
+          <Button variant="outline" onClick={() => void interrupt()}>
+            interromper
+          </Button>
+        </div>
+        {steerMsg && <p className="mt-1 text-xs text-muted">{steerMsg}</p>}
       </Card>
 
       <Card>

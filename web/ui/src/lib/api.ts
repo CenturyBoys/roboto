@@ -47,6 +47,16 @@ export const answerInteraction = (id: number, answer: string) =>
   })
 export const getTerminal = (id: number) => api<Terminal>(`/executions/${id}/terminal`)
 export const getPrDiff = (id: number) => api<PrDiff>(`/executions/${id}/diff`)
+
+// Co-piloto (Fatia 5): manda mensagem pra sessão viva / interrompe. 409 = sessão não está viva.
+export const steerExecution = (id: number, text: string) =>
+  api<{ ok: boolean }>(`/executions/${id}/message`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ text }),
+  })
+export const interruptExecution = (id: number) =>
+  api<{ ok: boolean }>(`/executions/${id}/interrupt`, { method: 'POST' })
 export const cancelExecution = (id: number) =>
   api<{ id: number; state: string }>(`/executions/${id}/cancel`, { method: 'POST' })
 export const retryExecution = (id: number) =>

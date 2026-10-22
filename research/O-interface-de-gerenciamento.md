@@ -217,7 +217,14 @@ grande (determinismo + baixo custo de manutenção/token).
    execução (`execution_pr`, migração `0008`) pelo ciclo de review; `GET /executions/{id}/diff` e
    painel no detalhe (linhas +/−/@@ coloridas). **Pendente:** comentário-no-diff→agente (gate de
    review interativo) fica pra depois da interatividade do motor (casa com a Fatia 5).
-5. **Co-piloto (Modo B)** — PoC `ClaudeSDKClient` (`respond`/`interrupt` reais) → chat bidirecional.
+5. ◑ **Co-piloto** *(plano de controle feito 2026-10-22; engine = PoC)* — `SessionHub` (registro em
+   processo de sessões vivas): fila de **steer** + **`Future` de aprovação** + **interrupt**. Console:
+   `POST /executions/{id}/message` (steer), `/interrupt`, e o `answer` de uma aprovação **acorda** o
+   `can_use_tool` (resolve o Future do hub). Front: painel "Co-piloto" no detalhe (enviar/interromper);
+   aprovação cai na inbox (botões). **Driver interativo real** (`app/copilot.py` com `ClaudeSDKClient`:
+   `query`/`receive_response`/`interrupt` + `can_use_tool` que aguarda o humano) implementado **per a
+   pesquisa do SDK**, **lazy e fora do loop default** — resta o **PoC vivo com modelo** (N2/N3) pra
+   validar e plugar no `runtime`. Plano de controle verificado por testes determinísticos (stub).
 
 ## 8. Perguntas em aberto (para o dono)
 

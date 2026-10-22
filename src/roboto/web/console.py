@@ -20,7 +20,16 @@ from starlette.responses import HTMLResponse, JSONResponse, Response, StreamingR
 from starlette.routing import BaseRoute, Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from roboto.orchestrator.model import Interaction, LlmCall, Run, RunState, Session, SessionEvent
+from roboto.app.session_hub import SessionHub
+from roboto.orchestrator.model import (
+    Interaction,
+    InteractionKind,
+    LlmCall,
+    Run,
+    RunState,
+    Session,
+    SessionEvent,
+)
 from roboto.orchestrator.store import Store
 from roboto.web.viewer import VIEWER_HTML
 
@@ -145,8 +154,16 @@ def shell_routes() -> list[BaseRoute]:
     return routes
 
 
+_APPROVE_WORDS = {"aprovar", "approve", "allow", "sim", "yes", "ok"}
+
+
 def console_routes(
-    store: Store, *, tenant: str, token: str, ttyd_base: str | None = None
+    store: Store,
+    *,
+    tenant: str,
+    token: str,
+    ttyd_base: str | None = None,
+    hub: SessionHub | None = None,
 ) -> list[BaseRoute]:
     def _unauthorized(request: Request) -> bool:
         return not token or request.headers.get("authorization") != f"Bearer {token}"
@@ -226,9 +243,43 @@ def console_routes(
         if not answer:
             return JSONResponse({"error": "answer vazio"}, status_code=400)
         accepted = await store.answer_interaction(iid, answer, "console", datetime.now(UTC))
+        # Co-piloto (Fatia 5): se for aprovação de ferramenta, acorda o can_use_tool que espera.
+        if accepted and hub is not None and it.kind is InteractionKind.APPROVAL:
+            live = hub.get(it.execution_id)
+            if live is not None:
+                live.resolve_approval(iid, answer.strip().lower() in _APPROVE_WORDS)
         return JSONResponse(
             {"id": iid, "accepted": accepted, "status": "answered" if accepted else str(it.status)}
         )
+
+    async def steer_message(request: Request) -> JSONResponse:
+        # Co-piloto (Fatia 5): manda uma mensagem p/ a sessão VIVA do motor (steer a qualquer hora).
+        if _unauthorized(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        run = await _owned_run(request)
+        if run is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        live = hub.get(run.id) if hub is not None else None
+        if live is None:
+            return JSONResponse({"error": "sessão não está viva"}, status_code=409)
+        body = await request.json()
+        text = str(body.get("text", "")).strip() if isinstance(body, dict) else ""
+        if not text:
+            return JSONResponse({"error": "text vazio"}, status_code=400)
+        await live.steer(text)
+        return JSONResponse({"ok": True})
+
+    async def interrupt_session(request: Request) -> JSONResponse:
+        if _unauthorized(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        run = await _owned_run(request)
+        if run is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        live = hub.get(run.id) if hub is not None else None
+        if live is None:
+            return JSONResponse({"error": "sessão não está viva"}, status_code=409)
+        live.request_interrupt()
+        return JSONResponse({"ok": True})
 
     async def cancel(request: Request) -> JSONResponse:
         if _unauthorized(request):
@@ -301,6 +352,8 @@ def console_routes(
         Route("/executions/{run_id:int}/terminal", terminal),
         Route("/executions/{run_id:int}/events", events_stream),
         Route("/executions/{run_id:int}/diff", pr_diff),
+        Route("/executions/{run_id:int}/message", steer_message, methods=["POST"]),
+        Route("/executions/{run_id:int}/interrupt", interrupt_session, methods=["POST"]),
         Route("/interactions", pending_interactions),
         Route("/interactions/{interaction_id:int}/answer", answer_interaction, methods=["POST"]),
         Route("/costs", costs),
@@ -308,6 +361,13 @@ def console_routes(
 
 
 def build_console(
-    store: Store, *, tenant: str, token: str, ttyd_base: str | None = None
+    store: Store,
+    *,
+    tenant: str,
+    token: str,
+    ttyd_base: str | None = None,
+    hub: SessionHub | None = None,
 ) -> Starlette:
-    return Starlette(routes=console_routes(store, tenant=tenant, token=token, ttyd_base=ttyd_base))
+    return Starlette(
+        routes=console_routes(store, tenant=tenant, token=token, ttyd_base=ttyd_base, hub=hub)
+    )
