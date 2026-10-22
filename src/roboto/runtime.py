@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 
 from roboto.app.compose import build_adapters
 from roboto.app.loops import poll_tick, process_run_tick, run_periodic
+from roboto.app.session_hub import SessionHub
 from roboto.config import BOOTSTRAP_KEYS, Config, load_config, settable_from_env
 from roboto.engines.stub import StubEngine
 from roboto.orchestrator.core import publish_outbox, sweep
@@ -35,7 +36,8 @@ def _now() -> datetime:
 
 async def _run_daemon(config: Config, store: Store) -> None:
     adapters = build_adapters(config, store)  # router inclui telegram_question
-    app = build_app(store, config=config)
+    hub = SessionHub()  # sessões vivas do co-piloto (Fatia 5); o driver interativo as registra
+    app = build_app(store, config=config, hub=hub)
     stop = asyncio.Event()
 
     async def _poll() -> None:

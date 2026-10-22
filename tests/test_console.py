@@ -8,6 +8,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+from roboto.app.session_hub import SessionHub
 from roboto.orchestrator.model import Engine, GithubEvent, InteractionKind, RunState
 from roboto.orchestrator.store import InMemoryStore
 from roboto.web.console import build_console
@@ -224,6 +225,50 @@ async def test_answer_interaction_from_console() -> None:
         assert segunda["accepted"] is False  # 1ª resposta válida vence (§6)
     answered = await store.get_interaction(it.id)
     assert answered is not None and answered.answer == "Redis"
+
+
+def _client_hub(store: InMemoryStore, hub: SessionHub) -> httpx.AsyncClient:
+    app = build_console(store, tenant="acme", token=_TOKEN, hub=hub)
+    return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://console")
+
+
+async def test_steer_requires_live_session() -> None:
+    store = InMemoryStore()
+    run_id = await _seed(store)
+    hub = SessionHub()
+    async with _client_hub(store, hub) as c:
+        semvivo = await c.post(f"/executions/{run_id}/message", headers=_AUTH, json={"text": "oi"})
+        assert semvivo.status_code == 409  # sessão não está viva
+        live = hub.open(run_id)
+        ok = await c.post(f"/executions/{run_id}/message", headers=_AUTH, json={"text": "muda X"})
+        assert ok.status_code == 200
+        assert await live.next_input() == "muda X"
+
+
+async def test_interrupt_live_session() -> None:
+    store = InMemoryStore()
+    run_id = await _seed(store)
+    hub = SessionHub()
+    live = hub.open(run_id)
+    async with _client_hub(store, hub) as c:
+        r = await c.post(f"/executions/{run_id}/interrupt", headers=_AUTH)
+        assert r.status_code == 200
+    assert live.interrupt_requested is True
+
+
+async def test_answer_resolves_tool_approval() -> None:
+    store = InMemoryStore()
+    run_id = await _seed(store)
+    it = await store.create_interaction(
+        "acme", run_id, InteractionKind.APPROVAL, "Aprovar Bash?", ["aprovar", "negar"], _T0
+    )
+    hub = SessionHub()
+    live = hub.open(run_id)
+    fut = live.request_approval(it.id)
+    async with _client_hub(store, hub) as c:
+        r = await c.post(f"/interactions/{it.id}/answer", headers=_AUTH, json={"answer": "aprovar"})
+        assert r.status_code == 200
+    assert fut.done() and fut.result() is True  # can_use_tool acordado com allow
 
 
 async def test_answer_interaction_tenant_isolation() -> None:

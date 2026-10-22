@@ -97,6 +97,7 @@ run (running)
 | `/executions/{id}/terminal` | terminal do container (ttyd+tmux, D25) | ✅ (botão "Terminal") |
 | `/executions/{id}/events` | **feed ao vivo** do motor (SSE: message/tool_call, Fatia 2) | ✅ (painel "Feed") |
 | `/executions/{id}/diff` | **diff do PR** da execução (Fatia 4; cache em `execution_pr`) | ✅ (painel "Diff") |
+| `/executions/{id}/message` · `/interrupt` | **co-piloto** (Fatia 5): steer/interromper a sessão viva (`SessionHub`) | ✅ (painel "Co-piloto") |
 | `/costs` | tokens/custo (llm_call) + **agregado por execução** (Fatia 4) | ✅ |
 | cancel / retry | ações no run | ✅ |
 
