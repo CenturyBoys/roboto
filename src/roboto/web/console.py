@@ -9,15 +9,23 @@ O terminal tmux (ttyd/Wetty) é infra à parte; aqui só devolvemos a URL config
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, Response
-from starlette.routing import Route
+from starlette.routing import BaseRoute, Mount, Route
+from starlette.staticfiles import StaticFiles
 
 from roboto.orchestrator.model import Interaction, LlmCall, Run, RunState, Session
 from roboto.orchestrator.store import Store
 from roboto.web.viewer import VIEWER_HTML
+
+# SPA buildado pelo front (web/ui → vite build). Se presente, o console serve o app React; senão,
+# cai no viewer legado embutido (dev/teste sem Node não quebram). Ver research/O §7.
+_STATIC_DIR = Path(__file__).parent / "static"
+_SPA_INDEX = _STATIC_DIR / "index.html"
+_SPA_ASSETS = _STATIC_DIR / "assets"
 
 # favicon: raio ⚡ (amarelo Potter) em quadrado escuro arredondado
 _FAVICON_SVG = (
@@ -25,6 +33,28 @@ _FAVICON_SVG = (
     "<rect width='32' height='32' rx='7' fill='#0f1115'/>"
     "<path d='M19 3 L8 18 h6 l-3 11 L24 13 h-7 z' fill='#ffd21e'/></svg>"
 )
+
+# PWA (Fatia 1, trilha O): manifest + service worker tornam o console instalável na máquina e
+# acessível por VPN como app. O ícone reusa o favicon SVG (purpose any+maskable).
+_MANIFEST_JSON = (
+    '{"name":"Potter · console","short_name":"Potter",'
+    '"description":"Cockpit do fleet roboto","start_url":"/","scope":"/",'
+    '"display":"standalone","background_color":"#0f1115","theme_color":"#0f1115",'
+    '"icons":[{"src":"/favicon.svg","sizes":"any","type":"image/svg+xml","purpose":"any"},'
+    '{"src":"/favicon.svg","sizes":"any","type":"image/svg+xml","purpose":"maskable"}]}'
+)
+
+# O service worker cacheia SÓ o shell (navegação) p/ abrir offline; dados/API vão SEMPRE à rede —
+# carregam o bearer e nunca podem ser cacheados. Ter um handler de fetch é o que torna instalável.
+_SERVICE_WORKER_JS = """\
+const SHELL='potter-shell-v1';
+self.addEventListener('install',e=>{e.waitUntil(caches.open(SHELL).then(c=>c.add('/')));
+ self.skipWaiting();});
+self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(
+ ks.filter(k=>k!==SHELL).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));});
+self.addEventListener('fetch',e=>{ if(e.request.mode==='navigate'){
+ e.respondWith(fetch(e.request).catch(()=>caches.match('/'))); } });
+"""
 
 
 def _run_dict(run: Run) -> dict[str, object]:
@@ -74,9 +104,42 @@ def _llm_dict(c: LlmCall) -> dict[str, object]:
     }
 
 
+async def _viewer(request: Request) -> HTMLResponse:
+    # SPA buildado se existir; senão, viewer legado. Dados sempre exigem o bearer (via JS).
+    if _SPA_INDEX.is_file():
+        return HTMLResponse(_SPA_INDEX.read_text(encoding="utf-8"))
+    return HTMLResponse(VIEWER_HTML)
+
+
+async def _favicon(request: Request) -> Response:
+    return Response(_FAVICON_SVG, media_type="image/svg+xml")
+
+
+async def _manifest(request: Request) -> Response:  # PWA (público; não expõe dado)
+    return Response(_MANIFEST_JSON, media_type="application/manifest+json")
+
+
+async def _service_worker(request: Request) -> Response:  # PWA (público)
+    return Response(_SERVICE_WORKER_JS, media_type="text/javascript")
+
+
+def shell_routes() -> list[BaseRoute]:
+    """Rotas públicas do app-shell (SPA + PWA), compartilhadas pelo console e pelo setup."""
+    routes: list[BaseRoute] = [
+        Route("/", _viewer),
+        Route("/favicon.svg", _favicon),
+        Route("/favicon.ico", _favicon),
+        Route("/manifest.webmanifest", _manifest),
+        Route("/sw.js", _service_worker),
+    ]
+    if _SPA_ASSETS.is_dir():  # assets hasheados do vite (só montados quando há build)
+        routes.append(Mount("/assets", app=StaticFiles(directory=str(_SPA_ASSETS))))
+    return routes
+
+
 def console_routes(
     store: Store, *, tenant: str, token: str, ttyd_base: str | None = None
-) -> list[Route]:
+) -> list[BaseRoute]:
     def _unauthorized(request: Request) -> bool:
         return not token or request.headers.get("authorization") != f"Bearer {token}"
 
@@ -84,14 +147,8 @@ def console_routes(
         run = await store.get_run(int(request.path_params["run_id"]))
         return run if run is not None and run.tenant == tenant else None  # isolamento (D17)
 
-    async def viewer(request: Request) -> HTMLResponse:
-        return HTMLResponse(VIEWER_HTML)  # página pública; os dados exigem o bearer (via JS)
-
-    async def favicon(request: Request) -> Response:
-        return Response(_FAVICON_SVG, media_type="image/svg+xml")
-
     async def healthz(request: Request) -> JSONResponse:
-        return JSONResponse({"ok": True})
+        return JSONResponse({"ok": True, "mode": "running"})  # front distingue de "setup"
 
     async def costs(request: Request) -> JSONResponse:
         if _unauthorized(request):
@@ -161,9 +218,7 @@ def console_routes(
         )
 
     return [
-        Route("/", viewer),
-        Route("/favicon.svg", favicon),
-        Route("/favicon.ico", favicon),
+        *shell_routes(),
         Route("/healthz", healthz),
         Route("/executions", list_executions),
         Route("/executions/{run_id:int}", execution_detail),

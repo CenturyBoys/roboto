@@ -1,0 +1,20 @@
+# Contexto de build enxuto: nada de deps/artefatos/segredos do host vão para a imagem.
+.git
+.venv
+**/__pycache__
+**/*.pyc
+.mypy_cache
+.pytest_cache
+.ruff_cache
+
+# frontend: deps e build são refeitos dentro da imagem (estágio node)
+web/ui/node_modules
+web/ui/dist
+src/roboto/web/static
+
+# segredos / local
+.env
+*.env
+.ansible.vault_pass
+*.vault_pass
+*.log

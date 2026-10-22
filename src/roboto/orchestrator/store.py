@@ -122,6 +122,10 @@ class Store(Protocol):
 
     async def recall(self, tenant: str, query: str, limit: int) -> list[MemoryFact]: ...
 
+    async def get_app_config(self) -> dict[str, str]: ...
+
+    async def set_app_config(self, values: dict[str, str], now: datetime) -> None: ...
+
 
 class InMemoryStore:
     """Store em memória para testes tier-1 e o MVP local."""
@@ -137,6 +141,7 @@ class InMemoryStore:
         self._llm_calls: list[LlmCall] = []
         self._channel_cursor: dict[tuple[str, str], int] = {}
         self._facts: list[MemoryFact] = []
+        self._app_config: dict[str, str] = {}
         self._fact_seq = 0
         self._run_seq = 0
         self._effect_seq = 0
@@ -418,3 +423,9 @@ class InMemoryStore:
                 scored.append((score, f))
         scored.sort(key=lambda x: (-x[0], -x[1].id))
         return [f for _, f in scored[:limit]]
+
+    async def get_app_config(self) -> dict[str, str]:
+        return dict(self._app_config)
+
+    async def set_app_config(self, values: dict[str, str], now: datetime) -> None:
+        self._app_config.update(values)

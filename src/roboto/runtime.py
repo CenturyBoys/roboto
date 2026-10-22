@@ -1,7 +1,12 @@
 """Entrypoint do daemon (D3): liga config -> store -> adapters -> servidor ASGI + laços.
 
+Config vive no **banco** (fonte única, trilha O). O boot **semeia** o `.env` no banco (origem env
+vira registro) e lê a config efetiva de lá. Se faltar algo obrigatório, sobe em **modo setup**
+(cockpit + tela de config) em vez de morrer; quando a config fica completa, recarrega e sobe os
+laços. `DATABASE_URL`/`CONSOLE_TOKEN` são bootstrap: só via env.
+
 Glue fino (não coberto por tier-1: exige Postgres + uvicorn + credenciais). A lógica de cada peça é
-testada isoladamente; aqui só as orquestramos em execução contínua. Rode com `python -m roboto`.
+testada isoladamente. Rode com `python -m roboto`.
 """
 
 from __future__ import annotations
@@ -12,26 +17,23 @@ from datetime import UTC, datetime
 
 from roboto.app.compose import build_adapters
 from roboto.app.loops import poll_tick, process_run_tick, run_periodic
-from roboto.config import load_config
+from roboto.config import BOOTSTRAP_KEYS, Config, load_config, settable_from_env
 from roboto.engines.stub import StubEngine
 from roboto.orchestrator.core import publish_outbox, sweep
 from roboto.orchestrator.pg_store import PostgresStore
+from roboto.orchestrator.store import Store
 from roboto.result import Err
 from roboto.web.app import build_app
+from roboto.web.setup import build_setup_app
+
+_PORT = 8080
 
 
 def _now() -> datetime:
     return datetime.now(UTC)
 
 
-async def main() -> int:
-    loaded = load_config(os.environ)
-    if isinstance(loaded, Err):
-        print(f"config inválida: {loaded.error.message}")
-        return 1
-    config = loaded.value
-
-    store = await PostgresStore.connect(config.database_url)
+async def _run_daemon(config: Config, store: Store) -> None:
     adapters = build_adapters(config, store)  # router inclui telegram_question
     app = build_app(store, config=config)
     stop = asyncio.Event()
@@ -46,13 +48,12 @@ async def main() -> int:
             now=_now,
             github=adapters.github,  # habilita o comando "issues" (listar) no Telegram
             tenant=config.tenant,  # persiste o cursor do Telegram (não relê no restart)
-            # ideia nova -> motor escaneia o repo e monta a issue (quando há motor de código)
             engine_scope=(config.engine == "claude_code"),
         )
 
     import uvicorn  # import tardio: só o daemon precisa
 
-    server = uvicorn.Server(uvicorn.Config(app, host="0.0.0.0", port=8080, log_level="info"))
+    server = uvicorn.Server(uvicorn.Config(app, host="0.0.0.0", port=_PORT, log_level="info"))
     tasks = [
         server.serve(),
         run_periodic(_poll, 2.0, stop),
@@ -107,8 +108,57 @@ async def main() -> int:
         tasks.append(run_periodic(_run_claude, 5.0, stop))
         tasks.append(run_periodic(_run_scope, 5.0, stop))
 
+    await asyncio.gather(*tasks)
+
+
+async def _run_setup(store: Store, bootstrap: dict[str, str]) -> None:
+    """Serve o cockpit em modo setup até a config ficar completa (reload_event)."""
+    import uvicorn
+
+    reload_event = asyncio.Event()
+    app = build_setup_app(
+        store,
+        token=bootstrap.get("CONSOLE_TOKEN", ""),
+        bootstrap=bootstrap,
+        reload_event=reload_event,
+        now=_now,
+    )
+    if not bootstrap.get("CONSOLE_TOKEN"):
+        print("AVISO: CONSOLE_TOKEN ausente — a tela de setup não poderá salvar. Defina-o no env.")
+    print(f"modo setup: abra http://<host>:{_PORT} e configure (precisa do CONSOLE_TOKEN).")
+    server = uvicorn.Server(uvicorn.Config(app, host="0.0.0.0", port=_PORT, log_level="info"))
+
+    async def _watch() -> None:
+        await reload_event.wait()
+        server.should_exit = True  # config salva -> encerra o setup; o main recarrega
+
+    await asyncio.gather(server.serve(), _watch())
+
+
+async def main() -> int:
+    env = os.environ
+    database_url = env.get("DATABASE_URL")
+    if not database_url:
+        print("config inválida: defina DATABASE_URL (bootstrap)")
+        return 1
+
+    store = await PostgresStore.connect(database_url)
     try:
-        await asyncio.gather(*tasks)
+        # semeia o .env no banco (origem env vira registro; o banco é a fonte única — trilha O)
+        seed = settable_from_env(env)
+        if seed:
+            await store.set_app_config(seed, _now())
+        bootstrap = {k: env[k] for k in BOOTSTRAP_KEYS if env.get(k)}
+
+        while True:
+            stored = await store.get_app_config()
+            # bootstrap (DATABASE_URL/CONSOLE_TOKEN) sobre o banco (fonte única da config)
+            loaded = load_config({**stored, **bootstrap})
+            if isinstance(loaded, Err):
+                print(f"modo setup: {loaded.error.message}")
+                await _run_setup(store, bootstrap)
+                continue  # config salva pela tela -> recarrega e reavalia
+            await _run_daemon(loaded.value, store)
+            return 0
     finally:
         await store.close()
-    return 0

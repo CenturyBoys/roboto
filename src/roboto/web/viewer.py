@@ -9,7 +9,11 @@ VIEWER_HTML = """<!doctype html>
 <html lang="pt"><head><meta charset="utf-8"><title>Potter · console</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="alternate icon" href="/favicon.ico">
+<link rel="manifest" href="/manifest.webmanifest">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0f1115">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <style>
  :root{--bg:#0f1115;--card:#171a21;--fg:#e8e9ec;--muted:#8a909c;--accent:#ffd21e;--line:#272b35}
  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--fg);
@@ -43,6 +47,8 @@ VIEWER_HTML = """<!doctype html>
  .s-done{color:#8ae27f;border-color:#2f5e2a}
  .s-failed,.s-abandoned{color:#ff8a8a;border-color:#5e2a2a}
  .s-queued{color:var(--muted)} a{color:var(--accent)}
+ .term{width:100%;height:70vh;border:1px solid var(--line);border-radius:12px;background:#000}
+ button.on{background:var(--accent);color:#111;border-color:var(--accent);font-weight:700}
 </style></head><body>
 <header><span class="logo">⚡</span>
  <div class="brand">Potter <small>· console</small></div></header>
@@ -55,6 +61,8 @@ VIEWER_HTML = """<!doctype html>
   <button class="accent" onclick="execs()">Execuções</button>
   <button onclick="load('/interactions','interactions')">Interações pendentes</button>
   <button onclick="costs()">Custos</button>
+  <button id="auto" onclick="toggleAuto()">Auto-refresh: off</button>
+  <button id="install" style="display:none" onclick="install()">Instalar app</button>
  </div>
  <div id="out" class="muted">Salve o token e escolha uma visão.</div>
 </main>
@@ -63,6 +71,21 @@ let T = localStorage.getItem('rtok') || '';
 document.getElementById('tok').value = T;
 function save(){ T=document.getElementById('tok').value; localStorage.setItem('rtok',T);
  document.getElementById('s').textContent='ok ✓'; }
+// PWA: registra o service worker e habilita o botão instalar quando o browser oferecer.
+if('serviceWorker' in navigator){ navigator.serviceWorker.register('/sw.js').catch(()=>{}); }
+let deferredPrompt=null;
+window.addEventListener('beforeinstallprompt',e=>{ e.preventDefault(); deferredPrompt=e;
+ document.getElementById('install').style.display='inline-block'; });
+async function install(){ if(!deferredPrompt) return; deferredPrompt.prompt(); deferredPrompt=null;
+ document.getElementById('install').style.display='none'; }
+// Auto-refresh (torre de controle): repõe a lista de execuções a cada 4s enquanto ligado.
+let AUTO=null;
+function stopAuto(){ if(AUTO){ clearInterval(AUTO); AUTO=null;
+ document.getElementById('auto').textContent='Auto-refresh: off';
+ document.getElementById('auto').classList.remove('on'); } }
+function toggleAuto(){ if(AUTO){ stopAuto(); return; }
+ AUTO=setInterval(execs,4000); document.getElementById('auto').textContent='Auto-refresh: on';
+ document.getElementById('auto').classList.add('on'); execs(); }
 function esc(v){ return String(v==null?'':v)
  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function pill(s){ return '<span class="pill s-'+esc(s)+'">'+esc(s)+'</span>'; }
@@ -79,7 +102,7 @@ function kv(o){ return '<table>'+Object.keys(o).map(k=>'<tr><th>'+k+'</th><td>'
  +(k==='state'?pill(o[k]):'<span class=mono>'+esc(o[k])+'</span>')+'</td></tr>').join('')
  +'</table>'; }
 function err(o,e){ o.innerHTML='<p class=muted>erro '+e.message+' (token correto?)</p>'; }
-async function load(p,key){ const o=document.getElementById('out');
+async function load(p,key){ stopAuto(); const o=document.getElementById('out');
  try{ const d=await get(p); o.innerHTML='<div class=card>'+table(d[key])+'</div>'; }
  catch(e){ err(o,e); } }
 async function execs(){ const o=document.getElementById('out');
@@ -92,7 +115,7 @@ async function execs(){ const o=document.getElementById('out');
    +'</td><td>'+pill(r.state)+'</td><td class=mono>'+esc(r.attempt)+'</td></tr>'; }
   o.innerHTML=h+'</table></div>';
  }catch(e){ err(o,e); } }
-async function detail(id){ const o=document.getElementById('out');
+async function detail(id){ stopAuto(); const o=document.getElementById('out');
  try{ const d=await get('/executions/'+id);
   let h='<button onclick="execs()">&larr; voltar</button>'
    +' <button onclick="term('+id+')">Terminal</button>'
@@ -101,14 +124,23 @@ async function detail(id){ const o=document.getElementById('out');
   h+='<div class=card><h2>Execução #'+id+'</h2>'+kv(d.execution)+'</div>';
   h+='<div class=card><h3>Sessões do motor (Claude Code)</h3>'+table(d.sessions)+'</div>';
   h+='<div class=card><h3>Conversa / interações</h3>'+table(d.interactions)+'</div>';
+  h+='<div id=termwrap></div>';
   o.innerHTML=h;
  }catch(e){ err(o,e); } }
 async function act(id,path){ try{ await post('/executions/'+id+path); detail(id); }
  catch(e){ alert('erro '+e.message); } }
+// Terminal embutido (Fatia 1): mostra a sessão viva (ttyd+tmux) num iframe, sem sair do app.
 async function term(id){ try{ const d=await get('/executions/'+id+'/terminal');
-  if(d.terminal_url) window.open(d.terminal_url,'_blank'); else alert(d.note||'terminal off'); }
+  const w=document.getElementById('termwrap');
+  if(!d.terminal_url){ const m='<p class=muted>'+esc(d.note||'terminal off')+'</p>';
+   if(w) w.innerHTML=m; else alert(d.note||'terminal off'); return; }
+  const u=esc(d.terminal_url);
+  const html='<div class=card><h3>Terminal da sessão '
+   +'<a href="'+u+'" target=_blank rel=noopener>↗ nova aba</a></h3>'
+   +'<iframe class=term src="'+u+'"></iframe></div>';
+  if(w) w.innerHTML=html; else document.getElementById('out').innerHTML+=html; }
  catch(e){ alert('erro '+e.message); } }
-async function costs(){ const o=document.getElementById('out');
+async function costs(){ stopAuto(); const o=document.getElementById('out');
  try{ const d=await get('/costs');
   o.innerHTML='<div class=card><div class=tot>Total: '+d.totals.tokens+' tokens · $'
    +Number(d.totals.cost_usd).toFixed(4)+'</div>'+table(d.calls)+'</div>'; }catch(e){ err(o,e); } }

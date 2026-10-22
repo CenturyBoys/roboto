@@ -1,0 +1,23 @@
+@import 'tailwindcss';
+
+/* Tema escuro Potter. Os tokens viram utilitários (bg-surface, text-muted, border-border…). */
+@theme {
+  --color-background: #0f1115;
+  --color-surface: #171a21;
+  --color-foreground: #e8e9ec;
+  --color-muted: #8a909c;
+  --color-accent: #ffd21e;
+  --color-border: #272b35;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+body {
+  margin: 0;
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}

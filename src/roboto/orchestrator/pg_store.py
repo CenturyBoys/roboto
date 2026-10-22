@@ -452,3 +452,20 @@ class PostgresStore:
                 """,
                 tenant, channel, offset, now,
             )
+
+    async def get_app_config(self) -> dict[str, str]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch("SELECT key, value FROM app_config")
+            return {r["key"]: r["value"] for r in rows}
+
+    async def set_app_config(self, values: dict[str, str], now: datetime) -> None:
+        async with self._pool.acquire() as conn, conn.transaction():
+            for key, value in values.items():
+                await conn.execute(
+                    """
+                    INSERT INTO app_config (key, value, updated_at)
+                    VALUES ($1, $2, $3)
+                    ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = $3
+                    """,
+                    key, value, now,
+                )

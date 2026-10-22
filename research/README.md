@@ -34,6 +34,8 @@ em vez de sessões gigantes de contexto.
 | K | Runtime containerizado | Rodar o fleet em Docker: auth no container, Playwright, credenciais via symlink/sync com least privilege. | H, B |
 | L | Modelo de custo do fleet | Orçar/medir token/$ por agente/issue/PR, com teto e alerta (criada na auditoria rodada-01). | F, I, J, H, D |
 | M | Observabilidade operacional, Telegram e checkpoints | Monitor de jobs (duração/erros), notificação+aprovação via Telegram, checkpoint/resume (durable execution). | H, A, B, G, J, K, L |
+| N | Operação interativa + motores de coding | Motores como adapters, IDs session/execution/interaction, interação humana, console web. | M, K, H, B |
+| O | Interface de gerenciamento | Telegram vs console web vs adotar ferramenta pronta (Orca/Conductor/Emdash/Superset/Synara/Paseo/Agentastic). | N, M |
 
 ## Como cada doc de trilha é estruturado
 
