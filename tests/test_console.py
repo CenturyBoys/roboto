@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 
 import httpx
+import pytest
 
 from roboto.orchestrator.model import Engine, GithubEvent, InteractionKind, RunState
 from roboto.orchestrator.store import InMemoryStore
@@ -33,7 +35,7 @@ async def test_healthz_is_public() -> None:
     async with _client(store) as c:
         resp = await c.get("/healthz")
         assert resp.status_code == 200
-        assert resp.json() == {"ok": True}
+        assert resp.json() == {"ok": True, "mode": "running"}  # front distingue de "setup"
 
 
 async def test_viewer_is_served() -> None:
@@ -46,6 +48,46 @@ async def test_viewer_is_served() -> None:
         assert fav.status_code == 200
         assert fav.headers["content-type"].startswith("image/svg")
         assert "path" in fav.text  # o raio
+
+
+async def test_pwa_manifest_and_service_worker_are_public() -> None:
+    store = InMemoryStore()
+    async with _client(store) as c:
+        man = await c.get("/manifest.webmanifest")  # público: não exige token
+        assert man.status_code == 200
+        assert man.headers["content-type"].startswith("application/manifest+json")
+        assert '"display":"standalone"' in man.text and "/favicon.svg" in man.text
+        sw = await c.get("/sw.js")
+        assert sw.status_code == 200
+        assert "javascript" in sw.headers["content-type"]
+        assert "addEventListener('fetch'" in sw.text  # handler = pré-requisito de instalável
+
+
+async def test_served_page_references_pwa_manifest() -> None:
+    # Vale para o SPA buildado OU o fallback legado: ambos referenciam o manifest e a marca.
+    store = InMemoryStore()
+    async with _client(store) as c:
+        page = (await c.get("/")).text
+        assert "Potter" in page and "manifest.webmanifest" in page
+
+
+def test_legacy_viewer_has_pwa_and_cockpit_hooks() -> None:
+    # Fallback embutido (sem build Node): segue PWA + terminal embutido + auto-refresh (Fatia 1).
+    from roboto.web.viewer import VIEWER_HTML
+
+    assert "register('/sw.js')" in VIEWER_HTML and "toggleAuto" in VIEWER_HTML
+    assert "class=term" in VIEWER_HTML and 'rel="manifest"' in VIEWER_HTML
+
+
+async def test_serves_legacy_viewer_when_spa_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Sem build do SPA (dev/checkout sem Node), o console cai no viewer legado embutido.
+    import roboto.web.console as console_mod
+
+    monkeypatch.setattr(console_mod, "_SPA_INDEX", Path("/nao/existe/index.html"))
+    store = InMemoryStore()
+    async with _client(store) as c:
+        page = (await c.get("/")).text
+        assert "toggleAuto" in page  # marca do viewer legado
 
 
 async def test_costs_endpoint() -> None:

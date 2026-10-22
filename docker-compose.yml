@@ -1,4 +1,6 @@
 # Ambiente de dev inteiro em Docker (decisão D3): app + Postgres (núcleo durável).
+# O `app` sobe o daemon (`python -m roboto`): servidor ASGI com o **cockpit web (console)** + webhook
+# do GitHub + laços. O SPA React é buildado no próprio Dockerfile (estágio node) e servido pelo app.
 # Observabilidade (Langfuse/Phoenix self-host) e checks periódicos entram como serviços aqui.
 services:
   db:
@@ -19,11 +21,31 @@ services:
 
   app:
     build: .
+    command: ["python", "-m", "roboto"]   # daemon: ASGI (cockpit + webhook) + laços
     depends_on:
       db:
         condition: service_healthy
+    # Credenciais de dev (Telegram/OpenRouter/GitHub/tenant): copie .env.example -> .env.
+    # O daemon exige essas variáveis p/ subir (senão sai com "config inválida"). Opcional no boot.
+    env_file:
+      - path: .env
+        required: false
     environment:
       DATABASE_URL: postgresql://roboto:dev-only-change-me@db:5432/roboto
+      CONSOLE_TOKEN: ${CONSOLE_TOKEN:-dev-console-token}   # habilita o cockpit (bearer do console)
+      # TTYD_BASE: URL do terminal web (ttyd+tmux) p/ o botão "Terminal"; vazio = botão desabilitado
+    ports:
+      # porta dedicada do projeto no HOST = 8088 (8080/8090 são de outros serviços); container é 8080.
+      # configurável: COCKPIT_PORT=9000 docker compose up  ->  http://localhost:9000
+      - "${COCKPIT_PORT:-8088}:8080"
+    restart: unless-stopped
+    healthcheck:   # /healthz responde em modo setup E normal (urllib: slim não tem curl)
+      test: ["CMD", "python", "-c",
+             "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8080/healthz').status==200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
 volumes:
   pgdata:

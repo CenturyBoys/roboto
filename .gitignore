@@ -17,4 +17,9 @@ __pycache__/
 # build/metadata
 *.egg-info/
 
+# frontend (web/ui) — deps e artefatos de build; o SPA é buildado no CI/Docker
+web/ui/node_modules/
+web/ui/dist/
+src/roboto/web/static/
+
 poc/.env.poc

@@ -82,7 +82,7 @@ run (running)
 | `llm_call` | medição de token/custo por chamada (refiner + juiz + motor) |
 | `channel_cursor` | offset do Telegram (retoma no restart, não reprocessa) |
 
-## Console / viewer (http://host:8090)
+## Console / viewer (http://host:8088)
 
 | Endpoint | Mostra | Plotado no viewer? |
 |---|---|---|

@@ -65,6 +65,58 @@ _REQUIRED = (
     "OPENROUTER_API_KEY",
 )
 
+# Config que pode vir do .env OU da tela de setup (trilha O) — tudo persiste no banco (fonte única).
+# DATABASE_URL e CONSOLE_TOKEN NÃO entram: são bootstrap (só via env; a tela precisa deles).
+BOOTSTRAP_KEYS = ("DATABASE_URL", "CONSOLE_TOKEN")
+SETTABLE_KEYS: tuple[str, ...] = (
+    "ROBOTO_TENANT",
+    "ROBOTO_DEFAULT_REPO",
+    "ROBOTO_REPOS",
+    "TELEGRAM_BOT_TOKEN",
+    "TELEGRAM_ALLOWLIST",
+    "OPENROUTER_API_KEY",
+    "STT_API_KEY",
+    "STT_BASE_URL",
+    "GITHUB_API_TOKEN",
+    "GITHUB_APP_ID",
+    "GITHUB_APP_PRIVATE_KEY",
+    "GITHUB_APP_INSTALLATION_ID",
+    "GITHUB_WEBHOOK_SECRET",
+    "LEASE_SECONDS",
+    "ROBOTO_ENGINE",
+    "ROBOTO_CHAT_ID",
+    "ROBOTO_BASE_BRANCH",
+    "ROBOTO_TRIGGER_LABEL",
+    "ROBOTO_BOT_LOGIN",
+    "ROBOTO_CODE_INTEL",
+    "TTYD_BASE",
+)
+
+
+def missing_required(env: Mapping[str, str]) -> list[str]:
+    """Chaves obrigatórias ausentes (vazio = config completa). Usado p/ decidir o modo setup."""
+    missing = [k for k in _REQUIRED if not env.get(k)]
+    has_app = bool(
+        env.get("GITHUB_APP_ID")
+        and env.get("GITHUB_APP_PRIVATE_KEY")
+        and env.get("GITHUB_APP_INSTALLATION_ID")
+    )
+    if not env.get("GITHUB_API_TOKEN") and not has_app:
+        missing.append("GITHUB_API_TOKEN")  # ou o conjunto GITHUB_APP_* completo
+    return missing
+
+
+def config_status(env: Mapping[str, str]) -> dict[str, object]:
+    """Resumo p/ a tela de setup: o que falta e o que já está preenchido (sem expor valores)."""
+    missing = missing_required(env)
+    present = [k for k in SETTABLE_KEYS if env.get(k)]
+    return {"configured": not missing, "missing": missing, "present": present}
+
+
+def settable_from_env(env: Mapping[str, str]) -> dict[str, str]:
+    """Valores setáveis presentes no env — o que o boot SEMEIA no banco (origem env -> registro)."""
+    return {k: env[k] for k in SETTABLE_KEYS if env.get(k)}
+
 
 def _allowlist(raw: str) -> frozenset[str]:
     return frozenset(p.strip() for p in raw.split(",") if p.strip())
