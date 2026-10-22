@@ -52,7 +52,14 @@ export function Chat({ id, onClose }: { id: number; onClose: () => void }) {
         <Button size="sm" variant="outline" onClick={() => void interruptExecution(id).catch(() => {})}>
           interromper
         </Button>
-        <Button size="sm" variant="outline" onClick={() => void endExecution(id).catch(() => {})}>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={async () => {
+            await endExecution(id).catch(() => {})
+            onClose() // encerra a sessão E fecha a tela do chat
+          }}
+        >
           encerrar
         </Button>
         <Button size="sm" variant="ghost" onClick={onClose}>
