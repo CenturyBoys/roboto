@@ -17,6 +17,7 @@ Fluxo (per a pesquisa do SDK):
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from datetime import datetime
 
@@ -102,38 +103,51 @@ async def drive_session(
     native_mapped = False
     try:
         async with ClaudeSDKClient(options=options) as client:
-            while True:
-                await client.query(prompt)
-                async for message in client.receive_response():
-                    if live.interrupt_requested:
+            # Vigia concorrente: corta o motor NO INSTANTE em que o humano pede interromper/encerrar
+            # — fora do loop de stream (prioridade máxima; não espera a próxima mensagem chegar).
+            async def _controls() -> None:
+                while True:
+                    await live.wait_control()
+                    try:
                         await client.interrupt()
-                        live.clear_interrupt()  # corta o turno atual; sessão segue viva
-                    name = type(message).__name__
-                    # Mapeia a sessão nativa -> interna (D23) assim que o id aparece —
-                    # o SDK o expõe já no SystemMessage de init (início do stream), não
-                    # só no ResultMessage (fim). Mapear cedo é o que torna a sessão
-                    # "viva"/nativa durante o turno e habilita o resume.
-                    native = str(getattr(message, "session_id", "") or "")
-                    if native and not native_mapped:
-                        session = await store.create_session(
-                            run.tenant, run.id, Engine.CLAUDE_CODE, now()
-                        )
-                        await store.set_native_session(session.id, native, now())
-                        native_mapped = True
-                    if name == "AssistantMessage":
-                        for block in getattr(message, "content", []) or []:
-                            if hasattr(block, "text"):
-                                await store.append_session_event(
-                                    run.tenant, run.id, "message", now(), text=str(block.text)
-                                )
-                            elif hasattr(block, "name"):  # tool_use
-                                await store.append_session_event(
-                                    run.tenant, run.id, "tool_call", now(), tool=str(block.name)
-                                )
-                # turno concluído: espera a próxima mensagem humana (steer); None = encerrar
-                nxt = await live.next_input()
-                if nxt is None:
-                    break
-                prompt = nxt
+                    except Exception:  # noqa: BLE001 — interrupt pode não ter nada rodando
+                        pass
+                    if live.ended:
+                        return
+                    live.clear_interrupt()  # interrupção tratada; segue vigiando
+
+            watcher = asyncio.create_task(_controls())
+            try:
+                while True:
+                    await client.query(prompt)
+                    async for message in client.receive_response():
+                        name = type(message).__name__
+                        # mapeia a sessão nativa -> interna (D23) assim que o id aparece
+                        native = str(getattr(message, "session_id", "") or "")
+                        if native and not native_mapped:
+                            session = await store.create_session(
+                                run.tenant, run.id, Engine.CLAUDE_CODE, now()
+                            )
+                            await store.set_native_session(session.id, native, now())
+                            native_mapped = True
+                        if name == "AssistantMessage":
+                            for block in getattr(message, "content", []) or []:
+                                if hasattr(block, "text"):
+                                    await store.append_session_event(
+                                        run.tenant, run.id, "message", now(), text=str(block.text)
+                                    )
+                                elif hasattr(block, "name"):  # tool_use
+                                    await store.append_session_event(
+                                        run.tenant, run.id, "tool_call", now(), tool=str(block.name)
+                                    )
+                    if live.ended:  # encerrar pedido durante o turno: sai já
+                        break
+                    # turno concluído: espera a próxima mensagem (steer); None = encerrar
+                    nxt = await live.next_input()
+                    if nxt is None:
+                        break
+                    prompt = nxt
+            finally:
+                watcher.cancel()
     finally:
         hub.close(run.id)
