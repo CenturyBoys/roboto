@@ -121,6 +121,7 @@ export function ExecDetail({ id, onBack }: { id: number; onBack: () => void }) {
         </dl>
       </Card>
 
+      {data.live && (
       <Card>
         <CardLabel>Co-piloto — conversar com a sessão viva</CardLabel>
         <div className="flex flex-wrap gap-2">
@@ -142,6 +143,7 @@ export function ExecDetail({ id, onBack }: { id: number; onBack: () => void }) {
         </div>
         {steerMsg && <p className="mt-1 text-xs text-muted">{steerMsg}</p>}
       </Card>
+      )}
 
       <Card>
         <CardLabel>Sessões do motor (Claude Code)</CardLabel>
