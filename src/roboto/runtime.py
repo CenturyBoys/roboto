@@ -25,7 +25,7 @@ from roboto.orchestrator.core import publish_outbox, sweep
 from roboto.orchestrator.model import Run, RunState
 from roboto.orchestrator.pg_store import PostgresStore
 from roboto.orchestrator.store import Store
-from roboto.result import Err
+from roboto.result import Err, Ok
 from roboto.web.app import build_app
 from roboto.web.setup import build_setup_app
 
@@ -61,12 +61,25 @@ async def _run_daemon(config: Config, store: Store) -> None:
             {"code-intel": {"command": "code-intel-mcp"}} if config.code_intel else None
         )
 
+        # injeta o contexto da issue (repo + #N + corpo) ANTES da mensagem do humano — senão o
+        # motor não sabe de qual issue a conversa trata, mesmo o chat tendo sido aberto nela.
+        prompt = initial_prompt
+        if run.issue_id.isdigit():
+            got = await adapters.github.get_issue(run.repo, int(run.issue_id))
+            if isinstance(got, Ok):
+                title, body = got.value
+                prompt = (
+                    f"Contexto: estamos trabalhando a issue #{run.issue_id} do repo {run.repo} "
+                    f"(cwd {f'/work/{run.repo}'}).\nTítulo: {title}\nCorpo atual:\n{body}\n\n"
+                    f"Mensagem do humano: {initial_prompt}"
+                )
+
         async def _drive() -> None:
             try:
                 await drive_session(
                     store, hub, run=run, chat_id=config.chat_id,
                     workdir=f"/work/{run.repo}", now=_now,
-                    mcp_servers=mcp, initial_prompt=initial_prompt,
+                    mcp_servers=mcp, initial_prompt=prompt,
                 )
             except Exception:  # noqa: BLE001 — task de fundo: loga e encerra limpo
                 logger.exception("co-piloto: sessão viva run=%s terminou com erro", run.id)
