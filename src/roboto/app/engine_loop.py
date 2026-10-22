@@ -53,6 +53,14 @@ async def drive_turn(
     await store.set_state(run.id, RunState.RUNNING, now)
 
     async for event in engine.events():
+        if event.kind is EngineEventKind.MESSAGE and event.text:  # feed ao vivo (Fatia 2)
+            await store.append_session_event(
+                run.tenant, run.id, "message", now, text=event.text, session_id=session.id
+            )
+        elif event.kind is EngineEventKind.TOOL_CALL:
+            await store.append_session_event(
+                run.tenant, run.id, "tool_call", now, tool=event.tool, session_id=session.id
+            )
         if event.kind in (EngineEventKind.NEEDS_INPUT, EngineEventKind.NEEDS_APPROVAL):
             kind = _interaction_kind(event.kind, event.options)
             prompt = _prompt_for(event)

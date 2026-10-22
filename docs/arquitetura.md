@@ -79,6 +79,8 @@ run (running)
 | `outbox` | efeitos a efetuar (create_issue/update_issue/telegram_*) — gravar→commit→efetuar |
 | `session` | sessões do motor (native_session_id do Claude Code) |
 | `interaction` | perguntas/decisões/aprovações + turnos da conversa (roteio por message_id) |
+| `session_event` | feed legível do motor por execução (message/tool_call) — SSE do cockpit (Fatia 2) |
+| `app_config` | config do fleet (fonte única); `.env` semeia no boot; tela de setup grava aqui |
 | `llm_call` | medição de token/custo por chamada (refiner + juiz + motor) |
 | `channel_cursor` | offset do Telegram (retoma no restart, não reprocessa) |
 
@@ -91,6 +93,7 @@ run (running)
 | `/costs` | tokens/custo (llm_call) | ✅ |
 | `/executions/{id}` | **detalhe**: run + **sessões** + **conversa completa** | ✅ (botão "ver") |
 | `/executions/{id}/terminal` | terminal do container (ttyd+tmux, D25) | ✅ (botão "Terminal") |
+| `/executions/{id}/events` | **feed ao vivo** do motor (SSE: message/tool_call, Fatia 2) | ✅ (painel "Feed") |
 | cancel / retry | ações no run | ✅ |
 
 ## Issue inteligente (scope) + second brain

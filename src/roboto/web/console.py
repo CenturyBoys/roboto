@@ -8,16 +8,19 @@ O terminal tmux (ttyd/Wetty) é infra à parte; aqui só devolvemos a URL config
 
 from __future__ import annotations
 
+import asyncio
+import json
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
 
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse, Response
+from starlette.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from starlette.routing import BaseRoute, Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from roboto.orchestrator.model import Interaction, LlmCall, Run, RunState, Session
+from roboto.orchestrator.model import Interaction, LlmCall, Run, RunState, Session, SessionEvent
 from roboto.orchestrator.store import Store
 from roboto.web.viewer import VIEWER_HTML
 
@@ -90,6 +93,10 @@ def _interaction_dict(it: Interaction) -> dict[str, object]:
         "answer": it.answer,
         "answered_by": it.answered_by,
     }
+
+
+def _event_dict(e: SessionEvent) -> dict[str, object]:
+    return {"id": e.id, "kind": e.kind, "text": e.text, "tool": e.tool, "at": e.at.isoformat()}
 
 
 def _llm_dict(c: LlmCall) -> dict[str, object]:
@@ -217,6 +224,26 @@ def console_routes(
             {"terminal_url": url, "note": "terminal do container (ttyd+tmux); isolado por empresa"}
         )
 
+    async def events_stream(request: Request) -> Response:
+        # Feed ao vivo (SSE, Fatia 2): backlog + novos eventos do motor. Bearer + isolamento (D17).
+        if _unauthorized(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        run = await _owned_run(request)
+        if run is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        run_id = run.id
+
+        async def gen() -> AsyncIterator[bytes]:
+            cursor = 0
+            while not await request.is_disconnected():
+                for e in await store.session_events(run_id, cursor, 200):
+                    cursor = e.id
+                    yield f"data: {json.dumps(_event_dict(e))}\n\n".encode()
+                yield b": ping\n\n"  # heartbeat: mantem a conexao viva entre polls
+                await asyncio.sleep(1.0)
+
+        return StreamingResponse(gen(), media_type="text/event-stream")
+
     return [
         *shell_routes(),
         Route("/healthz", healthz),
@@ -225,6 +252,7 @@ def console_routes(
         Route("/executions/{run_id:int}/cancel", cancel, methods=["POST"]),
         Route("/executions/{run_id:int}/retry", retry, methods=["POST"]),
         Route("/executions/{run_id:int}/terminal", terminal),
+        Route("/executions/{run_id:int}/events", events_stream),
         Route("/interactions", pending_interactions),
         Route("/costs", costs),
     ]

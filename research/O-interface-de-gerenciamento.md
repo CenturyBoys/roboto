@@ -200,8 +200,11 @@ grande (determinismo + baixo custo de manutenção/token).
    pra preencher pela tela; ao completar, recarrega e sobe os laços. Bootstrap só por env:
    `DATABASE_URL` + `CONSOLE_TOKEN` (o compose já injeta os dois → `docker compose up` sem `.env`
    cai direto no setup). Prod pode seguir o ansible-vault (D4). Validado ponta-a-ponta via Docker.
-2. **Feed legível ao vivo** — persistir `EngineEvent` (MESSAGE/TOOL_CALL) + **SSE** no detalhe. →
-   *ver o que o Claude faz* sem terminal cru.
+2. ✅ **Feed legível ao vivo** *(feito 2026-10-22)* — eventos do motor (MESSAGE/TOOL_CALL) persistidos
+   em `session_event` (migração `0007`), gravados no caminho real (`run_pr_cycle`) e no `drive_turn`;
+   **SSE** em `GET /executions/{id}/events` (backlog + live, bearer + isolamento). No front, painel
+   "Feed ao vivo" no detalhe consome via fetch-stream (EventSource não manda Authorization). *Ver o
+   que o Claude faz sem terminal cru.* Validado sob uvicorn real (curl `-N`).
 3. **HITL no front** — unificar o ciclo real com o protocolo de interação (`drive_turn`) + endpoint
    p/ responder interação + inbox priorizada. → *responder o motor sem Telegram*.
 4. **Custo agregado + diff** — agregação por issue/execução; surfacar `get_pr_diff` (+ comentário→agente).

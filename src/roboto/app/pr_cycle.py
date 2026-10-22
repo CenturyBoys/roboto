@@ -80,6 +80,15 @@ async def run_pr_cycle(
         started = await engine.start(spec)
         tin = tout = 0
         async for event in engine.events():  # deixa o motor editar o repo
+            if store is not None and now is not None:  # feed ao vivo do cockpit (trilha O, Fatia 2)
+                if event.kind is EngineEventKind.MESSAGE and event.text:
+                    await store.append_session_event(
+                        run.tenant, run.id, "message", now, text=event.text
+                    )
+                elif event.kind is EngineEventKind.TOOL_CALL:
+                    await store.append_session_event(
+                        run.tenant, run.id, "tool_call", now, tool=event.tool
+                    )
             if event.kind is EngineEventKind.FINISHED:
                 tin, tout = event.tokens_in, event.tokens_out
         if store is not None and now is not None:

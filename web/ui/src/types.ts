@@ -65,3 +65,11 @@ export interface SetupStatus {
   missing: string[]
   present: string[]
 }
+
+export interface FeedEvent {
+  id: number
+  kind: 'message' | 'tool_call'
+  text: string
+  tool: string
+  at: string
+}

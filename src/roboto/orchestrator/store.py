@@ -22,6 +22,7 @@ from roboto.orchestrator.model import (
     Run,
     RunState,
     Session,
+    SessionEvent,
 )
 
 
@@ -126,6 +127,22 @@ class Store(Protocol):
 
     async def set_app_config(self, values: dict[str, str], now: datetime) -> None: ...
 
+    async def append_session_event(
+        self,
+        tenant: str,
+        execution_id: int,
+        kind: str,
+        now: datetime,
+        *,
+        text: str = "",
+        tool: str = "",
+        session_id: int | None = None,
+    ) -> SessionEvent: ...
+
+    async def session_events(
+        self, execution_id: int, after_id: int, limit: int
+    ) -> list[SessionEvent]: ...
+
 
 class InMemoryStore:
     """Store em memória para testes tier-1 e o MVP local."""
@@ -142,6 +159,7 @@ class InMemoryStore:
         self._channel_cursor: dict[tuple[str, str], int] = {}
         self._facts: list[MemoryFact] = []
         self._app_config: dict[str, str] = {}
+        self._session_events: list[SessionEvent] = []
         self._fact_seq = 0
         self._run_seq = 0
         self._effect_seq = 0
@@ -429,3 +447,37 @@ class InMemoryStore:
 
     async def set_app_config(self, values: dict[str, str], now: datetime) -> None:
         self._app_config.update(values)
+
+    async def append_session_event(
+        self,
+        tenant: str,
+        execution_id: int,
+        kind: str,
+        now: datetime,
+        *,
+        text: str = "",
+        tool: str = "",
+        session_id: int | None = None,
+    ) -> SessionEvent:
+        event = SessionEvent(
+            id=len(self._session_events) + 1,
+            tenant=tenant,
+            execution_id=execution_id,
+            kind=kind,
+            text=text,
+            tool=tool,
+            at=now,
+            session_id=session_id,
+        )
+        self._session_events.append(event)
+        return event
+
+    async def session_events(
+        self, execution_id: int, after_id: int, limit: int
+    ) -> list[SessionEvent]:
+        items = [
+            e
+            for e in self._session_events
+            if e.execution_id == execution_id and e.id > after_id
+        ]
+        return items[:limit]
