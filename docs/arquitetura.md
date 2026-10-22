@@ -89,9 +89,15 @@ run (running)
 | `/executions` | lista de runs | ✅ |
 | `/interactions` | interações pendentes | ✅ |
 | `/costs` | tokens/custo (llm_call) | ✅ |
-| `/executions/{id}` | **detalhe**: run + **sessões** + **conversa completa** | ❌ (endpoint existe, viewer não abre) |
-| `/executions/{id}/terminal` | eventos do motor (stream) | ❌ |
-| cancel / retry | ações no run | ❌ |
+| `/executions/{id}` | **detalhe**: run + **sessões** + **conversa completa** | ✅ (botão "ver") |
+| `/executions/{id}/terminal` | terminal do container (ttyd+tmux, D25) | ✅ (botão "Terminal") |
+| cancel / retry | ações no run | ✅ |
 
-> **Gap:** o viewer plota as 3 listas, mas **não abre o detalhe de uma execução** (sessões +
-> conversa + terminal). Os dados existem na API — falta a tela.
+## Issue inteligente (scope) + second brain
+
+- **Scope (D31):** ideia nova pelo Telegram → run `scope` → o **motor LÊ o repo** (AGENTS.md, código
+  via code-intel/ripgrep, issues) e monta uma issue **fundamentada** → proposta→OK (D30).
+  Impl: `app/scope.py` (`process_scope_tick`, laço próprio que não bloqueia o poll).
+- **Second brain (D32, trilha G):** fatos/decisões em `memory_fact` + **índice FTS** (recall
+  determinístico, **sem LLM**); o scope injeta os fatos relevantes no prompt. `lembra: X` popula.
+  Verdade = texto; índice = derivado/rebuildável.
