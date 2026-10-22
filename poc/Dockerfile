@@ -1,6 +1,14 @@
 # PoC do fleet (N3): tudo num container isolado — build/test do repo-alvo (Playwright),
 # roboto (daemon), Claude Code + claude-code-router (-> OpenRouter/Qwen).
 # NOTA: versões/pacotes marcados "validar" não foram exercitados sem rede; confira no 1º build.
+# Estágio UI: builda o cockpit React (mesmo do Dockerfile principal) — o PoC serve o SPA (trilha O).
+FROM node:24-slim AS ui
+WORKDIR /app/web/ui
+COPY web/ui/package.json web/ui/package-lock.json ./
+RUN npm ci
+COPY web/ui ./
+RUN npm run build  # -> /app/src/roboto/web/static
+
 # base noble (Ubuntu 24.04) => Python 3.12 (roboto exige >=3.11; jammy tem só 3.10)
 FROM mcr.microsoft.com/playwright:v1.48.0-noble
 
@@ -25,6 +33,8 @@ ENV PATH="/opt/venv/bin:$PATH"
 WORKDIR /opt/roboto
 COPY pyproject.toml ./
 COPY src ./src
+# SPA do cockpit (trilha O) buildado no estágio `ui`:
+COPY --from=ui /app/src/roboto/web/static ./src/roboto/web/static
 RUN pip install -e ".[engine]"  # inclui claude-agent-sdk (motor Claude Code)
 
 COPY poc/ccr.config.json /opt/roboto/poc/ccr.config.json
