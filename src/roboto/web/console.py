@@ -86,6 +86,7 @@ def _session_dict(session: Session) -> dict[str, object]:
 def _interaction_dict(it: Interaction) -> dict[str, object]:
     return {
         "id": it.id,
+        "execution_id": it.execution_id,
         "kind": str(it.kind),
         "prompt": it.prompt,
         "options": it.options,
@@ -195,6 +196,23 @@ def console_routes(
         items = await store.pending_interactions(tenant, 100)
         return JSONResponse({"interactions": [_interaction_dict(i) for i in items]})
 
+    async def answer_interaction(request: Request) -> JSONResponse:
+        # Responder HITL pelo cockpit (Fatia 3) — mesmo answer_interaction do Telegram (1ª vence).
+        if _unauthorized(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        iid = int(request.path_params["interaction_id"])
+        it = await store.get_interaction(iid)
+        if it is None or it.tenant != tenant:  # isolamento por empresa (D17)
+            return JSONResponse({"error": "not found"}, status_code=404)
+        body = await request.json()
+        answer = str(body.get("answer", "")).strip() if isinstance(body, dict) else ""
+        if not answer:
+            return JSONResponse({"error": "answer vazio"}, status_code=400)
+        accepted = await store.answer_interaction(iid, answer, "console", datetime.now(UTC))
+        return JSONResponse(
+            {"id": iid, "accepted": accepted, "status": "answered" if accepted else str(it.status)}
+        )
+
     async def cancel(request: Request) -> JSONResponse:
         if _unauthorized(request):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
@@ -254,6 +272,7 @@ def console_routes(
         Route("/executions/{run_id:int}/terminal", terminal),
         Route("/executions/{run_id:int}/events", events_stream),
         Route("/interactions", pending_interactions),
+        Route("/interactions/{interaction_id:int}/answer", answer_interaction, methods=["POST"]),
         Route("/costs", costs),
     ]
 

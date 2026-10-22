@@ -309,6 +309,13 @@ class PostgresStore:
                 interaction_id, channel_message_id,
             )
 
+    async def get_interaction(self, interaction_id: int) -> Interaction | None:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                f"SELECT {_INTERACTION_COLS} FROM interaction WHERE id = $1", interaction_id
+            )
+            return _row_to_interaction(row) if row is not None else None
+
     async def get_interaction_by_message_id(
         self, tenant: str, channel_message_id: str
     ) -> Interaction | None:
