@@ -19,6 +19,10 @@ export function Feed({ id }: { id: number }) {
               <div key={e.id} className="font-mono text-xs text-sky-300">
                 🔧 {e.tool}
               </div>
+            ) : e.kind === 'user' ? (
+              <div key={e.id} className="self-end rounded-lg bg-accent/15 px-3 py-1.5 text-sm">
+                <span className="text-accent">você:</span> {e.text}
+              </div>
             ) : (
               <div key={e.id} className="md rounded-lg border border-border bg-background/40 p-3 text-sm">
                 <Markdown remarkPlugins={[remarkGfm]}>{e.text}</Markdown>
