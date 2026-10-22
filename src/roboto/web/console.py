@@ -13,6 +13,7 @@ import json
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Protocol
 
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -22,6 +23,7 @@ from starlette.staticfiles import StaticFiles
 
 from roboto.app.session_hub import SessionHub
 from roboto.orchestrator.model import (
+    Error,
     Interaction,
     InteractionKind,
     LlmCall,
@@ -31,7 +33,16 @@ from roboto.orchestrator.model import (
     SessionEvent,
 )
 from roboto.orchestrator.store import Store
+from roboto.result import Err, Result
 from roboto.web.viewer import VIEWER_HTML
+
+
+class IssueSource(Protocol):
+    """O mínimo que o console usa do GitHub: listar issues abertas (nº, título)."""
+
+    async def list_open_issues(
+        self, repo: str, *, limit: int = 20
+    ) -> Result[list[tuple[int, str]], Error]: ...
 
 # SPA buildado pelo front (web/ui → vite build). Se presente, o console serve o app React; senão,
 # cai no viewer legado embutido (dev/teste sem Node não quebram). Ver research/O §7.
@@ -164,6 +175,8 @@ def console_routes(
     token: str,
     ttyd_base: str | None = None,
     hub: SessionHub | None = None,
+    issues: IssueSource | None = None,
+    default_repo: str = "",
 ) -> list[BaseRoute]:
     def _unauthorized(request: Request) -> bool:
         return not token or request.headers.get("authorization") != f"Bearer {token}"
@@ -342,6 +355,20 @@ def console_routes(
             return JSONResponse({"number": None, "url": None, "diff": ""})
         return JSONResponse({"number": pr.number, "url": pr.url, "diff": pr.diff})
 
+    async def list_issues(request: Request) -> JSONResponse:
+        # Issues abertas do repo — entry point do refino no cockpit (Fatia 6).
+        if _unauthorized(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        repo = request.query_params.get("repo") or default_repo
+        if issues is None or not repo:
+            return JSONResponse({"repo": repo, "issues": [], "note": "GitHub não configurado"})
+        result = await issues.list_open_issues(repo, limit=50)
+        if isinstance(result, Err):
+            return JSONResponse({"repo": repo, "issues": [], "error": result.error.message})
+        return JSONResponse(
+            {"repo": repo, "issues": [{"number": n, "title": t} for n, t in result.value]}
+        )
+
     return [
         *shell_routes(),
         Route("/healthz", healthz),
@@ -354,6 +381,7 @@ def console_routes(
         Route("/executions/{run_id:int}/diff", pr_diff),
         Route("/executions/{run_id:int}/message", steer_message, methods=["POST"]),
         Route("/executions/{run_id:int}/interrupt", interrupt_session, methods=["POST"]),
+        Route("/issues", list_issues),
         Route("/interactions", pending_interactions),
         Route("/interactions/{interaction_id:int}/answer", answer_interaction, methods=["POST"]),
         Route("/costs", costs),
@@ -367,7 +395,12 @@ def build_console(
     token: str,
     ttyd_base: str | None = None,
     hub: SessionHub | None = None,
+    issues: IssueSource | None = None,
+    default_repo: str = "",
 ) -> Starlette:
     return Starlette(
-        routes=console_routes(store, tenant=tenant, token=token, ttyd_base=ttyd_base, hub=hub)
+        routes=console_routes(
+            store, tenant=tenant, token=token, ttyd_base=ttyd_base, hub=hub,
+            issues=issues, default_repo=default_repo,
+        )
     )

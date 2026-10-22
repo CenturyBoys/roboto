@@ -225,6 +225,12 @@ grande (determinismo + baixo custo de manutenção/token).
    `query`/`receive_response`/`interrupt` + `can_use_tool` que aguarda o humano) implementado **per a
    pesquisa do SDK**, **lazy e fora do loop default** — resta o **PoC vivo com modelo** (N2/N3) pra
    validar e plugar no `runtime`. Plano de controle verificado por testes determinísticos (stub).
+6. ◑ **Refino no cockpit** *(iniciado 2026-10-22)* — pedido do dono: fazer o ciclo da issue pela UI,
+   não só pelo Telegram. **Feito:** lista de **issues abertas** no cockpit (`GET /issues` via
+   `GithubAppClient.list_open_issues`; aba "Issues"; repo do `default_repo`/`?repo=`). **Próximos:**
+   escolher a issue → **conversa de refino** (refiner/OpenRouter, stateful) → **DoR**
+   (`check_issue_readiness`) → **atualizar a issue** (com OK) → **mandar o agente trabalhar**
+   (enfileira run) e acompanhar pelo feed/co-piloto. Fecha a migração Telegram→cockpit do refino.
 
 ## 8. Perguntas em aberto (para o dono)
 

@@ -4,6 +4,7 @@ import type {
   ExecutionDetail,
   Health,
   Interaction,
+  IssueList,
   PrDiff,
   SetupStatus,
   Terminal,
@@ -38,6 +39,7 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 export const listExecutions = () => api<{ executions: Execution[] }>('/executions')
 export const getExecution = (id: number) => api<ExecutionDetail>(`/executions/${id}`)
 export const getCosts = () => api<Costs>('/costs')
+export const listIssues = () => api<IssueList>('/issues')
 export const listInteractions = () => api<{ interactions: Interaction[] }>('/interactions')
 export const answerInteraction = (id: number, answer: string) =>
   api<{ id: number; accepted: boolean; status: string }>(`/interactions/${id}/answer`, {

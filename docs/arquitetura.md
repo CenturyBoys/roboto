@@ -99,6 +99,7 @@ run (running)
 | `/executions/{id}/diff` | **diff do PR** da execução (Fatia 4; cache em `execution_pr`) | ✅ (painel "Diff") |
 | `/executions/{id}/message` · `/interrupt` | **co-piloto** (Fatia 5): steer/interromper a sessão viva (`SessionHub`) | ✅ (painel "Co-piloto") |
 | `/costs` | tokens/custo (llm_call) + **agregado por execução** (Fatia 4) | ✅ |
+| `/issues` | **issues abertas** do repo (Fatia 6; entry point do refino no cockpit) | ✅ (aba "Issues") |
 | cancel / retry | ações no run | ✅ |
 
 ## Issue inteligente (scope) + second brain

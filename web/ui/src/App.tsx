@@ -6,9 +6,10 @@ import { ExecList } from '@/components/ExecList'
 import { ExecDetail } from '@/components/ExecDetail'
 import { Costs } from '@/components/Costs'
 import { Interactions } from '@/components/Interactions'
+import { IssuesList } from '@/components/IssuesList'
 import { Setup } from '@/components/Setup'
 
-type View = 'execs' | 'interactions' | 'costs'
+type View = 'execs' | 'issues' | 'interactions' | 'costs'
 type Mode = 'loading' | 'setup' | 'running'
 
 export default function App() {
@@ -79,6 +80,9 @@ export default function App() {
               >
                 Execuções
               </Button>
+              <Button variant={view === 'issues' ? 'default' : 'outline'} onClick={() => go('issues')}>
+                Issues
+              </Button>
               <Button
                 variant={view === 'interactions' ? 'default' : 'outline'}
                 onClick={() => go('interactions')}
@@ -105,6 +109,7 @@ export default function App() {
             {view === 'execs' && selected !== null && (
               <ExecDetail id={selected} onBack={() => setSelected(null)} />
             )}
+            {view === 'issues' && <IssuesList />}
             {view === 'interactions' && <Interactions />}
             {view === 'costs' && <Costs />}
           </>

@@ -9,8 +9,9 @@ import httpx
 import pytest
 
 from roboto.app.session_hub import SessionHub
-from roboto.orchestrator.model import Engine, GithubEvent, InteractionKind, RunState
+from roboto.orchestrator.model import Engine, Error, GithubEvent, InteractionKind, RunState
 from roboto.orchestrator.store import InMemoryStore
+from roboto.result import Ok, Result
 from roboto.web.console import build_console
 
 _T0 = datetime(2026, 1, 1, tzinfo=UTC)
@@ -140,6 +141,37 @@ async def test_pr_diff_endpoint() -> None:
     async with _client(store) as c:
         d = (await c.get(f"/executions/{run_id}/diff", headers=_AUTH)).json()
         assert d["number"] == 42 and "+ok" in d["diff"]
+
+
+class _FakeIssues:
+    def __init__(self, items: list[tuple[int, str]]) -> None:
+        self._items = items
+
+    async def list_open_issues(
+        self, repo: str, *, limit: int = 20
+    ) -> Result[list[tuple[int, str]], Error]:
+        return Ok(self._items)
+
+
+async def test_issues_endpoint_lists_open() -> None:
+    store = InMemoryStore()
+    src = _FakeIssues([(180, "rate limit distribuído"), (112, "targeting por parceiro")])
+    app = build_console(store, tenant="acme", token=_TOKEN, issues=src, default_repo="acme/app")
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://console"
+    ) as c:
+        assert (await c.get("/issues")).status_code == 401  # exige token
+        data = (await c.get("/issues", headers=_AUTH)).json()
+        assert data["repo"] == "acme/app"
+        assert [i["number"] for i in data["issues"]] == [180, 112]
+        assert data["issues"][0]["title"] == "rate limit distribuído"
+
+
+async def test_issues_endpoint_unconfigured() -> None:
+    store = InMemoryStore()
+    async with _client(store) as c:  # sem issue source nem repo
+        data = (await c.get("/issues", headers=_AUTH)).json()
+        assert data["issues"] == [] and "note" in data
 
 
 async def test_requires_auth() -> None:
