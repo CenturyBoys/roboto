@@ -114,7 +114,7 @@ export interface SetupStatus {
 
 export interface FeedEvent {
   id: number
-  kind: 'message' | 'tool_call'
+  kind: 'message' | 'tool_call' | 'user'
   text: string
   tool: string
   at: string

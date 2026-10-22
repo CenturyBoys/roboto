@@ -288,6 +288,8 @@ def console_routes(
         text = str(body.get("text", "")).strip() if isinstance(body, dict) else ""
         if not text:
             return JSONResponse({"error": "text vazio"}, status_code=400)
+        # registra a mensagem do humano no thread (kind "user") — o chat mostra os dois lados
+        await store.append_session_event(run.tenant, run.id, "user", datetime.now(UTC), text=text)
         live = hub.get(run.id) if hub is not None else None
         if live is not None:  # sessão já viva: enfileira o steer p/ o próximo turno
             await live.steer(text)

@@ -1,18 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
-  ApiError,
   cancelExecution,
-  endExecution,
   getExecution,
   getPrDiff,
   getTerminal,
-  interruptExecution,
   retryExecution,
-  steerExecution,
 } from '@/lib/api'
 import type { ExecutionDetail, PrDiff, Terminal } from '@/types'
 import { Button } from './ui/button'
 import { Card, CardLabel, CardTitle } from './ui/card'
+import { Chat } from './Chat'
 import { Feed } from './Feed'
 import { StatePill } from './ui/state-pill'
 import { Td, TableWrap, Th } from './ui/table'
@@ -22,8 +19,7 @@ export function ExecDetail({ id, onBack }: { id: number; onBack: () => void }) {
   const [term, setTerm] = useState<Terminal | null>(null)
   const [diff, setDiff] = useState<PrDiff | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [steerText, setSteerText] = useState('')
-  const [steerMsg, setSteerMsg] = useState<string | null>(null)
+  const [chatOpen, setChatOpen] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -60,38 +56,6 @@ export function ExecDetail({ id, onBack }: { id: number; onBack: () => void }) {
       setDiff(await getPrDiff(id))
     } catch {
       /* ignore */
-    }
-  }
-
-  async function steer() {
-    const t = steerText.trim()
-    if (!t) return
-    try {
-      await steerExecution(id, t)
-      setSteerText('')
-      setSteerMsg(data?.live ? 'enviado ✓' : 'sessão iniciada — o motor vai trabalhar ⚡')
-      await load() // atualiza o "live" e o resto do detalhe
-    } catch {
-      setSteerMsg('erro ao enviar (motor interativo disponível?)')
-    }
-  }
-
-  async function interrupt() {
-    try {
-      await interruptExecution(id)
-      setSteerMsg('interrupção pedida')
-    } catch (e) {
-      setSteerMsg(e instanceof ApiError && e.status === 409 ? 'sessão não está viva' : 'erro')
-    }
-  }
-
-  async function endSession() {
-    try {
-      await endExecution(id)
-      setSteerMsg('sessão encerrada')
-      await load()
-    } catch (e) {
-      setSteerMsg(e instanceof ApiError && e.status === 409 ? 'sessão não está viva' : 'erro')
     }
   }
 
@@ -133,38 +97,16 @@ export function ExecDetail({ id, onBack }: { id: number; onBack: () => void }) {
         </dl>
       </Card>
 
-      <Card>
-        <CardLabel>
-          Co-piloto — conversar com a sessão do motor{' '}
+      <Card className="flex flex-wrap items-center gap-3">
+        <CardLabel className="!m-0">
+          Co-piloto{' '}
           <span className={data.live ? 'text-green-300' : 'text-muted'}>
-            · {data.live ? 'sessão viva' : 'a 1ª mensagem inicia a sessão'}
+            · {data.live ? 'sessão viva' : 'inicie pelo chat'}
           </span>
         </CardLabel>
-        <div className="flex flex-wrap gap-2">
-          <input
-            value={steerText}
-            onChange={(e) => setSteerText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void steer()
-            }}
-            placeholder={data.live ? 'responder/ajustar…' : 'inicie a conversa com o motor…'}
-            className="min-w-60 flex-1 rounded-lg border border-border bg-background px-2.5 py-2 text-sm outline-none focus:border-accent"
-          />
-          <Button variant="default" onClick={() => void steer()}>
-            enviar
-          </Button>
-          {data.live && (
-            <>
-              <Button variant="outline" onClick={() => void interrupt()}>
-                interromper
-              </Button>
-              <Button variant="outline" onClick={() => void endSession()}>
-                encerrar
-              </Button>
-            </>
-          )}
-        </div>
-        {steerMsg && <p className="mt-1 text-xs text-muted">{steerMsg}</p>}
+        <Button variant="default" onClick={() => setChatOpen(true)}>
+          💬 Chat com o motor
+        </Button>
       </Card>
 
       <Card>
@@ -286,6 +228,16 @@ export function ExecDetail({ id, onBack }: { id: number; onBack: () => void }) {
             <p className="text-muted">sem PR/diff ainda para esta execução</p>
           )}
         </Card>
+      )}
+
+      {chatOpen && (
+        <Chat
+          id={id}
+          onClose={() => {
+            setChatOpen(false)
+            void load()
+          }}
+        />
       )}
     </div>
   )
