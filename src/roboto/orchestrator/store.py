@@ -12,6 +12,7 @@ from typing import Any, Protocol
 
 from roboto.orchestrator.model import (
     Engine,
+    ExecutionPr,
     GithubEvent,
     Interaction,
     InteractionKind,
@@ -113,6 +114,8 @@ class Store(Protocol):
 
     async def llm_calls(self, tenant: str, limit: int) -> list[LlmCall]: ...
 
+    async def cost_for_execution(self, execution_id: int) -> tuple[int, float]: ...
+
     async def get_channel_offset(self, tenant: str, channel: str) -> int | None: ...
 
     async def set_channel_offset(
@@ -145,6 +148,12 @@ class Store(Protocol):
         self, execution_id: int, after_id: int, limit: int
     ) -> list[SessionEvent]: ...
 
+    async def set_execution_pr(
+        self, execution_id: int, number: int, url: str, diff: str, now: datetime
+    ) -> None: ...
+
+    async def get_execution_pr(self, execution_id: int) -> ExecutionPr | None: ...
+
 
 class InMemoryStore:
     """Store em memória para testes tier-1 e o MVP local."""
@@ -162,6 +171,7 @@ class InMemoryStore:
         self._facts: list[MemoryFact] = []
         self._app_config: dict[str, str] = {}
         self._session_events: list[SessionEvent] = []
+        self._execution_prs: dict[int, ExecutionPr] = {}
         self._fact_seq = 0
         self._run_seq = 0
         self._effect_seq = 0
@@ -361,6 +371,16 @@ class InMemoryStore:
         ]
         return items[:limit]
 
+    async def set_execution_pr(
+        self, execution_id: int, number: int, url: str, diff: str, now: datetime
+    ) -> None:
+        self._execution_prs[execution_id] = ExecutionPr(
+            execution_id=execution_id, number=number, url=url, diff=diff, updated_at=now
+        )
+
+    async def get_execution_pr(self, execution_id: int) -> ExecutionPr | None:
+        return self._execution_prs.get(execution_id)
+
     async def list_runs(self, tenant: str, limit: int) -> list[Run]:
         runs = [
             self._runs[i]
@@ -415,6 +435,10 @@ class InMemoryStore:
 
     async def llm_calls(self, tenant: str, limit: int) -> list[LlmCall]:
         return [c for c in self._llm_calls if c.tenant == tenant][:limit]
+
+    async def cost_for_execution(self, execution_id: int) -> tuple[int, float]:
+        calls = [c for c in self._llm_calls if c.run_id == execution_id]
+        return sum(c.tokens_in + c.tokens_out for c in calls), sum(c.cost_usd for c in calls)
 
     async def get_channel_offset(self, tenant: str, channel: str) -> int | None:
         return self._channel_cursor.get((tenant, channel))

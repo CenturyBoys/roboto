@@ -15,6 +15,7 @@ import asyncpg  # type: ignore[import-untyped]
 
 from roboto.orchestrator.model import (
     Engine,
+    ExecutionPr,
     GithubEvent,
     Interaction,
     InteractionKind,
@@ -352,6 +353,34 @@ class PostgresStore:
             )
             return [_row_to_interaction(r) for r in rows]
 
+    async def set_execution_pr(
+        self, execution_id: int, number: int, url: str, diff: str, now: datetime
+    ) -> None:
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO execution_pr (execution_id, number, url, diff, updated_at)
+                VALUES ($1, $2, $3, $4, $5)
+                ON CONFLICT (execution_id) DO UPDATE
+                    SET number = $2, url = $3, diff = $4, updated_at = $5
+                """,
+                execution_id, number, url, diff, now,
+            )
+
+    async def get_execution_pr(self, execution_id: int) -> ExecutionPr | None:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT execution_id, number, url, diff, updated_at "
+                "FROM execution_pr WHERE execution_id = $1",
+                execution_id,
+            )
+            if row is None:
+                return None
+            return ExecutionPr(
+                execution_id=row["execution_id"], number=row["number"], url=row["url"],
+                diff=row["diff"], updated_at=row["updated_at"],
+            )
+
     async def list_runs(self, tenant: str, limit: int) -> list[Run]:
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
@@ -403,6 +432,15 @@ class PostgresStore:
                 """,
                 tenant, run_id, provider, model, tier, tokens_in, tokens_out, cost_usd, now,
             )
+
+    async def cost_for_execution(self, execution_id: int) -> tuple[int, float]:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT COALESCE(SUM(tokens_in + tokens_out), 0) AS tok, "
+                "COALESCE(SUM(cost_usd), 0) AS cost FROM llm_call WHERE run_id = $1",
+                execution_id,
+            )
+            return int(row["tok"]), float(row["cost"])
 
     async def llm_calls(self, tenant: str, limit: int) -> list[LlmCall]:
         async with self._pool.acquire() as conn:

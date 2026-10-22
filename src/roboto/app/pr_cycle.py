@@ -127,6 +127,9 @@ async def run_pr_cycle(
         number = state["pr"]
         diff = await github.get_pr_diff(run.repo, number)
         diff_text = diff.value if isinstance(diff, Ok) else ""
+        if store is not None and now is not None and number:  # cache p/ o cockpit (Fatia 4)
+            url = f"https://github.com/{run.repo}/pull/{number}"
+            await store.set_execution_pr(run.id, number, url, diff_text, now)
         return PullRequest(number=number, author=str(engine.engine), title=title, diff=diff_text)
 
     review_gw: ModelGateway = gateway

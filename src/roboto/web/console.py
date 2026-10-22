@@ -164,8 +164,23 @@ def console_routes(
         calls = await store.llm_calls(tenant, 100)
         tokens = sum(c.tokens_in + c.tokens_out for c in calls)
         cost = sum(c.cost_usd for c in calls)
+        agg: dict[int, list[float]] = {}  # run_id -> [tokens, cost] (Fatia 4: custo por execução)
+        for c in calls:
+            if c.run_id is None:
+                continue
+            acc = agg.setdefault(c.run_id, [0.0, 0.0])
+            acc[0] += c.tokens_in + c.tokens_out
+            acc[1] += c.cost_usd
+        by_execution = [
+            {"run_id": rid, "tokens": int(t[0]), "cost_usd": round(t[1], 6)}
+            for rid, t in sorted(agg.items(), reverse=True)
+        ]
         return JSONResponse(
-            {"calls": [_llm_dict(c) for c in calls], "totals": {"tokens": tokens, "cost_usd": cost}}
+            {
+                "calls": [_llm_dict(c) for c in calls],
+                "totals": {"tokens": tokens, "cost_usd": cost},
+                "by_execution": by_execution,
+            }
         )
 
     async def list_executions(request: Request) -> JSONResponse:
@@ -182,11 +197,13 @@ def console_routes(
             return JSONResponse({"error": "not found"}, status_code=404)
         sessions = await store.sessions_for_execution(run.id)
         interactions = await store.interactions_for_execution(run.id)
+        tokens, cost = await store.cost_for_execution(run.id)  # custo da execução (Fatia 4)
         return JSONResponse(
             {
                 "execution": _run_dict(run),
                 "sessions": [_session_dict(s) for s in sessions],
                 "interactions": [_interaction_dict(i) for i in interactions],
+                "cost": {"tokens": tokens, "cost_usd": round(cost, 6)},
             }
         )
 
@@ -262,6 +279,18 @@ def console_routes(
 
         return StreamingResponse(gen(), media_type="text/event-stream")
 
+    async def pr_diff(request: Request) -> JSONResponse:
+        # Diff do PR da execução (Fatia 4) — cacheado no banco pelo ciclo de review; a UI só lê.
+        if _unauthorized(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        run = await _owned_run(request)
+        if run is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        pr = await store.get_execution_pr(run.id)
+        if pr is None:
+            return JSONResponse({"number": None, "url": None, "diff": ""})
+        return JSONResponse({"number": pr.number, "url": pr.url, "diff": pr.diff})
+
     return [
         *shell_routes(),
         Route("/healthz", healthz),
@@ -271,6 +300,7 @@ def console_routes(
         Route("/executions/{run_id:int}/retry", retry, methods=["POST"]),
         Route("/executions/{run_id:int}/terminal", terminal),
         Route("/executions/{run_id:int}/events", events_stream),
+        Route("/executions/{run_id:int}/diff", pr_diff),
         Route("/interactions", pending_interactions),
         Route("/interactions/{interaction_id:int}/answer", answer_interaction, methods=["POST"]),
         Route("/costs", costs),

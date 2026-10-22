@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { cancelExecution, getExecution, getTerminal, retryExecution } from '@/lib/api'
-import type { ExecutionDetail, Terminal } from '@/types'
+import { cancelExecution, getExecution, getPrDiff, getTerminal, retryExecution } from '@/lib/api'
+import type { ExecutionDetail, PrDiff, Terminal } from '@/types'
 import { Button } from './ui/button'
 import { Card, CardLabel, CardTitle } from './ui/card'
 import { Feed } from './Feed'
@@ -10,6 +10,7 @@ import { Td, TableWrap, Th } from './ui/table'
 export function ExecDetail({ id, onBack }: { id: number; onBack: () => void }) {
   const [data, setData] = useState<ExecutionDetail | null>(null)
   const [term, setTerm] = useState<Terminal | null>(null)
+  const [diff, setDiff] = useState<PrDiff | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -42,6 +43,14 @@ export function ExecDetail({ id, onBack }: { id: number; onBack: () => void }) {
     }
   }
 
+  async function showDiff() {
+    try {
+      setDiff(await getPrDiff(id))
+    } catch {
+      /* ignore */
+    }
+  }
+
   if (error) return <p className="text-muted">{error}</p>
   if (!data) return <p className="text-muted">carregando…</p>
   const e = data.execution
@@ -52,6 +61,7 @@ export function ExecDetail({ id, onBack }: { id: number; onBack: () => void }) {
           ← voltar
         </Button>
         <Button onClick={() => void showTerminal()}>Terminal</Button>
+        <Button onClick={() => void showDiff()}>Diff do PR</Button>
         <Button variant="outline" onClick={() => void act(retryExecution)}>
           Retentar
         </Button>
@@ -72,6 +82,10 @@ export function ExecDetail({ id, onBack }: { id: number; onBack: () => void }) {
           </dd>
           <Row k="tentativa" v={String(e.attempt)} />
           <Row k="criado" v={e.created_at} />
+          <dt className="text-muted">custo</dt>
+          <dd className="font-mono text-xs text-accent">
+            {data.cost.tokens} tokens · ${data.cost.cost_usd.toFixed(4)}
+          </dd>
         </dl>
       </Card>
 
@@ -157,6 +171,41 @@ export function ExecDetail({ id, onBack }: { id: number; onBack: () => void }) {
             />
           ) : (
             <p className="text-muted">{term.note ?? 'terminal off'}</p>
+          )}
+        </Card>
+      )}
+
+      {diff && (
+        <Card>
+          <CardLabel>
+            Diff do PR{' '}
+            {diff.number != null && diff.url && (
+              <a className="text-accent" href={diff.url} target="_blank" rel="noopener">
+                ↗ #{diff.number}
+              </a>
+            )}
+          </CardLabel>
+          {diff.diff ? (
+            <pre className="max-h-[60vh] overflow-auto rounded-lg border border-border bg-background p-3 text-xs leading-relaxed">
+              {diff.diff.split('\n').map((line, idx) => (
+                <div
+                  key={idx}
+                  className={
+                    line.startsWith('+') && !line.startsWith('+++')
+                      ? 'text-green-300'
+                      : line.startsWith('-') && !line.startsWith('---')
+                        ? 'text-red-300'
+                        : line.startsWith('@@')
+                          ? 'text-sky-300'
+                          : 'text-muted'
+                  }
+                >
+                  {line || ' '}
+                </div>
+              ))}
+            </pre>
+          ) : (
+            <p className="text-muted">sem PR/diff ainda para esta execução</p>
           )}
         </Card>
       )}

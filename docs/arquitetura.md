@@ -81,6 +81,7 @@ run (running)
 | `interaction` | perguntas/decisões/aprovações + turnos da conversa (roteio por message_id) |
 | `session_event` | feed legível do motor por execução (message/tool_call) — SSE do cockpit (Fatia 2) |
 | `app_config` | config do fleet (fonte única); `.env` semeia no boot; tela de setup grava aqui |
+| `execution_pr` | PR + diff da execução (cache p/ o cockpit, Fatia 4); verdade canônica = GitHub |
 | `llm_call` | medição de token/custo por chamada (refiner + juiz + motor) |
 | `channel_cursor` | offset do Telegram (retoma no restart, não reprocessa) |
 
@@ -95,6 +96,8 @@ run (running)
 | `/executions/{id}` | **detalhe**: run + **sessões** + **conversa completa** | ✅ (botão "ver") |
 | `/executions/{id}/terminal` | terminal do container (ttyd+tmux, D25) | ✅ (botão "Terminal") |
 | `/executions/{id}/events` | **feed ao vivo** do motor (SSE: message/tool_call, Fatia 2) | ✅ (painel "Feed") |
+| `/executions/{id}/diff` | **diff do PR** da execução (Fatia 4; cache em `execution_pr`) | ✅ (painel "Diff") |
+| `/costs` | tokens/custo (llm_call) + **agregado por execução** (Fatia 4) | ✅ |
 | cancel / retry | ações no run | ✅ |
 
 ## Issue inteligente (scope) + second brain

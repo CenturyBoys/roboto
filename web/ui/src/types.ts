@@ -40,15 +40,28 @@ export interface LlmCall {
   at: string
 }
 
+export interface Money {
+  tokens: number
+  cost_usd: number
+}
+
 export interface ExecutionDetail {
   execution: Execution
   sessions: Session[]
   interactions: Interaction[]
+  cost: Money
 }
 
 export interface Costs {
   calls: LlmCall[]
-  totals: { tokens: number; cost_usd: number }
+  totals: Money
+  by_execution: ({ run_id: number } & Money)[]
+}
+
+export interface PrDiff {
+  number: number | null
+  url: string | null
+  diff: string
 }
 
 export interface Terminal {
