@@ -25,6 +25,12 @@ classe: **economia de token** e sessões curtas em vez de sessões gigantes de c
 > **Setup:** `pip install -e ".[dev]"` · **tier 1:** `ruff check src tests` · `mypy` · `pytest` ·
 > **dev env:** `docker compose up`. Regras do repo em [`AGENTS.md`](AGENTS.md).
 
+> **Onboarding — comece por aqui:** [`AGENTS.md`](AGENTS.md) (regras/contrato) ·
+> [`docs/arquitetura.md`](docs/arquitetura.md) (esquemático: sessão + Telegram) ·
+> [`docs/responsabilidades.md`](docs/responsabilidades.md) (quem faz o quê, IA-first) ·
+> [`docs/telegram-guia.md`](docs/telegram-guia.md) (operar pelo Telegram) ·
+> decisões em [`research/DECISOES-A-FECHAR.md`](research/DECISOES-A-FECHAR.md) (D1–D32).
+
 ## Princípios-guia
 
 - **Determinismo primeiro** — preferir código/processo bem-feito à decisão de LLM sempre que a

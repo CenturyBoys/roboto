@@ -297,6 +297,21 @@ Legenda da decisão: ⬜ em aberto · ✅ aceita a proposta · ✏️ outra (ano
   GitHub (conserta o gap atual do `pega #N`); (ii) conversa multi-turno amarrada à issue; (iii)
   fluxo propor-diff → aguardar-OK → editar corpo + comentar trilha.
 
+### D31 · Formar issue = motor escaneia o repo (engine-scoped drafting)
+- **Pergunta (dono):** chat barato não entende o projeto/código — como montar uma issue BOA?
+- **Decisão:** ✅ ideia nova pelo Telegram vira run `scope`: o motor (Claude Code) LÊ o repo
+  (AGENTS.md, código via code-intel/ripgrep, issues) e monta um rascunho fundamentado → proposta→OK
+  (D30). Laço `process_scope_tick` (claim por `agent`), grava sessão + custo. Escalar só quando vale
+  (orçamento). Impl: `app/scope.py`. Amarra F (contexto/tokens) + I (modelo forte) + D28.
+
+### D32 · Second brain (trilha G) — fatos + índice FTS como contexto do scope
+- **Pergunta (dono):** continuidade/entendimento entre sessões sem reler tudo?
+- **Decisão:** ✅ memória do projeto: **verdade = texto do fato**; **busca = índice FTS derivado**
+  (Postgres tsvector, rebuildável), recall determinístico **sem LLM**. `store.remember/recall` +
+  tabela `memory_fact` (migração 0005). O scope injeta os fatos relevantes no prompt; `lembra: X`
+  popula pelo Telegram. Forma canônica da trilha G = `.md`+git+FTS5; Postgres FTS é índice interino
+  (exportável). Aberto: escrita automática de fatos + export `.md`. Amarra G.
+
 ---
 
 ## Fora desta lista de propósito (medir no build, não decidir agora)
