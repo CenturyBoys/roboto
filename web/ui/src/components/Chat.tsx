@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { endExecution, interruptExecution, steerExecution } from '@/lib/api'
+import { collapseEvents } from '@/lib/collapse'
 import { useEventStream } from '@/lib/use-event-stream'
 import { Button } from './ui/button'
+import { ToolActivity } from './ui/tool-activity'
 
 // Chat estilo mensageiro com a sessão viva do motor (trilha O): suas mensagens de um lado, as do
 // motor do outro, tool-calls como notas. A 1ª mensagem inicia a sessão; as próximas fazem steer.
@@ -11,7 +13,9 @@ export function Chat({ id, onClose }: { id: number; onClose: () => void }) {
   const events = useEventStream(id)
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
+  const [detailed, setDetailed] = useState(false)
   const bottom = useRef<HTMLDivElement>(null)
+  const items = collapseEvents(events, !detailed)
 
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: 'smooth' })
@@ -38,6 +42,13 @@ export function Chat({ id, onClose }: { id: number; onClose: () => void }) {
         <div className="flex-1 text-sm font-bold">
           Chat com o motor <span className="font-normal text-muted">· execução #{id}</span>
         </div>
+        <Button
+          size="sm"
+          variant={detailed ? 'default' : 'outline'}
+          onClick={() => setDetailed((d) => !d)}
+        >
+          {detailed ? 'detalhado' : 'resumido'}
+        </Button>
         <Button size="sm" variant="outline" onClick={() => void interruptExecution(id).catch(() => {})}>
           interromper
         </Button>
@@ -50,29 +61,27 @@ export function Chat({ id, onClose }: { id: number; onClose: () => void }) {
       </header>
 
       <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-2 overflow-y-auto p-4">
-        {events.length === 0 && (
+        {items.length === 0 && (
           <p className="mt-6 text-center text-xs text-muted">
             Escreva abaixo pra iniciar — o motor lê o repo e responde aqui.
           </p>
         )}
-        {events.map((e) =>
-          e.kind === 'tool_call' ? (
-            <div key={e.id} className="self-center font-mono text-[11px] text-muted">
-              🔧 {e.tool}
-            </div>
-          ) : e.kind === 'user' ? (
+        {items.map((it, idx) =>
+          it.type === 'tools' ? (
+            <ToolActivity key={idx} tools={it.tools} />
+          ) : it.kind === 'user' ? (
             <div
-              key={e.id}
+              key={idx}
               className="max-w-[80%] self-end whitespace-pre-wrap rounded-2xl rounded-br-sm bg-accent px-3 py-2 text-sm text-black"
             >
-              {e.text}
+              {it.text}
             </div>
           ) : (
             <div
-              key={e.id}
+              key={idx}
               className="md max-w-[85%] self-start rounded-2xl rounded-bl-sm border border-border bg-surface px-3 py-2 text-sm"
             >
-              <Markdown remarkPlugins={[remarkGfm]}>{e.text}</Markdown>
+              <Markdown remarkPlugins={[remarkGfm]}>{it.text}</Markdown>
             </div>
           ),
         )}
