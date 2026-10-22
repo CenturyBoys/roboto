@@ -149,6 +149,26 @@ async def test_cancel_and_retry_change_state() -> None:
         assert store._runs[run_id].attempt == 1
 
 
+async def test_session_events_store_filters_by_after_id() -> None:
+    store = InMemoryStore()
+    run_id = await _seed(store)
+    e1 = await store.append_session_event("acme", run_id, "message", _T0, text="oi")
+    await store.append_session_event("acme", run_id, "tool_call", _T0, tool="Bash")
+    novos = await store.session_events(run_id, e1.id, 100)  # só o que veio depois do e1
+    assert [e.kind for e in novos] == ["tool_call"]
+
+
+async def test_events_endpoint_auth_and_isolation() -> None:
+    # Auth/isolamento retornam ANTES de abrir o stream (seguro no ASGITransport). O streaming em si
+    # (backlog + live) é validado via uvicorn real no E2E Docker — ASGITransport não encerra SSE.
+    store = InMemoryStore()
+    run_id = await _seed(store)
+    other = await _seed(store, tenant="other", key="k2")
+    async with _client(store) as c:
+        assert (await c.get(f"/executions/{run_id}/events")).status_code == 401  # sem token
+        assert (await c.get(f"/executions/{other}/events", headers=_AUTH)).status_code == 404
+
+
 async def test_pending_interactions_and_terminal() -> None:
     store = InMemoryStore()
     run_id = await _seed(store)

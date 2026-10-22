@@ -3,6 +3,7 @@ import { cancelExecution, getExecution, getTerminal, retryExecution } from '@/li
 import type { ExecutionDetail, Terminal } from '@/types'
 import { Button } from './ui/button'
 import { Card, CardLabel, CardTitle } from './ui/card'
+import { Feed } from './Feed'
 import { StatePill } from './ui/state-pill'
 import { Td, TableWrap, Th } from './ui/table'
 
@@ -135,6 +136,8 @@ export function ExecDetail({ id, onBack }: { id: number; onBack: () => void }) {
           <p className="text-muted">nenhuma</p>
         )}
       </Card>
+
+      <Feed id={id} />
 
       {term && (
         <Card>

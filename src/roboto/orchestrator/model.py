@@ -139,6 +139,23 @@ class LlmCall:
 
 
 @dataclass(frozen=True)
+class SessionEvent:
+    """Evento legível do motor numa execução — feed ao vivo do cockpit (trilha O, Fatia 2).
+
+    ``kind`` ∈ message (texto do assistente) | tool_call (ferramenta/comando). Ordenado por ``id``.
+    """
+
+    id: int
+    tenant: str
+    execution_id: int
+    kind: str
+    text: str
+    tool: str
+    at: datetime
+    session_id: int | None = None
+
+
+@dataclass(frozen=True)
 class Error:
     """Erro como valor (D1). ``kind`` ∈ db | dispatch | effect | invalid_signature."""
 

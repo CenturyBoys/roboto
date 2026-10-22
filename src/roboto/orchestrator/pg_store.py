@@ -25,6 +25,7 @@ from roboto.orchestrator.model import (
     Run,
     RunState,
     Session,
+    SessionEvent,
 )
 
 _RUN_COLS = (
@@ -45,6 +46,14 @@ def _row_to_fact(row: Any) -> MemoryFact:
     return MemoryFact(
         id=row["id"], tenant=row["tenant"], kind=row["kind"], ref=row["ref"],
         text=row["text"], created_at=row["created_at"],
+    )
+
+
+def _row_to_session_event(row: Any) -> SessionEvent:
+    return SessionEvent(
+        id=row["id"], tenant=row["tenant"], execution_id=row["execution_id"],
+        session_id=row["session_id"], kind=row["kind"], text=row["text"],
+        tool=row["tool"], at=row["at"],
     )
 
 
@@ -469,3 +478,36 @@ class PostgresStore:
                     """,
                     key, value, now,
                 )
+
+    async def append_session_event(
+        self,
+        tenant: str,
+        execution_id: int,
+        kind: str,
+        now: datetime,
+        *,
+        text: str = "",
+        tool: str = "",
+        session_id: int | None = None,
+    ) -> SessionEvent:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                INSERT INTO session_event (tenant, execution_id, session_id, kind, text, tool, at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                RETURNING id, tenant, execution_id, session_id, kind, text, tool, at
+                """,
+                tenant, execution_id, session_id, kind, text, tool, now,
+            )
+            return _row_to_session_event(row)
+
+    async def session_events(
+        self, execution_id: int, after_id: int, limit: int
+    ) -> list[SessionEvent]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT id, tenant, execution_id, session_id, kind, text, tool, at "
+                "FROM session_event WHERE execution_id = $1 AND id > $2 ORDER BY id LIMIT $3",
+                execution_id, after_id, limit,
+            )
+            return [_row_to_session_event(r) for r in rows]
