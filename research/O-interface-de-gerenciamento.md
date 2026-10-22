@@ -232,8 +232,12 @@ grande (determinismo + baixo custo de manutenção/token).
    **Também feito:** issue **clicável** → painel com corpo + **DoR** (`check_issue_readiness`,
    `GET /issues/{n}`) e **conversa de refino** (`POST /issues/{n}/refine` → `converse` do refiner via
    OpenRouter; stateless, o front manda o transcript) que pergunta até propor um **rascunho** + DoR.
-   **Próximos:** **atualizar a issue** no GitHub (com OK) a partir do rascunho → **mandar o agente
-   trabalhar** (enfileira run) e acompanhar pelo feed/co-piloto. Fecha a migração Telegram→cockpit.
+   **Refino ENGINE-SCOPED (D31, estágio C):** botão **"Refinar com o motor"** (`POST /issues/{n}/
+   refine-engine`) enfileira um run `agent='refine'`; `process_refine_tick` injeta o corpo da issue e
+   roda o **motor (Claude Code)** que **LÊ o repo** (Read/Grep) e propõe a issue fundamentada — os
+   eventos viram **feed ao vivo**. Resolve o "chat cego": o agente lê o código de verdade. Infra do
+   motor vive no `poc/` (ccr→OpenRouter/Qwen); o `poc/Dockerfile` agora serve o cockpit (SPA). Validado
+   ao vivo (run_engine: tool Read + resumo do repo). **Próximo:** aplicar o rascunho na issue (update).
 
 ## 8. Perguntas em aberto (para o dono)
 

@@ -16,7 +16,7 @@ import os
 from datetime import UTC, datetime
 
 from roboto.app.compose import build_adapters
-from roboto.app.loops import poll_tick, process_run_tick, run_periodic
+from roboto.app.loops import poll_tick, process_refine_tick, process_run_tick, run_periodic
 from roboto.app.session_hub import SessionHub
 from roboto.config import BOOTSTRAP_KEYS, Config, load_config, settable_from_env
 from roboto.engines.stub import StubEngine
@@ -87,6 +87,15 @@ async def _run_daemon(config: Config, store: Store) -> None:
             {"code-intel": {"command": "code-intel-mcp"}} if config.code_intel else None
         )
         claude = ClaudeCodeEngine(permission_mode="bypassPermissions", mcp_servers=mcp)
+        # motor dedicado ao refino (read-only por prompt): evita corrida de estado com o ciclo de PR
+        refiner_engine = ClaudeCodeEngine(permission_mode="bypassPermissions", mcp_servers=mcp)
+
+        async def _run_refine() -> None:
+            # refino engine-scoped (Fatia 6/C): o motor LÊ o repo e propõe a issue (feed ao vivo)
+            await process_refine_tick(
+                refiner_engine, store, adapters.github,
+                tenant=config.tenant, chat_id=config.chat_id, now=_now,
+            )
 
         async def _run_claude() -> None:
             # ciclo completo: motor->git->PR->review(≠autor)->correção. Merge = gate humano (D7).
@@ -111,6 +120,7 @@ async def _run_daemon(config: Config, store: Store) -> None:
 
         tasks.append(run_periodic(_run_claude, 5.0, stop))
         tasks.append(run_periodic(_run_scope, 5.0, stop))
+        tasks.append(run_periodic(_run_refine, 5.0, stop))
 
     await asyncio.gather(*tasks)
 

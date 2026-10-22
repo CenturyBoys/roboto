@@ -35,12 +35,13 @@ async def drive_turn(
     run: Run,
     chat_id: str,
     now: datetime,
+    prompt: str | None = None,
 ) -> Result[TurnOutcome, Error]:
     spec = RunSpec(
         tenant=run.tenant,
         repo=run.repo,
         workdir=f"/work/{run.repo}",
-        prompt=f"Trabalhe a issue {run.issue_id} do repo {run.repo}.",
+        prompt=prompt or f"Trabalhe a issue {run.issue_id} do repo {run.repo}.",
         resume_session_id=None,
     )
     started = await engine.start(spec)

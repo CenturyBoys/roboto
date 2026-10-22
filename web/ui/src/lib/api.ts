@@ -49,6 +49,9 @@ export const refineIssue = (n: number, transcript: [string, string][]) =>
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ transcript }),
   })
+// Refino engine-scoped (Fatia 6/C): enfileira um run; o motor lê o repo e propõe. Devolve o run_id.
+export const dispatchEngineRefine = (n: number) =>
+  api<{ run_id: number }>(`/issues/${n}/refine-engine`, { method: 'POST' })
 export const listInteractions = () => api<{ interactions: Interaction[] }>('/interactions')
 export const answerInteraction = (id: number, answer: string) =>
   api<{ id: number; accepted: boolean; status: string }>(`/interactions/${id}/answer`, {

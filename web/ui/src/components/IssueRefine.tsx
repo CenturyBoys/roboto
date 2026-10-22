@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ApiError, getIssue, refineIssue } from '@/lib/api'
+import { ApiError, dispatchEngineRefine, getIssue, refineIssue } from '@/lib/api'
 import type { IssueDetail, RefineStep } from '@/types'
 import { Button } from './ui/button'
 import { Card, CardLabel, CardTitle } from './ui/card'
@@ -8,7 +8,15 @@ type Bubble = { role: 'você' | 'refiner'; text: string }
 
 // Conversa de refino sobre uma issue (Fatia 6): puxa o corpo + DoR, e conversa com o refiner
 // (OpenRouter) até ele propor um rascunho. Aplicar na issue (GitHub) é o próximo incremento.
-export function IssueRefine({ number, onBack }: { number: number; onBack: () => void }) {
+export function IssueRefine({
+  number,
+  onBack,
+  onOpenRun,
+}: {
+  number: number
+  onBack: () => void
+  onOpenRun: (runId: number) => void
+}) {
   const [detail, setDetail] = useState<IssueDetail | null>(null)
   const [bubbles, setBubbles] = useState<Bubble[]>([])
   const [draft, setDraft] = useState<RefineStep | null>(null)
@@ -71,6 +79,15 @@ export function IssueRefine({ number, onBack }: { number: number; onBack: () => 
     }
   }
 
+  async function runWithEngine() {
+    try {
+      const { run_id } = await dispatchEngineRefine(number)
+      onOpenRun(run_id)
+    } catch {
+      setError('erro ao disparar o motor (engine ligado?)')
+    }
+  }
+
   return (
     <div className="space-y-3">
       <Button variant="ghost" onClick={onBack}>
@@ -81,6 +98,11 @@ export function IssueRefine({ number, onBack }: { number: number; onBack: () => 
         <CardTitle>
           {detail ? `#${detail.number} ${detail.title}` : `Issue #${number}`}
         </CardTitle>
+        <div className="mb-2">
+          <Button variant="default" onClick={() => void runWithEngine()}>
+            Refinar com o motor (lê o repo) ⚡
+          </Button>
+        </div>
         {detail && (
           <>
             <span
