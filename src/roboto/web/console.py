@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
@@ -184,6 +184,7 @@ def console_routes(
     issues: IssueSource | None = None,
     default_repo: str = "",
     gateway: ModelGateway | None = None,
+    start_session: Callable[[Run, str], Awaitable[bool]] | None = None,
 ) -> list[BaseRoute]:
     def _unauthorized(request: Request) -> bool:
         return not token or request.headers.get("authorization") != f"Bearer {token}"
@@ -276,20 +277,33 @@ def console_routes(
 
     async def steer_message(request: Request) -> JSONResponse:
         # Co-piloto (Fatia 5): manda uma mensagem p/ a sessão VIVA do motor (steer a qualquer hora).
+        # Se ainda NÃO há sessão viva, abre uma sob demanda (liga o driver interativo) usando esta
+        # mensagem como prompt inicial — é o que faz "conversar com a sessão viva" funcionar.
         if _unauthorized(request):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         run = await _owned_run(request)
         if run is None:
             return JSONResponse({"error": "not found"}, status_code=404)
-        live = hub.get(run.id) if hub is not None else None
-        if live is None:
-            return JSONResponse({"error": "sessão não está viva"}, status_code=409)
         body = await request.json()
         text = str(body.get("text", "")).strip() if isinstance(body, dict) else ""
         if not text:
             return JSONResponse({"error": "text vazio"}, status_code=400)
-        await live.steer(text)
-        return JSONResponse({"ok": True})
+        live = hub.get(run.id) if hub is not None else None
+        if live is not None:  # sessão já viva: enfileira o steer p/ o próximo turno
+            await live.steer(text)
+            return JSONResponse({"ok": True, "live": True})
+        if start_session is None:  # driver interativo não disponível (ex.: motor stub)
+            return JSONResponse({"error": "sessão não está viva"}, status_code=409)
+        started = await start_session(run, text)
+        if not started:  # ocupado pelo ciclo automático — não abrir 2 motores no mesmo workdir
+            return JSONResponse(
+                {
+                    "error": "run ocupado pelo ciclo automático; "
+                    "aguarde ou cancele p/ abrir a sessão viva"
+                },
+                status_code=409,
+            )
+        return JSONResponse({"ok": True, "live": True, "started": True}, status_code=202)
 
     async def interrupt_session(request: Request) -> JSONResponse:
         if _unauthorized(request):
@@ -482,10 +496,12 @@ def build_console(
     issues: IssueSource | None = None,
     default_repo: str = "",
     gateway: ModelGateway | None = None,
+    start_session: Callable[[Run, str], Awaitable[bool]] | None = None,
 ) -> Starlette:
     return Starlette(
         routes=console_routes(
             store, tenant=tenant, token=token, ttyd_base=ttyd_base, hub=hub,
             issues=issues, default_repo=default_repo, gateway=gateway,
+            start_session=start_session,
         )
     )
