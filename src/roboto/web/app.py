@@ -6,7 +6,7 @@ valida HMAC (D21) e faz ingest idempotente; o console usa bearer + isolamento po
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
 from starlette.applications import Starlette
@@ -18,6 +18,7 @@ from roboto.app.session_hub import SessionHub
 from roboto.config import Config
 from roboto.github.webhook import handle_webhook
 from roboto.llm.port import ModelGateway
+from roboto.orchestrator.model import Run
 from roboto.orchestrator.store import Store
 from roboto.result import Err
 from roboto.web.console import IssueSource, console_routes
@@ -35,6 +36,7 @@ def build_app(
     hub: SessionHub | None = None,
     issue_source: IssueSource | None = None,
     gateway: ModelGateway | None = None,
+    start_session: Callable[[Run, str], Awaitable[bool]] | None = None,
 ) -> Starlette:
     async def webhook(request: Request) -> JSONResponse:
         body = await request.body()
@@ -62,6 +64,7 @@ def build_app(
         store, tenant=config.tenant, token=config.console_token,
         ttyd_base=config.ttyd_base or None, hub=hub,
         issues=issue_source, default_repo=config.default_repo, gateway=gateway,
+        start_session=start_session,
     )
     routes.append(Route("/webhook", webhook, methods=["POST"]))
     return Starlette(routes=routes)

@@ -12,6 +12,7 @@ testada isoladamente. Rode com `python -m roboto`.
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from datetime import UTC, datetime
 
@@ -21,6 +22,7 @@ from roboto.app.session_hub import SessionHub
 from roboto.config import BOOTSTRAP_KEYS, Config, load_config, settable_from_env
 from roboto.engines.stub import StubEngine
 from roboto.orchestrator.core import publish_outbox, sweep
+from roboto.orchestrator.model import Run, RunState
 from roboto.orchestrator.pg_store import PostgresStore
 from roboto.orchestrator.store import Store
 from roboto.result import Err
@@ -28,6 +30,8 @@ from roboto.web.app import build_app
 from roboto.web.setup import build_setup_app
 
 _PORT = 8080
+
+logger = logging.getLogger(__name__)
 
 
 def _now() -> datetime:
@@ -37,8 +41,44 @@ def _now() -> datetime:
 async def _run_daemon(config: Config, store: Store) -> None:
     adapters = build_adapters(config, store)  # router inclui telegram_question
     hub = SessionHub()  # sessões vivas do co-piloto (Fatia 5); o driver interativo as registra
+
+    async def start_live_session(run: Run, initial_prompt: str) -> bool:
+        """Abre uma sessão viva/steerable sob demanda para `run`, ligando o driver
+        interativo (`drive_session`/`ClaudeSDKClient`) como task de fundo — é o que
+        faz o chat do cockpit "conversar com a sessão viva". Idempotente; recusa se
+        o motor não for o claude_code ou se o run estiver em RUNNING (tocado pelo
+        ciclo automático), p/ não rodar dois motores no mesmo /work/{repo}."""
+        if config.engine != "claude_code":
+            return False
+        if hub.get(run.id) is not None:
+            return True  # já viva
+        if run.state is RunState.RUNNING:
+            return False  # ocupado pelo ciclo batch
+        from roboto.app.copilot import drive_session
+
+        hub.open(run.id)  # abre já: a próxima mensagem do chat acha a LiveSession (sem corrida)
+        mcp: dict[str, object] | None = (
+            {"code-intel": {"command": "code-intel-mcp"}} if config.code_intel else None
+        )
+
+        async def _drive() -> None:
+            try:
+                await drive_session(
+                    store, hub, run=run, chat_id=config.chat_id,
+                    workdir=f"/work/{run.repo}", now=_now,
+                    mcp_servers=mcp, initial_prompt=initial_prompt,
+                )
+            except Exception:  # noqa: BLE001 — task de fundo: loga e encerra limpo
+                logger.exception("co-piloto: sessão viva run=%s terminou com erro", run.id)
+            finally:
+                hub.close(run.id)
+
+        asyncio.create_task(_drive())
+        return True
+
     app = build_app(
-        store, config=config, hub=hub, issue_source=adapters.github, gateway=adapters.gateway
+        store, config=config, hub=hub, issue_source=adapters.github,
+        gateway=adapters.gateway, start_session=start_live_session,
     )
     stop = asyncio.Event()
 

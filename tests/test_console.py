@@ -13,7 +13,7 @@ from roboto.app.session_hub import SessionHub
 from roboto.engines.port import EngineEvent, EngineEventKind
 from roboto.engines.stub import StubEngine
 from roboto.llm.port import ChatMessage, Completion, Tier
-from roboto.orchestrator.model import Engine, Error, GithubEvent, InteractionKind, RunState
+from roboto.orchestrator.model import Engine, Error, GithubEvent, InteractionKind, Run, RunState
 from roboto.orchestrator.store import InMemoryStore
 from roboto.result import Ok, Result
 from roboto.web.console import build_console
@@ -364,6 +364,47 @@ async def test_steer_requires_live_session() -> None:
         ok = await c.post(f"/executions/{run_id}/message", headers=_AUTH, json={"text": "muda X"})
         assert ok.status_code == 200
         assert await live.next_input() == "muda X"
+
+
+async def test_steer_starts_session_on_demand() -> None:
+    # Sem sessão viva + driver interativo disponível: a mensagem ABRE a sessão
+    # (liga o co-piloto) usando o texto como prompt inicial, em vez de 409.
+    store = InMemoryStore()
+    run_id = await _seed(store)
+    hub = SessionHub()
+    calls: list[tuple[int, str]] = []
+
+    async def fake_start(run: Run, text: str) -> bool:
+        calls.append((run.id, text))
+        return True
+
+    app = build_console(store, tenant="acme", token=_TOKEN, hub=hub, start_session=fake_start)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://console"
+    ) as c:
+        r = await c.post(
+            f"/executions/{run_id}/message", headers=_AUTH, json={"text": "começa aí"}
+        )
+        assert r.status_code == 202
+        assert r.json().get("started") is True
+    assert calls == [(run_id, "começa aí")]
+
+
+async def test_steer_on_demand_blocked_returns_409() -> None:
+    # Driver recusa (ex.: run ocupado pelo ciclo automático) -> 409, não abre 2 motores.
+    store = InMemoryStore()
+    run_id = await _seed(store)
+    hub = SessionHub()
+
+    async def fake_start(run: Run, text: str) -> bool:
+        return False
+
+    app = build_console(store, tenant="acme", token=_TOKEN, hub=hub, start_session=fake_start)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://console"
+    ) as c:
+        r = await c.post(f"/executions/{run_id}/message", headers=_AUTH, json={"text": "oi"})
+        assert r.status_code == 409
 
 
 async def test_interrupt_live_session() -> None:
