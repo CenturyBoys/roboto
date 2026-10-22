@@ -64,6 +64,18 @@ export interface PrDiff {
   diff: string
 }
 
+export interface Issue {
+  number: number
+  title: string
+}
+
+export interface IssueList {
+  repo: string
+  issues: Issue[]
+  note?: string
+  error?: string
+}
+
 export interface Terminal {
   terminal_url: string | null
   note?: string

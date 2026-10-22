@@ -37,7 +37,7 @@ def _now() -> datetime:
 async def _run_daemon(config: Config, store: Store) -> None:
     adapters = build_adapters(config, store)  # router inclui telegram_question
     hub = SessionHub()  # sessões vivas do co-piloto (Fatia 5); o driver interativo as registra
-    app = build_app(store, config=config, hub=hub)
+    app = build_app(store, config=config, hub=hub, issue_source=adapters.github)
     stop = asyncio.Event()
 
     async def _poll() -> None:

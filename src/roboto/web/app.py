@@ -19,7 +19,7 @@ from roboto.config import Config
 from roboto.github.webhook import handle_webhook
 from roboto.orchestrator.store import Store
 from roboto.result import Err
-from roboto.web.console import console_routes
+from roboto.web.console import IssueSource, console_routes
 
 
 def _now_utc() -> datetime:
@@ -32,6 +32,7 @@ def build_app(
     config: Config,
     now: Callable[[], datetime] = _now_utc,
     hub: SessionHub | None = None,
+    issue_source: IssueSource | None = None,
 ) -> Starlette:
     async def webhook(request: Request) -> JSONResponse:
         body = await request.body()
@@ -58,6 +59,7 @@ def build_app(
     routes = console_routes(
         store, tenant=config.tenant, token=config.console_token,
         ttyd_base=config.ttyd_base or None, hub=hub,
+        issues=issue_source, default_repo=config.default_repo,
     )
     routes.append(Route("/webhook", webhook, methods=["POST"]))
     return Starlette(routes=routes)
