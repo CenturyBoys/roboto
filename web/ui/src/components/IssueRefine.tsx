@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { ApiError, dispatchEngineRefine, getIssue, refineIssue } from '@/lib/api'
-import type { IssueDetail, RefineStep } from '@/types'
+import { useEffect, useRef, useState } from 'react'
+import { dispatchEngineRefine, getIssue, refineIssue } from '@/lib/api'
+import type { IssueDetail } from '@/types'
 import { Button } from './ui/button'
 import { Card, CardLabel, CardTitle } from './ui/card'
 
 type Bubble = { role: 'você' | 'refiner'; text: string }
 
-// Conversa de refino sobre uma issue (Fatia 6): puxa o corpo + DoR, e conversa com o refiner
-// (OpenRouter) até ele propor um rascunho. Aplicar na issue (GitHub) é o próximo incremento.
+// Painel de refino de uma issue (trilha O, Fatia 6). CAMINHO PRINCIPAL = o motor, que LÊ o repo
+// (engine-scoped, D31). A "conversa rápida" é o modelo cego (sem repo) — secundária, NÃO auto-dispara.
 export function IssueRefine({
   number,
   onBack,
@@ -18,73 +18,44 @@ export function IssueRefine({
   onOpenRun: (runId: number) => void
 }) {
   const [detail, setDetail] = useState<IssueDetail | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const [bubbles, setBubbles] = useState<Bubble[]>([])
-  const [draft, setDraft] = useState<RefineStep | null>(null)
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const transcript = useRef<[string, string][]>([])
 
-  const apply = useCallback((step: RefineStep) => {
-    if (step.draft) {
-      setDraft(step)
-      transcript.current.push(['assistant', `PROPOSTA: ${step.draft.title}`])
-    } else if (step.question) {
-      setBubbles((b) => [...b, { role: 'refiner', text: step.question as string }])
-      transcript.current.push(['assistant', step.question])
-    }
-  }, [])
-
-  // ao abrir: carrega a issue e pede a 1ª pergunta do refiner (semeando o contexto da issue).
+  // só carrega o detalhe da issue — NÃO dispara o chat cego (era isso que incomodava)
   useEffect(() => {
-    let alive = true
-    setBusy(true)
     getIssue(number)
-      .then(async (d) => {
-        if (!alive) return
-        setDetail(d)
-        const seed = `Quero refinar a issue #${d.number}: "${d.title}".\n\nCorpo atual:\n${d.body}`
-        transcript.current = [['user', seed]]
-        try {
-          apply(await refineIssue(number, transcript.current))
-        } catch (e) {
-          setError(
-            e instanceof ApiError && e.status === 409
-              ? 'modelo (OpenRouter) não configurado'
-              : 'erro ao falar com o refiner',
-          )
-        }
-      })
+      .then(setDetail)
       .catch(() => setError('erro ao carregar a issue (token/GitHub?)'))
-      .finally(() => alive && setBusy(false))
-    return () => {
-      alive = false
-    }
-  }, [number, apply])
-
-  async function send() {
-    const t = input.trim()
-    if (!t || busy) return
-    setBubbles((b) => [...b, { role: 'você', text: t }])
-    transcript.current.push(['user', t])
-    setInput('')
-    setBusy(true)
-    setDraft(null)
-    try {
-      apply(await refineIssue(number, transcript.current))
-    } catch {
-      setError('erro ao falar com o refiner')
-    } finally {
-      setBusy(false)
-    }
-  }
+  }, [number])
 
   async function runWithEngine() {
     try {
       const { run_id } = await dispatchEngineRefine(number)
       onOpenRun(run_id)
     } catch {
-      setError('erro ao disparar o motor (engine ligado?)')
+      setError('erro ao disparar o motor (engine ligado no stack do PoC?)')
+    }
+  }
+
+  async function sendQuick() {
+    const t = input.trim()
+    if (!t || busy) return
+    setBubbles((b) => [...b, { role: 'você', text: t }])
+    transcript.current.push(['user', t])
+    setInput('')
+    setBusy(true)
+    try {
+      const step = await refineIssue(number, transcript.current)
+      const reply = step.question ?? (step.draft ? `Rascunho: ${step.draft.title}` : '(sem resposta)')
+      setBubbles((b) => [...b, { role: 'refiner', text: reply }])
+      transcript.current.push(['assistant', reply])
+    } catch {
+      setBubbles((b) => [...b, { role: 'refiner', text: '(erro ao responder)' }])
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -95,14 +66,8 @@ export function IssueRefine({
       </Button>
 
       <Card>
-        <CardTitle>
-          {detail ? `#${detail.number} ${detail.title}` : `Issue #${number}`}
-        </CardTitle>
-        <div className="mb-2">
-          <Button variant="default" onClick={() => void runWithEngine()}>
-            Refinar com o motor (lê o repo) ⚡
-          </Button>
-        </div>
+        <CardTitle>{detail ? `#${detail.number} ${detail.title}` : `Issue #${number}`}</CardTitle>
+        {error && <p className="text-xs text-red-300">{error}</p>}
         {detail && (
           <>
             <span
@@ -119,55 +84,48 @@ export function IssueRefine({
             </pre>
           </>
         )}
+        <div className="mt-3">
+          <Button variant="default" onClick={() => void runWithEngine()}>
+            Refinar com o motor (lê o repo) ⚡
+          </Button>
+          <p className="mt-1 text-xs text-muted">
+            O Claude Code lê o repositório (código, ADRs, arquivos citados) e propõe a issue
+            fundamentada — você acompanha no feed ao vivo.
+          </p>
+        </div>
       </Card>
 
       <Card>
-        <CardLabel>Conversa de refino</CardLabel>
-        <div className="mb-2 flex max-h-[45vh] flex-col gap-2 overflow-y-auto">
+        <CardLabel>Conversa rápida — modelo cego, NÃO lê o repo (só pra ideias leves)</CardLabel>
+        <div className="mb-2 flex max-h-[35vh] flex-col gap-2 overflow-y-auto">
+          {bubbles.length === 0 && (
+            <p className="text-xs text-muted">
+              Pra issue técnica, use o motor acima. Esta caixa é um chat sem acesso ao código.
+            </p>
+          )}
           {bubbles.map((b, idx) => (
             <div key={idx} className="text-sm">
               <span className={b.role === 'você' ? 'text-accent' : 'text-sky-300'}>{b.role}:</span>{' '}
               <span className="whitespace-pre-wrap">{b.text}</span>
             </div>
           ))}
-          {busy && <p className="text-xs text-muted">refiner pensando…</p>}
-          {error && <p className="text-xs text-red-300">{error}</p>}
+          {busy && <p className="text-xs text-muted">pensando…</p>}
         </div>
         <div className="flex flex-wrap gap-2">
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') void send()
+              if (e.key === 'Enter') void sendQuick()
             }}
-            placeholder="responda ao refiner…"
+            placeholder="conversa rápida (sem repo)…"
             className="min-w-60 flex-1 rounded-lg border border-border bg-background px-2.5 py-2 text-sm outline-none focus:border-accent"
           />
-          <Button variant="default" disabled={busy} onClick={() => void send()}>
+          <Button variant="outline" disabled={busy} onClick={() => void sendQuick()}>
             enviar
           </Button>
         </div>
       </Card>
-
-      {draft?.draft && (
-        <Card>
-          <CardLabel>
-            Rascunho proposto{' '}
-            {draft.dor && (
-              <span className={draft.dor.ready ? 'text-green-300' : 'text-accent'}>
-                · DoR {draft.dor.ready ? 'pronta ✓' : 'incompleta'}
-              </span>
-            )}
-          </CardLabel>
-          <p className="text-sm font-semibold">{draft.draft.title}</p>
-          <pre className="mt-1 max-h-72 overflow-auto whitespace-pre-wrap text-xs">
-            {draft.draft.body}
-          </pre>
-          <p className="mt-2 text-xs text-muted">
-            (aplicar na issue do GitHub é o próximo incremento)
-          </p>
-        </Card>
-      )}
     </div>
   )
 }
