@@ -530,4 +530,5 @@ async def test_pending_interactions_and_terminal() -> None:
         pend = (await c.get("/interactions", headers=_AUTH)).json()
         assert len(pend["interactions"]) == 1
         term = (await c.get(f"/executions/{run_id}/terminal", headers=_AUTH)).json()
-        assert term["terminal_url"] == "https://term.acme"  # terminal compartilhado (tmux único)
+        # anexa na tmux POR-RUN via ?arg=<sessão> (ttyd -a url-arg)
+        assert term["terminal_url"] == f"https://term.acme/?arg=roboto-run-{run_id}"

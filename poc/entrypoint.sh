@@ -39,11 +39,40 @@ if [ -n "${POC_TASK:-}" ]; then
   exec python3 poc/run_engine.py "$POC_TASK"
 fi
 
-# 4b) terminal web (ttyd) servindo um tmux no /work — pra assistir/operar o container no browser (D25)
+# 4a') pré-semeia o onboarding do Claude Code CLI p/ o co-piloto em tmux (COPILOT_MODE=tmux) abrir
+#      DIRETO no REPL: onboarding feito, trust do projeto aceito, aviso de bypass pulado. Assim o
+#      `tmux send-keys` já encontra o prompt (sem travar em telas de confirmação).
+python3 - "$TARGET_WORKDIR" <<'PY'
+import json, os, sys
+home = os.path.expanduser("~"); workdir = sys.argv[1]
+def load(p):
+    try:
+        with open(p) as f: return json.load(f)
+    except Exception: return {}
+cj = os.path.join(home, ".claude.json")
+d = load(cj); d["hasCompletedOnboarding"] = True
+d.setdefault("projects", {}).setdefault(workdir, {})["hasTrustDialogAccepted"] = True
+with open(cj, "w") as f: json.dump(d, f)
+sp = os.path.join(home, ".claude", "settings.json")
+os.makedirs(os.path.dirname(sp), exist_ok=True)
+s = load(sp); s["skipDangerousModePermissionPrompt"] = True
+with open(sp, "w") as f: json.dump(s, f)
+print("onboarding semeado p/", workdir)
+PY
+
+# 4b) terminal web (ttyd): anexa na tmux POR-RUN passada via ?arg=<sessão> (modo -a/url-arg). Assim
+#     o botão "Terminal" do cockpit mostra a sessão REAL do motor; sem sessão, cai no terminal padrão.
 if command -v ttyd >/dev/null 2>&1; then
+  cat > /tmp/ttyd-attach.sh <<'SH'
+#!/usr/bin/env bash
+s="${1:-potter}"
+[ "$s" = "potter" ] && exec tmux new -A -s potter
+tmux attach -t "$s" 2>/dev/null || tmux new -A -s potter
+SH
+  chmod +x /tmp/ttyd-attach.sh
   cd /work 2>/dev/null || true
-  ttyd -p 7681 -W -t fontSize=14 -t 'theme={"background":"#0f1115"}' \
-    tmux new -A -s potter >/tmp/ttyd.log 2>&1 &
+  ttyd -p 7681 -W -a -t fontSize=14 -t 'theme={"background":"#0f1115"}' \
+    /tmp/ttyd-attach.sh >/tmp/ttyd.log 2>&1 &
   cd /opt/roboto
 fi
 
