@@ -243,14 +243,16 @@ async def test_issue_refine_without_model_is_409() -> None:
 async def test_proposal_and_apply() -> None:
     store = InMemoryStore()
     run_id = await _seed(store)
-    await store.append_session_event("acme", run_id, "message", _T0, text="rascunho velho")
+    await store.append_session_event("acme", run_id, "message", _T0, text="deixa eu ler o repo…")
     await store.append_session_event("acme", run_id, "tool_call", _T0, tool="Read")
-    await store.append_session_event("acme", run_id, "message", _T0, text="# Issue refinada\n...")
+    proposta = "# Issue refinada\n## Contexto\n...\n## Critérios de aceite\n- [ ] x"
+    await store.append_session_event("acme", run_id, "message", _T0, text=proposta)
+    await store.append_session_event("acme", run_id, "message", _T0, text="erro do modelo")
     src = _FakeIssues([])
     async with _console(store, issues=src, default_repo="acme/app") as c:
-        # proposal = ÚLTIMA mensagem do motor
+        # proposal = a mensagem que PARECE issue refinada (não o "erro do modelo" que veio depois)
         prop = (await c.get(f"/executions/{run_id}/proposal", headers=_AUTH)).json()
-        assert prop["body"] == "# Issue refinada\n..."
+        assert prop["body"] == proposta
         # apply atualiza a issue (corpo editado) + comenta a trilha
         r = await c.post(
             f"/executions/{run_id}/apply", headers=_AUTH, json={"body": "# Corpo final"}

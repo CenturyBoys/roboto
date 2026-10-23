@@ -494,7 +494,12 @@ def console_routes(
             return JSONResponse({"error": "not found"}, status_code=404)
         events = await store.session_events(run.id, 0, 500)
         msgs = [e.text for e in events if e.kind == "message" and e.text.strip()]
-        return JSONResponse({"body": msgs[-1] if msgs else "", "issue_id": run.issue_id})
+        # prefere a última mensagem que PARECE uma issue refinada (seções/critérios); senão, a mais
+        # longa — evita pegar conversa curta ou erro ("selected model") que veio DEPOIS do rascunho.
+        markers = ("Critérios de aceite", "## Contexto", "Definition of Done", "Escopo", "DoD")
+        looks_like = [m for m in msgs if any(k in m for k in markers)]
+        body = looks_like[-1] if looks_like else (max(msgs, key=len) if msgs else "")
+        return JSONResponse({"body": body, "issue_id": run.issue_id})
 
     async def apply_proposal(request: Request) -> JSONResponse:
         # Aplica o corpo (editado pelo humano) na issue do GitHub + comentário de trilha (D30).
