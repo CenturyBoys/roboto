@@ -77,6 +77,25 @@ async def test_served_page_references_pwa_manifest() -> None:
         assert "Potter" in page and "manifest.webmanifest" in page
 
 
+def test_extract_proposal_prefers_markers() -> None:
+    # O corpo limpo é o que está ENTRE os marcadores — sem o preâmbulo nem comentário de fora.
+    from roboto.app.loops import ISSUE_BODY_END, ISSUE_BODY_START
+    from roboto.web.console import _extract_proposal
+
+    draft = f"{ISSUE_BODY_START}\n## Contexto\nX\n{ISSUE_BODY_END}"
+    msgs = ["Vou ler o repo primeiro…", f"Pronto, segue a proposta:\n{draft}\nQualquer dúvida?"]
+    assert _extract_proposal(msgs) == "## Contexto\nX"
+
+
+def test_extract_proposal_fallback_without_markers() -> None:
+    # Runs antigos / refino via chat (sem marcadores): cai na mensagem que parece issue refinada.
+    from roboto.web.console import _extract_proposal
+
+    msgs = ["oi", "## Contexto\nblah\nCritérios de aceite\n- [ ] a"]
+    assert "Critérios de aceite" in _extract_proposal(msgs)
+    assert _extract_proposal([]) == ""
+
+
 def test_legacy_viewer_has_pwa_and_cockpit_hooks() -> None:
     # Fallback embutido (sem build Node): segue PWA + terminal embutido + auto-refresh (Fatia 1).
     from roboto.web.viewer import VIEWER_HTML

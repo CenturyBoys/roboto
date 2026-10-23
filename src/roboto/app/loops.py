@@ -20,6 +20,11 @@ from roboto.llm.port import ModelGateway, Transcriber
 from roboto.orchestrator.store import Store
 from roboto.result import Err, Ok
 
+# Marcadores que delimitam o CORPO LIMPO da issue na saída do refino: o motor pode narrar/pensar
+# fora deles, mas o "📝 Aplicar na issue" extrai só o que está ENTRE eles (sem preâmbulo).
+ISSUE_BODY_START = "===ISSUE-INICIO==="
+ISSUE_BODY_END = "===ISSUE-FIM==="
+
 
 async def run_periodic(
     tick: Callable[[], Awaitable[object]], interval: float, stop: asyncio.Event
@@ -82,7 +87,11 @@ async def process_refine_tick(
         f"Refine a issue #{run.issue_id} do repo {run.repo}.{contexto}\n\n"
         "LEIA o repositório (código, AGENTS.md, arquivos citados) com Read/Grep para fundamentar. "
         "NÃO edite arquivos nem abra PR. No fim, proponha a issue COMPLETA, com as seções "
-        "**Contexto**, **Escopo**, **Critérios de aceite** (itens '- [ ]') e **DoD**."
+        "**Contexto**, **Escopo**, **Critérios de aceite** (itens '- [ ]') e **DoD**.\n\n"
+        f"IMPORTANTE: emita o CORPO FINAL da issue — e NADA MAIS — entre as linhas "
+        f"`{ISSUE_BODY_START}` e `{ISSUE_BODY_END}`, cada marcador sozinho em sua própria linha. "
+        "Dentro dos marcadores vá direto ao markdown da issue (sem 'vou propor', sem comentários, "
+        "sem cercas de código). Qualquer explicação sua deve ficar FORA dos marcadores."
     )
     await drive_turn(engine, store, run=run, chat_id=chat_id, now=moment, prompt=prompt)
 
