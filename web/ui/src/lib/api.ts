@@ -73,6 +73,15 @@ export const interruptExecution = (id: number) =>
   api<{ ok: boolean }>(`/executions/${id}/interrupt`, { method: 'POST' })
 export const endExecution = (id: number) =>
   api<{ ok: boolean }>(`/executions/${id}/end`, { method: 'POST' })
+// Aplicar a proposta do refino na issue do GitHub (D30: corpo editável, com OK do humano).
+export const getProposal = (id: number) =>
+  api<{ body: string; issue_id: string }>(`/executions/${id}/proposal`)
+export const applyProposal = (id: number, body: string) =>
+  api<{ ok: boolean; number: number }>(`/executions/${id}/apply`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ body }),
+  })
 export const cancelExecution = (id: number) =>
   api<{ id: number; state: string }>(`/executions/${id}/cancel`, { method: 'POST' })
 export const retryExecution = (id: number) =>

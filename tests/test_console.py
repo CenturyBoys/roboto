@@ -162,6 +162,16 @@ class _FakeIssues:
     async def get_issue(self, repo: str, number: int) -> Result[tuple[str, str], Error]:
         return Ok((f"issue #{number}", self._body))
 
+    async def update_issue(
+        self, repo: str, number: int, *, title: str, body: str
+    ) -> Result[None, Error]:
+        self.updated: tuple[int, str, str] = (number, title, body)
+        return Ok(None)
+
+    async def comment_pr(self, repo: str, number: int, body: str) -> Result[None, Error]:
+        self.commented = (number, body)
+        return Ok(None)
+
 
 class _FakeGateway:
     """Gateway de modelo fake: devolve um texto canônico (sem rede) p/ testar o refino."""
@@ -228,6 +238,34 @@ async def test_issue_refine_without_model_is_409() -> None:
     async with _console(store) as c:  # sem gateway
         r = await c.post("/issues/1/refine", headers=_AUTH, json={"transcript": []})
         assert r.status_code == 409
+
+
+async def test_proposal_and_apply() -> None:
+    store = InMemoryStore()
+    run_id = await _seed(store)
+    await store.append_session_event("acme", run_id, "message", _T0, text="rascunho velho")
+    await store.append_session_event("acme", run_id, "tool_call", _T0, tool="Read")
+    await store.append_session_event("acme", run_id, "message", _T0, text="# Issue refinada\n...")
+    src = _FakeIssues([])
+    async with _console(store, issues=src, default_repo="acme/app") as c:
+        # proposal = ÚLTIMA mensagem do motor
+        prop = (await c.get(f"/executions/{run_id}/proposal", headers=_AUTH)).json()
+        assert prop["body"] == "# Issue refinada\n..."
+        # apply atualiza a issue (corpo editado) + comenta a trilha
+        r = await c.post(
+            f"/executions/{run_id}/apply", headers=_AUTH, json={"body": "# Corpo final"}
+        )
+        assert r.status_code == 200 and r.json()["number"] == 7
+    assert src.updated[2] == "# Corpo final"  # body aplicado via update_issue
+    assert src.commented[0] == 7  # comentário de trilha
+
+
+async def test_apply_requires_body() -> None:
+    store = InMemoryStore()
+    run_id = await _seed(store)
+    async with _console(store, issues=_FakeIssues([]), default_repo="acme/app") as c:
+        r = await c.post(f"/executions/{run_id}/apply", headers=_AUTH, json={"body": "  "})
+        assert r.status_code == 400
 
 
 async def test_refine_engine_enqueues_run() -> None:
