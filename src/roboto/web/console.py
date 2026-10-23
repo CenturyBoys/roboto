@@ -23,6 +23,7 @@ from starlette.staticfiles import StaticFiles
 
 from roboto.agents.refiner import IssueDraft, converse
 from roboto.agents.review import check_issue_readiness
+from roboto.app.loops import ISSUE_BODY_END, ISSUE_BODY_START
 from roboto.app.session_hub import SessionHub
 from roboto.llm.port import ModelGateway
 from roboto.orchestrator.model import (
@@ -39,6 +40,26 @@ from roboto.orchestrator.model import (
 from roboto.orchestrator.store import Store
 from roboto.result import Err, Ok, Result
 from roboto.web.viewer import VIEWER_HTML
+
+
+def _extract_proposal(msgs: list[str]) -> str:
+    """Corpo LIMPO da issue a partir das mensagens do motor (pré-preenche o "📝 Aplicar na issue").
+
+    1) Preferência: o trecho ENTRE os marcadores `===ISSUE-INICIO===`/`===ISSUE-FIM===` da última
+       mensagem que os tiver — é o corpo sem preâmbulo ("vou propor…") nem comentário.
+    2) Fallback (runs antigos / refino via chat, sem marcadores): a última mensagem que PARECE uma
+       issue refinada (seções/critérios); senão a mais longa. Evita pegar conversa curta ou erro.
+    """
+    for text in reversed(msgs):
+        if ISSUE_BODY_START in text:
+            inner = text.split(ISSUE_BODY_START, 1)[1]
+            inner = inner.split(ISSUE_BODY_END, 1)[0]
+            cleaned = inner.strip()
+            if cleaned:
+                return cleaned
+    markers = ("Critérios de aceite", "## Contexto", "Definition of Done", "Escopo", "DoD")
+    looks_like = [m for m in msgs if any(k in m for k in markers)]
+    return looks_like[-1] if looks_like else (max(msgs, key=len) if msgs else "")
 
 
 class IssueSource(Protocol):
@@ -494,11 +515,7 @@ def console_routes(
             return JSONResponse({"error": "not found"}, status_code=404)
         events = await store.session_events(run.id, 0, 500)
         msgs = [e.text for e in events if e.kind == "message" and e.text.strip()]
-        # prefere a última mensagem que PARECE uma issue refinada (seções/critérios); senão, a mais
-        # longa — evita pegar conversa curta ou erro ("selected model") que veio DEPOIS do rascunho.
-        markers = ("Critérios de aceite", "## Contexto", "Definition of Done", "Escopo", "DoD")
-        looks_like = [m for m in msgs if any(k in m for k in markers)]
-        body = looks_like[-1] if looks_like else (max(msgs, key=len) if msgs else "")
+        body = _extract_proposal(msgs)
         return JSONResponse({"body": body, "issue_id": run.issue_id})
 
     async def apply_proposal(request: Request) -> JSONResponse:
