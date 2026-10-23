@@ -92,6 +92,7 @@ SETTABLE_KEYS: tuple[str, ...] = (
     "ROBOTO_BOT_LOGIN",
     "ROBOTO_CODE_INTEL",
     "TTYD_BASE",
+    "COPILOT_MODE",
 )
 
 
