@@ -55,6 +55,20 @@ async def drive_session(
         "autônomo extenso sem o humano pedir. Ao refinar: faça no máximo UMA pergunta por vez OU "
         "proponha um trecho curto, e pergunte antes de qualquer ação grande."
     )
+    # Refino é SÓ-LEITURA: o motor lê pra fundamentar a issue, mas NÃO implementa. Bloqueamos as
+    # ferramentas de escrita/execução DE VERDADE (não só no prompt) — senão um "aplica a issue" no
+    # chat faz o motor sair codando (Write/compilar), que não é o papel do refino (o "Aplicar na
+    # issue" é um botão separado do cockpit, que grava o texto no GitHub).
+    read_only = run.agent == "refine"
+    blocked_tools = ["Write", "Edit", "MultiEdit", "NotebookEdit", "Bash"]
+    if read_only:
+        copilot_system += (
+            " ATENÇÃO: você está REFINANDO a issue, não implementando. Use só LEITURA "
+            "(Read/Grep/Glob) pra fundamentar. NUNCA edite arquivos nem rode build/testes. Se o "
+            "humano pedir pra 'aplicar' ou 'implementar', responda que o refino só PROPÕE o texto "
+            "da issue — aplicar é um botão separado do cockpit."
+        )
+
     # Motor fixo do PoC: sem isto o CLI cai num default (ex.: um "claude-opus-*" inexistente no
     # roteamento via ccr/OpenRouter), que derrubava a sessão do chat com erro de modelo.
     model = model or "qwen/qwen3-coder"
@@ -80,6 +94,7 @@ async def drive_session(
             model=model or None,
             mcp_servers=mcp_servers,
             resume=resume_id,
+            disallowed_tools=blocked_tools if read_only else [],
         )
 
     # 1ª mensagem do humano (quando a sessão é aberta sob demanda pelo chat) semeia
