@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
+  applyProposal,
   cancelExecution,
   getExecution,
   getPrDiff,
+  getProposal,
   getTerminal,
   retryExecution,
 } from '@/lib/api'
@@ -20,6 +22,9 @@ export function ExecDetail({ id, onBack }: { id: number; onBack: () => void }) {
   const [diff, setDiff] = useState<PrDiff | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [chatOpen, setChatOpen] = useState(false)
+  const [applyBody, setApplyBody] = useState<string | null>(null) // null = overlay fechado
+  const [applyMsg, setApplyMsg] = useState<string | null>(null)
+  const [applying, setApplying] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -59,6 +64,30 @@ export function ExecDetail({ id, onBack }: { id: number; onBack: () => void }) {
     }
   }
 
+  async function openApply() {
+    setApplyMsg(null)
+    try {
+      const p = await getProposal(id)
+      setApplyBody(p.body || '') // pré-preenche com o rascunho; o humano edita antes de aplicar
+    } catch {
+      setApplyMsg('erro ao buscar a proposta')
+    }
+  }
+
+  async function doApply() {
+    if (applyBody === null || !applyBody.trim()) return
+    setApplying(true)
+    try {
+      const r = await applyProposal(id, applyBody)
+      setApplyMsg(`issue #${r.number} atualizada no GitHub ✓`)
+      setApplyBody(null)
+    } catch {
+      setApplyMsg('erro ao aplicar na issue')
+    } finally {
+      setApplying(false)
+    }
+  }
+
   if (error) return <p className="text-muted">{error}</p>
   if (!data) return <p className="text-muted">carregando…</p>
   const e = data.execution
@@ -70,6 +99,9 @@ export function ExecDetail({ id, onBack }: { id: number; onBack: () => void }) {
         </Button>
         <Button onClick={() => void showTerminal()}>Terminal</Button>
         <Button onClick={() => void showDiff()}>Diff do PR</Button>
+        <Button variant="outline" onClick={() => void openApply()}>
+          📝 Aplicar na issue
+        </Button>
         <Button variant="outline" onClick={() => void act(retryExecution)}>
           Retentar
         </Button>
@@ -77,6 +109,7 @@ export function ExecDetail({ id, onBack }: { id: number; onBack: () => void }) {
           Cancelar
         </Button>
       </div>
+      {applyMsg && <p className="text-xs text-accent">{applyMsg}</p>}
 
       <Card>
         <CardTitle>Execução #{e.id}</CardTitle>
@@ -238,6 +271,29 @@ export function ExecDetail({ id, onBack }: { id: number; onBack: () => void }) {
             void load()
           }}
         />
+      )}
+
+      {applyBody !== null && (
+        <div className="fixed inset-0 z-20 flex flex-col bg-background p-4">
+          <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <div className="flex-1 text-sm font-bold">
+                Aplicar na issue <span className="text-muted">· revise antes de salvar no GitHub</span>
+              </div>
+              <Button variant="default" disabled={applying} onClick={() => void doApply()}>
+                {applying ? 'aplicando…' : 'confirmar e atualizar'}
+              </Button>
+              <Button variant="ghost" onClick={() => setApplyBody(null)}>
+                cancelar
+              </Button>
+            </div>
+            <textarea
+              value={applyBody}
+              onChange={(e) => setApplyBody(e.target.value)}
+              className="flex-1 w-full resize-none rounded-lg border border-border bg-surface p-3 font-mono text-xs outline-none focus:border-accent"
+            />
+          </div>
+        </div>
       )}
     </div>
   )

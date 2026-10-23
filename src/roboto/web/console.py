@@ -37,7 +37,7 @@ from roboto.orchestrator.model import (
     SessionEvent,
 )
 from roboto.orchestrator.store import Store
-from roboto.result import Err, Result
+from roboto.result import Err, Ok, Result
 from roboto.web.viewer import VIEWER_HTML
 
 
@@ -49,6 +49,12 @@ class IssueSource(Protocol):
     ) -> Result[list[tuple[int, str, list[str]]], Error]: ...
 
     async def get_issue(self, repo: str, number: int) -> Result[tuple[str, str], Error]: ...
+
+    async def update_issue(
+        self, repo: str, number: int, *, title: str, body: str
+    ) -> Result[None, Error]: ...
+
+    async def comment_pr(self, repo: str, number: int, body: str) -> Result[None, Error]: ...
 
 # SPA buildado pelo front (web/ui → vite build). Se presente, o console serve o app React; senão,
 # cai no viewer legado embutido (dev/teste sem Node não quebram). Ver research/O §7.
@@ -479,6 +485,39 @@ def console_routes(
         run, _ = await store.insert_run_if_absent(ev, when)
         return JSONResponse({"run_id": run.id})
 
+    async def proposal(request: Request) -> JSONResponse:
+        # Último texto do motor nesta execução = o rascunho proposto (pré-preenche o "aplicar").
+        if _unauthorized(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        run = await _owned_run(request)
+        if run is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        events = await store.session_events(run.id, 0, 500)
+        msgs = [e.text for e in events if e.kind == "message" and e.text.strip()]
+        return JSONResponse({"body": msgs[-1] if msgs else "", "issue_id": run.issue_id})
+
+    async def apply_proposal(request: Request) -> JSONResponse:
+        # Aplica o corpo (editado pelo humano) na issue do GitHub + comentário de trilha (D30).
+        if _unauthorized(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        run = await _owned_run(request)
+        if run is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        if issues is None or not run.issue_id.isdigit():
+            return JSONResponse({"error": "GitHub não configurado"}, status_code=409)
+        payload = await request.json()
+        body = str(payload.get("body", "")).strip() if isinstance(payload, dict) else ""
+        if not body:
+            return JSONResponse({"error": "body vazio"}, status_code=400)
+        number = int(run.issue_id)
+        got = await issues.get_issue(run.repo, number)
+        title = got.value[0] if isinstance(got, Ok) else f"#{number}"
+        res = await issues.update_issue(run.repo, number, title=title, body=body)
+        if isinstance(res, Err):
+            return JSONResponse({"error": res.error.message}, status_code=502)
+        await issues.comment_pr(run.repo, number, "📝 Issue refinada pelo fleet (via cockpit).")
+        return JSONResponse({"ok": True, "number": number})
+
     return [
         *shell_routes(),
         Route("/healthz", healthz),
@@ -496,6 +535,8 @@ def console_routes(
         Route("/issues/{number:int}", issue_detail),
         Route("/issues/{number:int}/refine", issue_refine, methods=["POST"]),
         Route("/issues/{number:int}/refine-engine", refine_with_engine, methods=["POST"]),
+        Route("/executions/{run_id:int}/proposal", proposal),
+        Route("/executions/{run_id:int}/apply", apply_proposal, methods=["POST"]),
         Route("/interactions", pending_interactions),
         Route("/interactions/{interaction_id:int}/answer", answer_interaction, methods=["POST"]),
         Route("/costs", costs),
