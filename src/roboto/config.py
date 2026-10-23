@@ -55,6 +55,8 @@ class Config:
     bot_login: str = ""  # opt-in por assignee (ROBOTO_BOT_LOGIN)
     code_intel: bool = True  # liga o MCP code-intel (ide_cc) no motor — economia de token (F)
     ttyd_base: str = ""  # URL do terminal web (ttyd/tmux) p/ o console; vazio = botão desabilitado
+    copilot_mode: str = "sdk"  # co-piloto do chat: "sdk" (ClaudeSDKClient) | "tmux" (CLI em tmux,
+    # terminal real anexado + feed via transcript). COPILOT_MODE.
 
 
 _REQUIRED = (
@@ -90,6 +92,7 @@ SETTABLE_KEYS: tuple[str, ...] = (
     "ROBOTO_BOT_LOGIN",
     "ROBOTO_CODE_INTEL",
     "TTYD_BASE",
+    "COPILOT_MODE",
 )
 
 
@@ -176,5 +179,6 @@ def load_config(env: Mapping[str, str]) -> Result[Config, Error]:
             bot_login=env.get("ROBOTO_BOT_LOGIN", ""),
             code_intel=env.get("ROBOTO_CODE_INTEL", "1") not in ("0", "false", "no"),
             ttyd_base=env.get("TTYD_BASE", ""),
+            copilot_mode=env.get("COPILOT_MODE", "sdk"),
         )
     )

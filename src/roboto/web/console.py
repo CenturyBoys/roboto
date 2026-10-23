@@ -25,6 +25,7 @@ from roboto.agents.refiner import IssueDraft, converse
 from roboto.agents.review import check_issue_readiness
 from roboto.app.loops import ISSUE_BODY_END, ISSUE_BODY_START
 from roboto.app.session_hub import SessionHub
+from roboto.app.tmux_copilot import session_name
 from roboto.llm.port import ModelGateway
 from roboto.orchestrator.model import (
     Error,
@@ -386,9 +387,11 @@ def console_routes(
         run = await _owned_run(request)
         if run is None:
             return JSONResponse({"error": "not found"}, status_code=404)
-        url = ttyd_base.rstrip("/") if ttyd_base else None
+        # anexa NA tmux por-run (ttyd -a url-arg): você vê/opera a sessão REAL do motor. Se a sessão
+        # não existir (modo sdk / sem chat aberto), o wrapper do ttyd cai no terminal padrão.
+        url = f"{ttyd_base.rstrip('/')}/?arg={session_name(run.id)}" if ttyd_base else None
         return JSONResponse(
-            {"terminal_url": url, "note": "terminal do container (ttyd+tmux); isolado por empresa"}
+            {"terminal_url": url, "note": "terminal da sessão viva (tmux por-run); anexa no motor"}
         )
 
     async def events_stream(request: Request) -> Response:

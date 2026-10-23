@@ -54,12 +54,13 @@ async def _run_daemon(config: Config, store: Store) -> None:
             return True  # já viva
         if run.state is RunState.RUNNING:
             return False  # ocupado pelo ciclo batch
-        from roboto.app.copilot import drive_session
-
+        use_tmux = config.copilot_mode == "tmux"
         hub.open(run.id)  # abre já: a próxima mensagem do chat acha a LiveSession (sem corrida)
         mcp: dict[str, object] | None = (
             {"code-intel": {"command": "code-intel-mcp"}} if config.code_intel else None
         )
+        # refino é read-only (lê p/ fundamentar, não implementa) — vale nos dois drivers
+        read_only = run.agent == "refine"
 
         # injeta o contexto da issue (repo + #N + corpo) ANTES da mensagem do humano — senão o
         # motor não sabe de qual issue a conversa trata, mesmo o chat tendo sido aberto nela.
@@ -76,11 +77,22 @@ async def _run_daemon(config: Config, store: Store) -> None:
 
         async def _drive() -> None:
             try:
-                await drive_session(
-                    store, hub, run=run, chat_id=config.chat_id,
-                    workdir=f"/work/{run.repo}", now=_now,
-                    mcp_servers=mcp, initial_prompt=prompt,
-                )
+                if use_tmux:
+                    from roboto.app.tmux_copilot import drive_session_tmux
+
+                    await drive_session_tmux(
+                        store, hub, run=run, chat_id=config.chat_id,
+                        workdir=f"/work/{run.repo}", now=_now,
+                        read_only=read_only, initial_prompt=prompt,
+                    )
+                else:
+                    from roboto.app.copilot import drive_session
+
+                    await drive_session(
+                        store, hub, run=run, chat_id=config.chat_id,
+                        workdir=f"/work/{run.repo}", now=_now,
+                        mcp_servers=mcp, initial_prompt=prompt,
+                    )
             except Exception:  # noqa: BLE001 — task de fundo: loga e encerra limpo
                 logger.exception("co-piloto: sessão viva run=%s terminou com erro", run.id)
             finally:
