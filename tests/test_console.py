@@ -85,6 +85,9 @@ def test_extract_proposal_prefers_markers() -> None:
     draft = f"{ISSUE_BODY_START}\n## Contexto\nX\n{ISSUE_BODY_END}"
     msgs = ["Vou ler o repo primeiro…", f"Pronto, segue a proposta:\n{draft}\nQualquer dúvida?"]
     assert _extract_proposal(msgs) == "## Contexto\nX"
+    # robustez: o modelo quebra os `===` numa linha à parte (markdown trata como régua)
+    broken = "===\nISSUE-INICIO===\n## Contexto\nX\n===\nISSUE-FIM===\nqualquer dúvida?"
+    assert _extract_proposal([broken]) == "## Contexto\nX"
 
 
 def test_extract_proposal_fallback_without_markers() -> None:

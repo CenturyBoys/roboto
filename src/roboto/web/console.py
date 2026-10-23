@@ -46,15 +46,18 @@ def _extract_proposal(msgs: list[str]) -> str:
     """Corpo LIMPO da issue a partir das mensagens do motor (pré-preenche o "📝 Aplicar na issue").
 
     1) Preferência: o trecho ENTRE os marcadores `===ISSUE-INICIO===`/`===ISSUE-FIM===` da última
-       mensagem que os tiver — é o corpo sem preâmbulo ("vou propor…") nem comentário.
+       mensagem que os tiver — é o corpo sem preâmbulo ("vou propor…") nem comentário. Ancora no
+       MIOLO (`ISSUE-INICIO`/`ISSUE-FIM`) porque o modelo às vezes quebra os `===` numa linha à
+       parte (markdown trata `===` como régua); a decoração `===` das bordas é removida.
     2) Fallback (runs antigos / refino via chat, sem marcadores): a última mensagem que PARECE uma
        issue refinada (seções/critérios); senão a mais longa. Evita pegar conversa curta ou erro.
     """
+    start = ISSUE_BODY_START.strip("=")  # "ISSUE-INICIO" — miolo estável, imune à quebra dos `===`
+    end = ISSUE_BODY_END.strip("=")
     for text in reversed(msgs):
-        if ISSUE_BODY_START in text:
-            inner = text.split(ISSUE_BODY_START, 1)[1]
-            inner = inner.split(ISSUE_BODY_END, 1)[0]
-            cleaned = inner.strip()
+        if start in text:
+            inner = text.split(start, 1)[1].split(end, 1)[0]
+            cleaned = inner.strip().strip("=").strip()
             if cleaned:
                 return cleaned
     markers = ("Critérios de aceite", "## Contexto", "Definition of Done", "Escopo", "DoD")
