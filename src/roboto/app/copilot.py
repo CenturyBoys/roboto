@@ -55,15 +55,26 @@ async def drive_session(
         "autônomo extenso sem o humano pedir. Ao refinar: faça no máximo UMA pergunta por vez OU "
         "proponha um trecho curto, e pergunte antes de qualquer ação grande."
     )
+    # RETOMA a última sessão nativa do run (o refino / a mensagem anterior do chat): o motor volta
+    # COM o contexto já lido, então responde DIRETO em vez de revarrer o repo do zero a cada
+    # mensagem — era isso que estourava o `max_turns` e deixava o chat "empacado" sem resposta.
+    resume: str | None = None
+    for s in await store.sessions_for_execution(run.id):
+        if s.native_session_id:
+            resume = s.native_session_id  # pega a mais recente (a lista vem em ordem)
+
     # bypassPermissions: leitura FLUIDA (não trava pedindo aprovação a cada ação, o que deixava o
     # run em "awaiting" e impedia o interromper). O humano controla por interromper/encerrar.
     options = ClaudeAgentOptions(
         cwd=workdir,
         permission_mode="bypassPermissions",
         system_prompt=copilot_system,
-        max_turns=10,  # teto de passos por mensagem — contém o "faz coisa demais"
+        # teto por mensagem: alto o bastante pra uma resposta real (ler pontual + responder) sem
+        # empacar, mas ainda um backstop contra runaway. Com `resume`, raramente chega perto.
+        max_turns=24,
         model=model or None,
         mcp_servers=mcp_servers,
+        resume=resume,
     )
 
     # 1ª mensagem do humano (quando a sessão é aberta sob demanda pelo chat) semeia
