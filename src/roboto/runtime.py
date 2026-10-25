@@ -152,9 +152,17 @@ async def _run_daemon(config: Config, store: Store) -> None:
         mcp: dict[str, object] | None = (
             {"code-intel": {"command": "code-intel-mcp"}} if config.code_intel else None
         )
-        claude = ClaudeCodeEngine(permission_mode="bypassPermissions", mcp_servers=mcp)
+        # Modelo FIXO (ccr→OpenRouter/Qwen): sem isto o CLI cai no default (claude-opus-*), que o
+        # ccr não roteia → a query falha com "selected model ... may not exist". O co-piloto já
+        # fixava; o batch (impl/refino) precisa do mesmo pino.
+        engine_model = "qwen/qwen3-coder"
+        claude = ClaudeCodeEngine(
+            model=engine_model, permission_mode="bypassPermissions", mcp_servers=mcp
+        )
         # motor dedicado ao refino (read-only por prompt): evita corrida de estado com o ciclo de PR
-        refiner_engine = ClaudeCodeEngine(permission_mode="bypassPermissions", mcp_servers=mcp)
+        refiner_engine = ClaudeCodeEngine(
+            model=engine_model, permission_mode="bypassPermissions", mcp_servers=mcp
+        )
 
         async def _run_refine() -> None:
             # refino engine-scoped (Fatia 6/C): o motor LÊ o repo e propõe a issue (feed ao vivo)

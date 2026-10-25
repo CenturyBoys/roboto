@@ -97,6 +97,9 @@ def test_extract_proposal_fallback_without_markers() -> None:
     msgs = ["oi", "## Contexto\nblah\nCritérios de aceite\n- [ ] a"]
     assert "Critérios de aceite" in _extract_proposal(msgs)
     assert _extract_proposal([]) == ""
+    # mensagem de erro de modelo NÃO vira proposta (refino falho → vazio, não o texto do erro)
+    err = "There's an issue with the selected model (claude-opus-5-5). It may not exist..."
+    assert _extract_proposal([err]) == ""
 
 
 def test_legacy_viewer_has_pwa_and_cockpit_hooks() -> None:
