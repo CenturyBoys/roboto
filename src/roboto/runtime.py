@@ -83,7 +83,8 @@ async def _run_daemon(config: Config, store: Store) -> None:
                     await drive_session_tmux(
                         store, hub, run=run, chat_id=config.chat_id,
                         workdir=f"/work/{run.repo}", now=_now,
-                        read_only=read_only, initial_prompt=prompt,
+                        read_only=read_only, code_intel=config.code_intel,
+                        initial_prompt=prompt,
                     )
                 else:
                     from roboto.app.copilot import drive_session
