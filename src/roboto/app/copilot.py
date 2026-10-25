@@ -25,6 +25,16 @@ from roboto.app.session_hub import SessionHub
 from roboto.orchestrator.model import Engine, Run
 from roboto.orchestrator.store import Store
 
+# Regra de NAVEGAÇÃO do motor (trilhas E/F): entender a topologia ANTES de propor/editar, com
+# ferramenta semântica barata — não varrendo arquivo inteiro. Compartilhada pelos dois drivers
+# (SDK e tmux) e pelo refino. Sem apóstrofos: o tmux injeta via --append-system-prompt entre aspas.
+CODE_INTEL_RULE = (
+    "Para entender o código, PREFIRA o code-intel (MCP): use document_symbols/workspace_symbols "
+    "para a topologia, find_references/call_hierarchy para quem usa o que, e blast_radius para "
+    "medir o impacto ANTES de propor ou editar. Leia arquivo inteiro (Read) só quando o code-intel "
+    "nao bastar — e mais caro em token. Entenda a estrutura primeiro; so entao proponha mudancas."
+)
+
 
 async def drive_session(
     store: Store,
@@ -53,7 +63,7 @@ async def drive_session(
         "issue em contexto. Responda de forma DIRETA e CONCISA. Leia o repositório só quando for "
         "necessário pra responder (Read/Grep pontuais) — NÃO faça varreduras longas nem trabalho "
         "autônomo extenso sem o humano pedir. Ao refinar: faça no máximo UMA pergunta por vez OU "
-        "proponha um trecho curto, e pergunte antes de qualquer ação grande."
+        "proponha um trecho curto, e pergunte antes de qualquer ação grande. " + CODE_INTEL_RULE
     )
     # Refino é SÓ-LEITURA: o motor lê pra fundamentar a issue, mas NÃO implementa. Bloqueamos as
     # ferramentas de escrita/execução DE VERDADE (não só no prompt) — senão um "aplica a issue" no

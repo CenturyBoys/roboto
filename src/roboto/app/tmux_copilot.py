@@ -21,12 +21,20 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from roboto.app.copilot import CODE_INTEL_RULE
 from roboto.app.session_hub import SessionHub
 from roboto.orchestrator.model import Engine, Run
 from roboto.orchestrator.store import Store
 
 # ferramentas de escrita/execução bloqueadas no refino (read-only) — espelha o copilot via SDK
 _READ_ONLY_BLOCKED = ("Write", "Edit", "MultiEdit", "NotebookEdit", "Bash")
+
+# guia injetado no CLI (--append-system-prompt): conversacional + regra de navegação (code-intel).
+# Sem apóstrofos (vai entre aspas simples no comando do tmux).
+_TMUX_GUIDANCE = (
+    "Voce e um co-piloto conversacional no cockpit: responda DIRETO e CONCISO; nao faca trabalho "
+    "autonomo extenso sem o humano pedir. " + CODE_INTEL_RULE
+)
 
 
 @dataclass
@@ -81,6 +89,8 @@ async def _start(name: str, workdir: str, *, read_only: bool, code_intel: bool) 
         # busca semântica (symbols/refs) em vez de ler arquivo inteiro → economia de token (F).
         cfg = '{"mcpServers":{"code-intel":{"command":"code-intel-mcp"}}}'
         flags += f" --mcp-config '{cfg}'"
+    # regra de navegação (entender a topologia antes de editar) + tom conversacional
+    flags += f" --append-system-prompt '{_TMUX_GUIDANCE}'"
     # env -u ANTHROPIC_API_KEY: sem a chave "custom" o CLI não para no prompt de aprovação da key;
     # AUTH_TOKEN + base_url bastam p/ o ccr rotear (validado no spike).
     cmd = (
