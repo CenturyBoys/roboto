@@ -159,9 +159,13 @@ async def _run_daemon(config: Config, store: Store) -> None:
         claude = ClaudeCodeEngine(
             model=engine_model, permission_mode="bypassPermissions", mcp_servers=mcp
         )
-        # motor dedicado ao refino (read-only por prompt): evita corrida de estado com o ciclo de PR
+        # motor dedicado ao refino (read-only por prompt): evita corrida com o ciclo de PR.
+        # max_turns=40: refino é LER + PROPOR; teto contra o sprawl (modelo fraco varrendo o repo).
         refiner_engine = ClaudeCodeEngine(
-            model=engine_model, permission_mode="bypassPermissions", mcp_servers=mcp
+            model=engine_model,
+            permission_mode="bypassPermissions",
+            mcp_servers=mcp,
+            max_turns=40,
         )
 
         async def _run_refine() -> None:
