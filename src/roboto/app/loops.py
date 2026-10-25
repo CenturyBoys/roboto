@@ -11,6 +11,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 
+from roboto.app.copilot import CODE_INTEL_RULE
 from roboto.app.engine_loop import drive_turn
 from roboto.app.inbound import IssueLister, dispatch_inbound
 from roboto.channels.model import OutboundMessage
@@ -85,7 +86,8 @@ async def process_refine_tick(
             contexto = f"\n\nIssue atual — título: {title}\nCorpo atual:\n{body}"
     prompt = (
         f"Refine a issue #{run.issue_id} do repo {run.repo}.{contexto}\n\n"
-        "LEIA o repositório (código, AGENTS.md, arquivos citados) com Read/Grep para fundamentar. "
+        "LEIA o repositório (código, AGENTS.md, arquivos citados) para fundamentar. "
+        f"{CODE_INTEL_RULE} "
         "NÃO edite arquivos nem abra PR. No fim, proponha a issue COMPLETA, com as seções "
         "**Contexto**, **Escopo**, **Critérios de aceite** (itens '- [ ]') e **DoD**.\n\n"
         f"IMPORTANTE: emita o CORPO FINAL da issue — e NADA MAIS — entre as linhas "
