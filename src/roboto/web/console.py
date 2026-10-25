@@ -61,9 +61,25 @@ def _extract_proposal(msgs: list[str]) -> str:
             cleaned = inner.strip().strip("=").strip()
             if cleaned:
                 return cleaned
+    # descarta mensagens de ERRO (ex.: "selected model ... may not exist"): um refino que falhou não
+    # pode virar "proposta" no textarea do aplicar — melhor devolver vazio do que o texto do erro.
+    usable = [m for m in msgs if not _looks_like_error(m)]
     markers = ("Critérios de aceite", "## Contexto", "Definition of Done", "Escopo", "DoD")
-    looks_like = [m for m in msgs if any(k in m for k in markers)]
-    return looks_like[-1] if looks_like else (max(msgs, key=len) if msgs else "")
+    looks_like = [m for m in usable if any(k in m for k in markers)]
+    return looks_like[-1] if looks_like else (max(usable, key=len) if usable else "")
+
+
+def _looks_like_error(text: str) -> bool:
+    low = text.lower()
+    return any(
+        s in low
+        for s in (
+            "may not exist or you may not have access",
+            "selected model",
+            "api error",
+            "error from provider",
+        )
+    )
 
 
 class IssueSource(Protocol):
