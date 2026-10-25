@@ -13,8 +13,28 @@ classe: **economia de token** + **determinismo**.
 - **Retorno estilo `Result<Ok, Error>`** (`roboto.result`): operações que podem falhar **retornam
   `Result`**, não lançam exceção para fluxo de controle. Exceção é só para erro de programação/inesperado.
 - **Type hints sempre**; `mypy --strict` tem de passar.
-- **Nomes descritivos e semânticos**; proibido `temp/val/res/data/foo`.
+
+### Legibilidade — o código se lê como prosa (naming 1º, estrutura 2º, comentário por último)
+Prioridade: estruture para o que o código faz ser **óbvio pelo nome**; comentário é o último recurso.
+- **Variáveis = substantivos com papel/unidade** (`saldo_em_centavos`, `tentativas_restantes`); o nome
+  conta a própria história. **Proibido** `temp/val/res/data/foo/x`.
+- **Funções = verbos** (`calcular_desconto`, `exigir_segredo`); **booleanos = predicados**
+  (`esta_vencido`, `tem_credito`, `deve_notificar`). Quem chama a função deve **ler como uma frase**.
+- **Linguagem do domínio** (ubiquitous language): o nome fala o **negócio**, não a implementação.
+- **Guard clauses / early return**: trate o erro/exceção cedo e saia; o **caminho feliz** se lê de
+  cima pra baixo, sem aninhar.
+- **Funções pequenas, com um propósito**; se precisa de comentário pra explicar *o quê*, provavelmente
+  falta extrair/renomear.
 - **Comentário só para o PORQUÊ** (negócio, edge case, decisão não-óbvia) — nunca reescrever o código.
+  Comentário desatualizado é pior que nenhum.
+
+### Navegação — entenda a topologia ANTES de editar (economia de token)
+Use o **code-intel (MCP)** para entender o repo, não leia arquivo inteiro à toa:
+- `document_symbols`/`workspace_symbols` → estrutura e onde as coisas estão.
+- `find_references`/`call_hierarchy` → quem usa o quê.
+- `blast_radius` → **o que quebra** se você mudar algo (meça o impacto antes).
+- `Read` de arquivo inteiro só quando o code-intel não bastar — é mais caro em token.
+Nome bom potencializa isto: a busca por símbolo acha a coisa certa de primeira.
 - **Front (cockpit web, trilha O):** **React + TypeScript (strict)** + Tailwind + shadcn em `web/ui/`;
   builda para `src/roboto/web/static/` e é servido pelo **mesmo backend Starlette** (fallback no viewer
   legado quando não há build). O contrato é a **API JSON/SSE do console** — a UI só consome.
