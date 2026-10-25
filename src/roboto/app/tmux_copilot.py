@@ -17,6 +17,7 @@ import json
 import os
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -26,6 +27,14 @@ from roboto.orchestrator.store import Store
 
 # ferramentas de escrita/execução bloqueadas no refino (read-only) — espelha o copilot via SDK
 _READ_ONLY_BLOCKED = ("Write", "Edit", "MultiEdit", "NotebookEdit", "Bash")
+
+
+@dataclass
+class _Activity:
+    """Estado compartilhado tailer↔watchdog p/ os limites de custo/recurso (Fix 2)."""
+
+    last: float  # epoch da última atividade do motor (nova linha no transcript)
+    tools: int = 0  # tool-calls desde a última mensagem do humano (cap de burst)
 
 
 def session_name(run_id: int) -> str:
@@ -59,7 +68,7 @@ async def _alive(name: str) -> bool:
     return await _tmux("has-session", "-t", name) == 0
 
 
-async def _start(name: str, workdir: str, *, read_only: bool) -> None:
+async def _start(name: str, workdir: str, *, read_only: bool, code_intel: bool) -> None:
     await _tmux("kill-session", "-t", name)  # limpa resíduo de um run anterior
     base = os.environ.get("ANTHROPIC_BASE_URL", "http://127.0.0.1:3456")
     token = os.environ.get("ANTHROPIC_AUTH_TOKEN") or os.environ.get(
@@ -68,6 +77,10 @@ async def _start(name: str, workdir: str, *, read_only: bool) -> None:
     flags = "--permission-mode bypassPermissions"
     if read_only:
         flags += " --disallowedTools " + " ".join(_READ_ONLY_BLOCKED)
+    if code_intel:
+        # busca semântica (symbols/refs) em vez de ler arquivo inteiro → economia de token (F).
+        cfg = '{"mcpServers":{"code-intel":{"command":"code-intel-mcp"}}}'
+        flags += f" --mcp-config '{cfg}'"
     # env -u ANTHROPIC_API_KEY: sem a chave "custom" o CLI não para no prompt de aprovação da key;
     # AUTH_TOKEN + base_url bastam p/ o ccr rotear (validado no spike).
     cmd = (
@@ -93,6 +106,7 @@ async def _tail_transcript(
     *,
     stop: asyncio.Event,
     since: float,
+    activity: _Activity,
 ) -> None:
     """Acha o transcript desta sessão (jsonl mais novo no dir do projeto após o start) e faz tail,
     convertendo `assistant` (text/tool_use) em `session_event` — é o que alimenta o feed ao vivo."""
@@ -119,7 +133,7 @@ async def _tail_transcript(
             await asyncio.sleep(1)
             continue
         for ln in lines[pos:]:
-            await _emit_line(store, run, now, ln)
+            await _emit_line(store, run, now, ln, activity)
         pos = len(lines)
         await asyncio.sleep(1)
 
@@ -133,7 +147,9 @@ async def _map_native(
     await store.set_native_session(session.id, native, now())
 
 
-async def _emit_line(store: Store, run: Run, now: Callable[[], datetime], line: str) -> None:
+async def _emit_line(
+    store: Store, run: Run, now: Callable[[], datetime], line: str, activity: _Activity
+) -> None:
     try:
         e = json.loads(line)
     except ValueError:
@@ -142,6 +158,7 @@ async def _emit_line(store: Store, run: Run, now: Callable[[], datetime], line: 
     # só `assistant`: as mensagens do humano o console já persiste como kind="user" (sem duplicar)
     if e.get("type") != "assistant" or msg is None:
         return
+    activity.last = time.time()  # o motor produziu algo → reseta o relógio de idle
     for b in msg.get("content") or []:
         if not isinstance(b, dict):
             continue
@@ -153,6 +170,7 @@ async def _emit_line(store: Store, run: Run, now: Callable[[], datetime], line: 
             await store.append_session_event(
                 run.tenant, run.id, "tool_call", now(), tool=str(b.get("name", ""))
             )
+            activity.tools += 1  # conta o burst p/ o cap de turnos
 
 
 async def drive_session_tmux(
@@ -164,6 +182,7 @@ async def drive_session_tmux(
     workdir: str,
     now: Callable[[], datetime],
     read_only: bool = False,
+    code_intel: bool = False,
     initial_prompt: str | None = None,
 ) -> None:
     """Sobe o CLI na tmux por-run, injeta a 1ª mensagem e depois faz steer das próximas (via hub).
@@ -172,14 +191,22 @@ async def drive_session_tmux(
     name = session_name(run.id)
     stop = asyncio.Event()
     since = time.time()  # mesma base (epoch) que o st_mtime do transcript — evita viés de timezone
+    activity = _Activity(last=since)
+    # limites de custo/recurso (Fix 2): env com defaults seguros. O CLI interativo não tem
+    # --max-turns, então o cap de "burst" é imposto por fora (Escape); o idle/vida matam a sessão.
+    idle_ttl = float(os.environ.get("COPILOT_IDLE_SECONDS", "900"))  # 15 min sem atividade → mata
+    max_life = float(os.environ.get("COPILOT_MAX_LIFETIME_SECONDS", "3600"))  # 1 h → mata
+    max_tools = int(os.environ.get("COPILOT_MAX_TOOLS_PER_TURN", "60"))  # burst → Escape
     try:
-        await _start(name, workdir, read_only=read_only)
+        await _start(name, workdir, read_only=read_only, code_intel=code_intel)
         tailer = asyncio.create_task(
-            _tail_transcript(store, run, workdir, now, stop=stop, since=since)
+            _tail_transcript(store, run, workdir, now, stop=stop, since=since, activity=activity)
         )
         await asyncio.sleep(4)  # deixa o REPL subir antes do 1º texto
         prompt = initial_prompt or f"Trabalhe a issue {run.issue_id} do repo {run.repo}."
         await _send(name, prompt)
+        activity.last = time.time()
+        activity.tools = 0
 
         # controles imediatos: interromper manda Escape; encerrar sai do laço
         async def _controls() -> None:
@@ -190,15 +217,31 @@ async def drive_session_tmux(
                     return
                 live.clear_interrupt()
 
+        # watchdog de limites: mata por idle/vida; corta burst de tool-calls com Escape (token).
+        async def _limits() -> None:
+            while not stop.is_set():
+                await asyncio.sleep(5)
+                t = time.time()
+                if t - since > max_life or (t - activity.last > idle_ttl and not live.has_input()):
+                    live.request_end()  # tear-down limpo pela máquina existente (next_input→None)
+                    return
+                if activity.tools > max_tools:
+                    await _tmux("send-keys", "-t", name, "Escape")  # corta o "faz coisa demais"
+                    activity.tools = 0
+
         watcher = asyncio.create_task(_controls())
+        limiter = asyncio.create_task(_limits())
         try:
             while True:
                 nxt = await live.next_input()  # próxima msg do humano; None = encerrar
                 if nxt is None or not await _alive(name):
                     break
                 await _send(name, nxt)
+                activity.last = time.time()
+                activity.tools = 0  # nova mensagem do humano reinicia o cap de burst
         finally:
             watcher.cancel()
+            limiter.cancel()
             tailer.cancel()
     finally:
         stop.set()
