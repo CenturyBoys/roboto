@@ -3,7 +3,7 @@
 O que do plano (trilhas + decisões D1–D32) **está no sistema** hoje. Legenda:
 **✅ feito** · **🟡 parcial** · **❌ não** (desenhado, não construído).
 
-> Fonte: código em `src/roboto` (PRs #1–#82). Atualizar quando mudar.
+> Fonte: código em `src/roboto` (PRs #1–#114). Atualizar quando mudar. Última revisão: 2026-10-23.
 
 ## Fundação (D1–D11)
 
@@ -44,8 +44,8 @@ O que do plano (trilhas + decisões D1–D32) **está no sistema** hoje. Legenda
 | D22 | Motores via adapters (contrato) | ✅ | `CodingEngine`, `ClaudeCodeEngine`, `StubEngine` |
 | D23 | IDs session/execution/interaction | ✅ | model + store; sessão gravada no scope e pr_cycle |
 | D24 | `request_human_input` + reply-routing | ✅ | `app/human.py` |
-| D25 | Console web + terminal tmux | ✅ | console + viewer (Potter) + ttyd |
-| D26 | Auditoria de execução (eventos) | 🟡 | `EngineEvent`/`run_event`; stream não persistido/plotado |
+| D25 | Console web + terminal tmux | ✅ | **cockpit PWA** (React/TS, trilha O) + terminal por-run anexado (`COPILOT_MODE=tmux`) |
+| D26 | Auditoria de execução (eventos) | ✅ | `session_event` persistido + **SSE** (`/executions/{id}/events`); feed no cockpit |
 | D28 | Issue-first + review em todo lugar | ✅ | gate DoR + juiz semântico + escada de review |
 | D29 | Opt-in (label/assignee) | ✅ | `github/webhook.py` |
 | D30 | Telegram conversa × issue registro | ✅ | propor→ok, editar com ok + comentário de trilha |
@@ -68,10 +68,25 @@ O que do plano (trilhas + decisões D1–D32) **está no sistema** hoje. Legenda
 | K — runtime efêmero | ✅ | Docker/compose; isolamento forte ❌ |
 | L — baseline de custo / teto | 🟡 | mede (`llm_call`); sem baseline/teto |
 
+## Trilha O — cockpit de gerência (PWA) — fatias (ver `research/O-interface-de-gerenciamento.md`)
+
+| Fatia | Status | Onde / nota |
+|---|---|---|
+| 1 — PWA shell + terminal + config no banco/setup | ✅ | `web/ui/` (React/TS/Tailwind), `app_config` (mig. 0006), modo setup |
+| 2 — Feed legível ao vivo (SSE) | ✅ | `session_event` (mig. 0007) + `GET /executions/{id}/events` |
+| 3 — HITL no front | ✅ | inbox + `POST /interactions/{id}/answer` (mesmo `answer_interaction`) |
+| 4 — Custo agregado + diff | ✅ | `/costs` por execução; `execution_pr` (mig. 0008) + `/diff` |
+| 5 — Co-piloto (chat vivo) | ✅ | `SessionHub` + `ClaudeSDKClient`; chat mensageiro; interromper/encerrar imediatos; validado ao vivo |
+| 6 — Refino no cockpit + aplicar na issue | ✅ | listar/filtrar issues, refino **engine-scoped** (lê o repo), **📝 aplicar** (corpo limpo → `update_issue`) |
+| 7 — Terminal REAL do motor (tmux por-run) | ✅ | `COPILOT_MODE=tmux`: CLI em `roboto-run-<id>`, ttyd `-a` anexa; chat via `send-keys`, feed via transcript |
+
+Pendências da trilha O: aprovação por ação (`can_use_tool` encanado, mas co-piloto usa `bypassPermissions`); comentário-no-diff→agente (gate de review interativo); custo agregado por issue/fleet (L).
+
 ## Resumo
 - **Pronto (✅):** o **loop interativo de ponta a ponta** — ideia/issue (incl. motor escaneando o repo)
-  → proposta→ok → implementação → PR → review → gate humano; Telegram + console + motores + auditoria
-  de token + outbox/idempotência/recuperação.
+  → proposta→ok → implementação → PR → review → gate humano; Telegram + **cockpit PWA (trilha O,
+  fatias 1–7: chat vivo, refino + aplicar na issue, terminal real do motor em tmux)** + motores +
+  auditoria de token + outbox/idempotência/recuperação.
 - **Parcial (🟡):** second brain (só lê), observabilidade/secrets/orçamento, tenancy (1 por processo), roteamento fino de modelo.
 - **Falta (❌):** control-plane multi-empresa, skills, gatilhos de ambiente, evals/sandbox forte,
   merge-queue/test-impact, versão de prompt por run, Spec Kit, agente sênior/acesso a dados da empresa.

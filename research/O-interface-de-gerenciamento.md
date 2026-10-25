@@ -154,14 +154,14 @@ Auditado no código (`web/console.py`, `app/engine_loop.py`, `app/pr_cycle.py`, 
 | Detalhe: run + sessões + interações | ✅ já temos | idem (`/executions/{id}`) |
 | Custo/token por execução | ✅ já temos (`llm_call`/`/costs`) | **agregar** por issue/fleet (L) |
 | Cancel / retry por execução | ✅ já temos | expor como botão no PWA |
-| **Terminal vivo da sessão (ttyd+tmux)** | ✅ já temos (`/executions/{id}/terminal`) | **embutir no PWA** (é o "falar com a sessão" cru, já!) |
-| Inbox priorizada de HITL ("o que precisa de você") | 🟡 parcial | `/interactions` existe; falta **responder pelo front** + ordenar por urgência |
-| Feed legível "o que o Claude está fazendo" (mensagens/tool-calls) | ❌ falta | caminho real (`run_pr_cycle`) **não persiste** `MESSAGE`/`TOOL_CALL`; persistir event feed + **SSE** |
-| Responder pergunta do motor pelo front (sem Telegram) | 🟡 parcial | `drive_turn` roteia `NEEDS_INPUT`→interaction, mas o **ciclo real não usa** `drive_turn`; unificar + endpoint de resposta |
-| **Conversar/steer a sessão a qualquer momento** (chat bonito) | ❌ falta | `respond()` é stub; trocar `query()`→**`ClaudeSDKClient`** (bidirecional); PoC N2/N3 |
-| Aprovação por ação (allow/deny de ferramenta) | ❌ falta | `can_use_tool`→`NEEDS_APPROVAL` (TODO PoC) |
-| Diff do PR no front (+ comentário→agente) | 🟡 parcial | `github.get_pr_diff` existe; falta **UI** (e o comentário→agente é o gate interativo do §4.2) |
-| PWA instalável + VPN | ❌ falta | `manifest.json` + service worker; backend já é ASGI (SSE/WS triviais em Starlette); VPN = bind Tailscale (infra K); HTTPS p/ PWA/web-push |
+| **Terminal vivo da sessão (ttyd+tmux)** | ✅ feito | embutido no PWA (iframe) + **anexo por-run** (`COPILOT_MODE=tmux`, Fatia 7) |
+| Inbox priorizada de HITL ("o que precisa de você") | ✅ feito | responde pelo front (`/interactions/{id}/answer`); ordenar por urgência = refinamento |
+| Feed legível "o que o Claude está fazendo" (mensagens/tool-calls) | ✅ feito | `session_event` + **SSE** (`/executions/{id}/events`); painel no detalhe + chat |
+| Responder pergunta do motor pelo front (sem Telegram) | ✅ feito | inbox de interações responde pelo cockpit (mesmo `answer_interaction` do Telegram) |
+| **Conversar/steer a sessão a qualquer momento** (chat bonito) | ✅ feito | `ClaudeSDKClient` + `SessionHub`; chat estilo mensageiro; validado ao vivo (Fatia 5) |
+| Aprovação por ação (allow/deny de ferramenta) | 🟡 parcial | `can_use_tool`→Future do hub encanado; o co-piloto usa `bypassPermissions` (leitura fluida) por ora |
+| Diff do PR no front (+ comentário→agente) | ✅ feito (UI) | diff no detalhe (`/executions/{id}/diff`); comentário→agente ainda pendente (gate §4.2) |
+| PWA instalável + VPN | ✅ feito (PWA) | `manifest.json` + service worker instaláveis; VPN/HTTPS = infra (K), fora do app |
 
 ### 7.2 Dois modos de operação (decisão que trava o escopo)
 
@@ -217,15 +217,18 @@ grande (determinismo + baixo custo de manutenção/token).
    execução (`execution_pr`, migração `0008`) pelo ciclo de review; `GET /executions/{id}/diff` e
    painel no detalhe (linhas +/−/@@ coloridas). **Pendente:** comentário-no-diff→agente (gate de
    review interativo) fica pra depois da interatividade do motor (casa com a Fatia 5).
-5. ◑ **Co-piloto** *(plano de controle feito 2026-10-22; engine = PoC)* — `SessionHub` (registro em
-   processo de sessões vivas): fila de **steer** + **`Future` de aprovação** + **interrupt**. Console:
-   `POST /executions/{id}/message` (steer), `/interrupt`, e o `answer` de uma aprovação **acorda** o
-   `can_use_tool` (resolve o Future do hub). Front: painel "Co-piloto" no detalhe (enviar/interromper);
-   aprovação cai na inbox (botões). **Driver interativo real** (`app/copilot.py` com `ClaudeSDKClient`:
-   `query`/`receive_response`/`interrupt` + `can_use_tool` que aguarda o humano) implementado **per a
-   pesquisa do SDK**, **lazy e fora do loop default** — resta o **PoC vivo com modelo** (N2/N3) pra
-   validar e plugar no `runtime`. Plano de controle verificado por testes determinísticos (stub).
-6. ◑ **Refino no cockpit** *(iniciado 2026-10-22)* — pedido do dono: fazer o ciclo da issue pela UI,
+5. ✅ **Co-piloto** *(feito 2026-10-23; validado ao vivo c/ modelo)* — `SessionHub` (registro em
+   processo de sessões vivas): fila de **steer** + **`Future` de aprovação** + **interrupt** + **end**.
+   Console: `POST /executions/{id}/message` (steer OU inicia a sessão sob demanda), `/interrupt`,
+   `/end`. Front: **chat estilo mensageiro** (`Chat.tsx`) — suas bolhas de um lado, o motor do outro
+   (markdown), tool-calls como pills; toggle resumido/detalhado; interromper/encerrar. **Driver real
+   plugado no `runtime`** (não mais só PoC): `app/copilot.py` (`ClaudeSDKClient`) com
+   `permission_mode=bypassPermissions` (leitura fluida, sem travar em aprovação), **vigia concorrente**
+   que corta o motor NO INSTANTE do interromper/encerrar (prioridade máxima), **resume** da sessão
+   nativa com **fallback** p/ sessão nova (rebuild apaga o disco), e **modelo fixo** (`qwen/qwen3-coder`).
+   **Dois drivers por `COPILOT_MODE`:** `sdk` (feed estruturado) e `tmux` (ver Fatia 7). Refino é
+   **read-only** (bloqueia Write/Edit/Bash). Validado ao vivo contra `arenavalendo/main`.
+6. ✅ **Refino no cockpit + aplicar na issue** *(feito 2026-10-23)* — pedido do dono: fazer o ciclo da issue pela UI,
    não só pelo Telegram. **Feito:** lista de **issues abertas** no cockpit (`GET /issues` via
    `GithubAppClient.list_open_issues_rich` — só `state=open`, **closed/PR nunca entram**; com **labels**;
    aba "Issues" com **filtro** por nº/título/label; repo do `default_repo`/`?repo=`).
@@ -237,14 +240,25 @@ grande (determinismo + baixo custo de manutenção/token).
    roda o **motor (Claude Code)** que **LÊ o repo** (Read/Grep) e propõe a issue fundamentada — os
    eventos viram **feed ao vivo**. Resolve o "chat cego": o agente lê o código de verdade. Infra do
    motor vive no `poc/` (ccr→OpenRouter/Qwen); o `poc/Dockerfile` agora serve o cockpit (SPA). Validado
-   ao vivo (run_engine: tool Read + resumo do repo). **Próximo:** aplicar o rascunho na issue (update).
+   ao vivo (run_engine: tool Read + resumo do repo).
+   **Aplicar na issue** *(feito 2026-10-23)*: o refino emite o corpo final entre marcadores
+   (`===ISSUE-INICIO===`/`===ISSUE-FIM===`); `GET /executions/{id}/proposal` extrai o **corpo limpo**
+   (âncora no miolo, robusto à quebra dos `===`) e o botão **"📝 Aplicar na issue"** abre textarea
+   editável → `POST /executions/{id}/apply` chama `update_issue` + comentário de trilha (D30: só com OK
+   humano). Ciclo da issue fechado pela UI (listar → refinar lendo o repo → aplicar no GitHub).
+7. ✅ **Terminal real do motor (tmux por-run)** *(feito 2026-10-23)* — `COPILOT_MODE=tmux`: o
+   co-piloto roda o **Claude Code CLI numa tmux por-run** (`roboto-run-<id>`); o botão **Terminal**
+   anexa nela (`ttyd -a`, `?arg=roboto-run-<id>`) e você **vê/opera a sessão REAL**. Chat injeta via
+   `tmux send-keys` (chat manda, terminal espelha); feed ← **transcript JSONL** do CLI. Entrypoint
+   pré-semeia onboarding/trust/skip-bypass; launch sem `ANTHROPIC_API_KEY` abre direto no REPL.
+   `sdk` segue de fallback. `app/tmux_copilot.py`. Validado ponta-a-ponta no container.
 
 ## 8. Perguntas em aberto (para o dono)
 
-1. **Aprovar a direção** "não adotar, re-escopar Telegram + cockpit web (HTMX/SSE)"? (muda de fase de
-   pesquisa → desenho do console; precisa do seu OK — gate de fase.)
-2. Prioridade do roubo: **(a)** painel+inbox de HITL (cura imediata da dor) vs **(b)** diff-com-
-   comentário→agente (gate de review interativo) vs **(c)** custo agregado. Sugestão: **a → c → b**.
+1. ✅ **RESOLVIDO** (2026-10-22) — direção aprovada: **não adotar** ferramenta pronta; construir o
+   **cockpit PWA** (React+TS+Tailwind, não HTMX) + re-escopo do Telegram. Fatias 1–7 entregues.
+2. ✅ **RESOLVIDO** — todos os três entregues: **(a)** inbox de HITL, **(b)** diff no front (o
+   comentário→agente ainda falta), **(c)** custo agregado por execução. Ordem seguida ~ a → c → b.
 3. Vale eu **ler o código** de Orca (contrato de orquestração) e os **ADRs do Emdash** (lifecycle de
    workspace) e trazer um resumo acionável p/ D22/D23/D24 — já, ou depois de aprovar a direção?
 
