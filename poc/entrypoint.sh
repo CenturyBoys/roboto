@@ -71,7 +71,15 @@ if command -v ttyd >/dev/null 2>&1; then
 #!/usr/bin/env bash
 s="${1:-potter}"
 [ "$s" = "potter" ] && exec tmux new -A -s potter
-tmux attach -t "$s" 2>/dev/null || tmux new -A -s potter
+# anexa na sessão do run; se ela ainda não existe (abriu o Terminal antes do Chat), ESPERA ela
+# aparecer e anexa sozinho — em vez de cair calado num shell vazio.
+for _ in $(seq 1 150); do
+  tmux has-session -t "$s" 2>/dev/null && exec tmux attach -t "$s"
+  clear
+  printf '\n  Aguardando a sessão do co-piloto (%s)...\n\n  Abra o 💬 Chat deste run para iniciar.\n  (o refino roda em batch e aparece no Feed, não aqui)\n' "$s"
+  sleep 2
+done
+exec tmux new -A -s potter
 SH
   chmod +x /tmp/ttyd-attach.sh
   cd /work 2>/dev/null || true
