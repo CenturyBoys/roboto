@@ -29,6 +29,7 @@ services:
       COPILOT_MODE: ${COPILOT_MODE:-tmux} # co-piloto do chat: tmux (CLI real + terminal) | sdk
       ROBOTO_BASE_BRANCH: ${ROBOTO_BASE_BRANCH:-develop} # gitflow do alvo: PR vai pra develop, não main
       REFINE_MODEL: ${REFINE_MODEL:-deepseek/deepseek-r1-0528} # raciocínio forte só no refino (teste trilha I)
+      JUDGE_MODEL: ${JUDGE_MODEL:-deepseek/deepseek-r1-0528} # review de PR + juiz da issue no raciocínio
     ports:
       - "8090:8080" # servidor ASGI (webhook + console) — 8090 no host (8080 ocupada)
       - "7681:7681" # ttyd — terminal web (tmux no container)
