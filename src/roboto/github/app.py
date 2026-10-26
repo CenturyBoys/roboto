@@ -263,6 +263,29 @@ class GithubAppClient:
             if owns:
                 await client.aclose()
 
+    async def pr_merged(self, repo: str, number: int) -> Result[bool, Error]:
+        """True se o PR foi MERGEADO (detecta o merge humano sem webhook — fecha o run local)."""
+        owns = self._client is None
+        client = (
+            self._client if self._client is not None else httpx.AsyncClient(timeout=self._timeout)
+        )
+        try:
+            token = await self._installation_token(client)
+            resp = await client.get(
+                f"{self._api}/repos/{repo}/pulls/{number}",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                },
+            )
+            resp.raise_for_status()
+            return Ok(bool(resp.json().get("merged")))
+        except httpx.HTTPError as exc:
+            return Err(Error("github", f"pr_merged {repo} #{number}: {exc}"))
+        finally:
+            if owns:
+                await client.aclose()
+
     async def _installation_token(self, client: httpx.AsyncClient) -> str:
         if self._token:
             return self._token

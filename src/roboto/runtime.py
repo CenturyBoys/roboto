@@ -208,9 +208,23 @@ async def _run_daemon(config: Config, store: Store) -> None:
                 claude, store, tenant=config.tenant, workdir_root="/work", now=_now
             )
 
+        async def _close_merged() -> None:
+            # Local não tem webhook do GitHub: nada avisa que o PR foi mergeado, então o run fica
+            # preso em VERIFYING. Este laço detecta o merge humano (pr_merged) e fecha o run (DONE).
+            for r in await store.list_runs(config.tenant, 100):
+                if r.state is not RunState.VERIFYING:
+                    continue
+                pr = await store.get_execution_pr(r.id)
+                if pr is None:
+                    continue
+                merged = await adapters.github.pr_merged(r.repo, pr.number)
+                if isinstance(merged, Ok) and merged.value:
+                    await store.set_state(r.id, RunState.DONE, _now())
+
         tasks.append(run_periodic(_run_claude, 5.0, stop))
         tasks.append(run_periodic(_run_scope, 5.0, stop))
         tasks.append(run_periodic(_run_refine, 5.0, stop))
+        tasks.append(run_periodic(_close_merged, 15.0, stop))
 
     await asyncio.gather(*tasks)
 
