@@ -156,8 +156,10 @@ async def _run_daemon(config: Config, store: Store) -> None:
         # ccr não roteia → a query falha com "selected model ... may not exist". O co-piloto já
         # fixava; o batch (impl/refino) precisa do mesmo pino.
         engine_model = "qwen/qwen3-coder"
+        # max_turns=80: implementação é mais longa que o refino (editar + rodar checks + corrigir),
+        # mas ainda um backstop contra flail infinito (ex.: loop tentando instalar deps).
         claude = ClaudeCodeEngine(
-            model=engine_model, permission_mode="bypassPermissions", mcp_servers=mcp
+            model=engine_model, permission_mode="bypassPermissions", mcp_servers=mcp, max_turns=80
         )
         # motor dedicado ao refino (read-only por prompt): evita corrida com o ciclo de PR.
         # max_turns=40: refino é LER + PROPOR; teto contra o sprawl (modelo fraco varrendo o repo).
