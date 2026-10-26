@@ -12,23 +12,20 @@ RUN npm run build  # -> /app/src/roboto/web/static
 # base noble (Ubuntu 24.04) => Python 3.12 (roboto exige >=3.11; jammy tem só 3.10)
 FROM mcr.microsoft.com/playwright:v1.48.0-noble
 
-# Node 22: a imagem Playwright traz Node 20, mas repos modernos exigem >=22 (ex.: arenavalendo pede
-# node >=22.12 → vitest/engines falham no 20). Instala o 22 via nodesource (determinístico, não
-# depende da tag do Playwright). É o "ambiente como numa máquina de dev de verdade".
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-    && apt-get install -y --no-install-recommends nodejs \
-    && rm -rf /var/lib/apt/lists/* \
-    && node -v
+# NODE POR-REPO (sem hardcode de versão): a imagem traz o Node base (p/ a tooling do fleet), mas o
+# bootstrap instala em runtime o Node que CADA repo pede (.nvmrc/engines) em ~/.node-current — que
+# vem ANTES no PATH. Assim a imagem não tem opinião sobre versão; o repo manda.
+ENV PATH="/home/pwuser/.node-current/bin:$PATH"
 # corepack@latest: o bundled (0.29.x) tem chaves velhas e falha com 'Cannot find matching keyid' ao
 # provisionar pnpm novo. COREPACK_INTEGRITY_KEYS=0: pula a verificação (sandbox) — a versão PINADA
-# pelo `packageManager` do repo-alvo é provisionada em runtime (não cravamos versão aqui).
+# pelo `packageManager` do repo-alvo é provisionada em runtime.
 RUN npm install -g corepack@latest && corepack enable
 ENV COREPACK_INTEGRITY_KEYS=0
 
 # Python + venv + git + gettext (envsubst) + base Rust de busca (ripgrep/fd) p/ token economy (F)
 # + tmux (sessão observável) + ttyd (terminal web no browser, D25)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      python3 python3-venv git gettext-base curl ripgrep fd-find tmux \
+      python3 python3-venv git gettext-base curl ripgrep fd-find tmux xz-utils \
     && rm -rf /var/lib/apt/lists/*
 RUN curl -fsSL https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64 \
       -o /usr/local/bin/ttyd && chmod +x /usr/local/bin/ttyd
