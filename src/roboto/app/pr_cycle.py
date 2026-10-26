@@ -61,8 +61,16 @@ async def run_pr_cycle(
 ) -> CycleResult:
     branch = f"roboto/run-{run.id}"
     title = f"run {run.id}: {run.issue_id}"
+    # injeta o CORPO da issue (requisitos) — senão o motor só vê o número "107" e se perde
+    # procurando "issue 107" no código. Falha graciosa pro prompt simples se o GitHub não responder.
+    contexto = ""
+    if run.issue_id.isdigit():
+        got = await github.get_issue(run.repo, int(run.issue_id))
+        if isinstance(got, Ok):
+            issue_title, issue_body = got.value
+            contexto = f"\n\nTítulo: {issue_title}\nRequisitos (corpo da issue):\n{issue_body}\n"
     base_prompt = (
-        f"Implemente a issue {run.issue_id} no repo {run.repo} (cwd {workdir}). "
+        f"Implemente a issue {run.issue_id} no repo {run.repo} (cwd {workdir}).{contexto}\n"
         "Siga TODAS as regras do AGENTS.md — inclusive doc-in-sync (§5): mudança de regra/domínio "
         "exige atualizar a doc (.md/docs/ADR) no MESMO commit. "
         "Rode os checks do repo (lint, typecheck, testes, doc-sync) e corrija até passarem "
