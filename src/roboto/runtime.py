@@ -170,6 +170,16 @@ async def _run_daemon(config: Config, store: Store) -> None:
             max_turns=40,
         )
 
+        # second brain (G/D32): grava o PERFIL do repo (como operar) uma vez no boot — o motor não
+        # começa cru. Determinístico (lê package.json/workspace); o prompt de impl injeta direto.
+        from roboto.app.repo_profile import build_repo_profile
+
+        _profile = build_repo_profile(f"/work/{config.default_repo}")
+        if _profile:
+            await store.remember(
+                config.tenant, _profile, kind="fato", ref=config.default_repo, now=_now()
+            )
+
         async def _run_refine() -> None:
             # refino engine-scoped (Fatia 6/C): o motor LÊ o repo e propõe a issue (feed ao vivo)
             await process_refine_tick(

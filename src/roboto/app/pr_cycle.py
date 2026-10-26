@@ -15,6 +15,7 @@ from typing import Protocol
 from roboto.agents.refiner import IssueDraft
 from roboto.agents.review import PullRequest, ReviewVerdict, check_issue_readiness, review_pr
 from roboto.app.correction import CycleResult, correction_cycle
+from roboto.app.repo_profile import build_repo_profile
 from roboto.engines.port import CodingEngine, EngineEventKind, RunSpec
 from roboto.github.app import IssueRef
 from roboto.llm.port import ModelGateway
@@ -69,8 +70,13 @@ async def run_pr_cycle(
         if isinstance(got, Ok):
             issue_title, issue_body = got.value
             contexto = f"\n\nTítulo: {issue_title}\nRequisitos (corpo da issue):\n{issue_body}\n"
+    # perfil do repo (como OPERAR: pm, monorepo, test/lint, deps já instaladas) — pro motor rodar
+    # os checks como um dev, sem flailar em "como rodar teste" / sem gambiarra de .cjs.
+    profile = build_repo_profile(workdir)
+    profile_block = f"\n{profile}\n" if profile else ""
     base_prompt = (
-        f"Implemente a issue {run.issue_id} no repo {run.repo} (cwd {workdir}).{contexto}\n"
+        f"Implemente a issue {run.issue_id} no repo {run.repo} (cwd {workdir}).{contexto}"
+        f"{profile_block}\n"
         "Siga TODAS as regras do AGENTS.md — inclusive doc-in-sync (§5): mudança de regra/domínio "
         "exige atualizar a doc (.md/docs/ADR) no MESMO commit. "
         "Rode os checks do repo (lint, typecheck, testes, doc-sync) e corrija até passarem "
