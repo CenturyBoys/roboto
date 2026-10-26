@@ -60,6 +60,9 @@ class Config:
     # modelo do REFINO (REFINE_MODEL); vazio = default do motor (qwen). Mix por etapa (trilha I):
     # testar raciocínio forte (ex.: deepseek/deepseek-r1-0528) só no refino.
     refine_model: str = ""
+    # modelo do JUDGE (JUDGE_MODEL): review de PR + juiz semântico da issue. Raciocínio puro —
+    # "revisor mais forte que o autor" (I/D28). Vazio = default (qwen). Vai pelo gateway OpenRouter.
+    judge_model: str = ""
 
 
 _REQUIRED = (
@@ -97,6 +100,7 @@ SETTABLE_KEYS: tuple[str, ...] = (
     "TTYD_BASE",
     "COPILOT_MODE",
     "REFINE_MODEL",
+    "JUDGE_MODEL",
 )
 
 
@@ -185,5 +189,6 @@ def load_config(env: Mapping[str, str]) -> Result[Config, Error]:
             ttyd_base=env.get("TTYD_BASE", ""),
             copilot_mode=env.get("COPILOT_MODE", "sdk"),
             refine_model=env.get("REFINE_MODEL", ""),
+            judge_model=env.get("JUDGE_MODEL", ""),
         )
     )
