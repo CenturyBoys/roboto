@@ -110,7 +110,7 @@ export default function App() {
               />
             )}
             {view === 'execs' && selected !== null && (
-              <ExecDetail id={selected} onBack={() => setSelected(null)} />
+              <ExecDetail id={selected} onBack={() => setSelected(null)} onOpenRun={setSelected} />
             )}
             {view === 'issues' && selectedIssue === null && (
               <IssuesList onSelect={setSelectedIssue} />

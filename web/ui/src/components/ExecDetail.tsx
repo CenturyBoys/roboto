@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   applyProposal,
   cancelExecution,
+  dispatchImplement,
   getExecution,
   getPrDiff,
   getProposal,
@@ -16,7 +17,15 @@ import { Feed } from './Feed'
 import { StatePill } from './ui/state-pill'
 import { Td, TableWrap, Th } from './ui/table'
 
-export function ExecDetail({ id, onBack }: { id: number; onBack: () => void }) {
+export function ExecDetail({
+  id,
+  onBack,
+  onOpenRun,
+}: {
+  id: number
+  onBack: () => void
+  onOpenRun: (runId: number) => void
+}) {
   const [data, setData] = useState<ExecutionDetail | null>(null)
   const [term, setTerm] = useState<Terminal | null>(null)
   const [diff, setDiff] = useState<PrDiff | null>(null)
@@ -88,6 +97,19 @@ export function ExecDetail({ id, onBack }: { id: number; onBack: () => void }) {
     }
   }
 
+  // Executar a issue daqui mesmo (refinar→aplicar→implementar numa tela só). Gate de DoR + guard de
+  // impl ativo são no servidor; aqui só reporta. Abre a nova execução p/ acompanhar.
+  async function doImplement(issueId: string) {
+    setApplyMsg(null)
+    try {
+      const r = await dispatchImplement(Number(issueId))
+      setApplyMsg(`execução #${r.run_id} criada — implementando…`)
+      onOpenRun(r.run_id)
+    } catch {
+      setApplyMsg('não deu p/ implementar — a issue está pronta (DoR)? já há impl ativo?')
+    }
+  }
+
   if (error) return <p className="text-muted">{error}</p>
   if (!data) return <p className="text-muted">carregando…</p>
   const e = data.execution
@@ -102,6 +124,11 @@ export function ExecDetail({ id, onBack }: { id: number; onBack: () => void }) {
         <Button variant="outline" onClick={() => void openApply()}>
           📝 Aplicar na issue
         </Button>
+        {e.issue_id && /^\d+$/.test(e.issue_id) && (
+          <Button variant="outline" onClick={() => void doImplement(e.issue_id)}>
+            ▶ Implementar
+          </Button>
+        )}
         <Button variant="outline" onClick={() => void act(retryExecution)}>
           Retentar
         </Button>

@@ -550,6 +550,20 @@ def console_routes(
                 {"error": "issue não está pronta (DoR)", "missing": verdict.missing},
                 status_code=409,
             )
+        # guard: recusa se já há impl ATIVO pra esta issue (evita duplo-clique / dois runs).
+        # "Ativo" = ainda não terminou (queued/running/verifying).
+        active_states = {RunState.QUEUED, RunState.RUNNING, RunState.VERIFYING}
+        for r in await store.list_runs(tenant, 100):
+            if (
+                r.agent == "impl"
+                and r.repo == repo
+                and r.issue_id == str(number)
+                and r.state in active_states
+            ):
+                return JSONResponse(
+                    {"error": "já existe implementação ativa para esta issue", "run_id": r.id},
+                    status_code=409,
+                )
         when = datetime.now(UTC)
         ev = GithubEvent(
             tenant=tenant,
