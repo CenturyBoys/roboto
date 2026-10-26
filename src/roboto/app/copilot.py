@@ -29,10 +29,11 @@ from roboto.orchestrator.store import Store
 # ferramenta semântica barata — não varrendo arquivo inteiro. Compartilhada pelos dois drivers
 # (SDK e tmux) e pelo refino. Sem apóstrofos: o tmux injeta via --append-system-prompt entre aspas.
 CODE_INTEL_RULE = (
-    "Para entender o código, PREFIRA o code-intel (MCP): use document_symbols/workspace_symbols "
-    "para a topologia, find_references/call_hierarchy para quem usa o que, e blast_radius para "
-    "medir o impacto ANTES de propor ou editar. Leia arquivo inteiro (Read) só quando o code-intel "
-    "nao bastar — e mais caro em token. Entenda a estrutura primeiro; so entao proponha mudancas."
+    "Para entender o código, PREFIRA ferramentas eficientes nesta ordem: (1) code-intel (MCP) — "
+    "document_symbols/workspace_symbols p/ a topologia, find_references/call_hierarchy p/ quem usa "
+    "o que, blast_radius p/ o impacto; (2) ripgrep (`rg <termo>`) p/ buscar TEXTO/uso de um "
+    "conceito. EVITE `grep`/`cat`/`find` via Bash e Read de arquivo inteiro — caros e lentos; use "
+    "só quando rg/code-intel não bastarem. Entenda a estrutura ANTES de propor/editar."
 )
 
 
