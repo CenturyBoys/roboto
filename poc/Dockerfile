@@ -12,10 +12,16 @@ RUN npm run build  # -> /app/src/roboto/web/static
 # base noble (Ubuntu 24.04) => Python 3.12 (roboto exige >=3.11; jammy tem só 3.10)
 FROM mcr.microsoft.com/playwright:v1.48.0-noble
 
-# Node já vem na imagem Playwright. corepack@latest: o bundled (0.29.x) tem chaves velhas e falha
-# com 'Cannot find matching keyid' ao provisionar pnpm novo (ex.: o 10.x que o alvo fixa).
-# COREPACK_INTEGRITY_KEYS=0: pula a verificação de assinatura (sandbox) — provisiona a versão PINADA
-# pelo `packageManager` do repo-alvo em runtime (não cravamos versão aqui — cada repo fixa a sua).
+# Node 22: a imagem Playwright traz Node 20, mas repos modernos exigem >=22 (ex.: arenavalendo pede
+# node >=22.12 → vitest/engines falham no 20). Instala o 22 via nodesource (determinístico, não
+# depende da tag do Playwright). É o "ambiente como numa máquina de dev de verdade".
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/* \
+    && node -v
+# corepack@latest: o bundled (0.29.x) tem chaves velhas e falha com 'Cannot find matching keyid' ao
+# provisionar pnpm novo. COREPACK_INTEGRITY_KEYS=0: pula a verificação (sandbox) — a versão PINADA
+# pelo `packageManager` do repo-alvo é provisionada em runtime (não cravamos versão aqui).
 RUN npm install -g corepack@latest && corepack enable
 ENV COREPACK_INTEGRITY_KEYS=0
 
