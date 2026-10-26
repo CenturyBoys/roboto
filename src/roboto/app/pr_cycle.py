@@ -97,8 +97,11 @@ async def run_pr_cycle(
     base_prompt = (
         f"Implemente a issue {run.issue_id} no repo {run.repo} (cwd {workdir}).{contexto}"
         f"{profile_block}\n"
-        "ESCOPO MÍNIMO: altere SÓ os arquivos necessários para ESTA issue; NÃO toque em código não "
-        "relacionado; NÃO commite mudança de lockfile/deps a menos que a issue exija de fato. "
+        "ESCOPO MÍNIMO: entregue APENAS o que os Critérios de aceite da issue pedem — nada além. "
+        "NÃO crie documentos/arquivos extras (ex.: breakdown ou 'update' de épico), NÃO edite o "
+        "épico nem outras issues, NÃO toque em código não relacionado, NÃO commite lockfile/deps "
+        "sem a issue exigir. Se identificar trabalho FUTURO (quebrar épico, abrir sub-issues), "
+        "apenas MENCIONE no fim — NÃO crie arquivo nem issue por conta própria. "
         "Siga TODAS as regras do AGENTS.md — inclusive doc-in-sync (§5): mudança de regra/domínio "
         "exige atualizar a doc (.md/docs/ADR) no MESMO commit. "
         "Rode os checks do repo (lint, typecheck, testes, doc-sync) e corrija até passarem "

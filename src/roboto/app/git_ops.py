@@ -43,7 +43,8 @@ class SubprocessGit:
         await self._git("push", "-u", "origin", name, "--force")
 
     async def log_since(self, base: str) -> str:
-        # assuntos dos commits da branch que não estão na base (história da implementação)
+        # mensagem COMPLETA (assunto+corpo) de cada commit da branch vs base — o motor escreve um
+        # corpo explicativo, que vira a "história da implementação" no PR (não só o assunto).
         return await self._git_out(
-            "log", f"origin/{base}..HEAD", "--no-merges", "--pretty=format:- %s"
+            "log", f"origin/{base}..HEAD", "--no-merges", "--pretty=format:### %s%n%n%b"
         )
