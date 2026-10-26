@@ -77,6 +77,8 @@ async def run_pr_cycle(
     base_prompt = (
         f"Implemente a issue {run.issue_id} no repo {run.repo} (cwd {workdir}).{contexto}"
         f"{profile_block}\n"
+        "ESCOPO MÍNIMO: altere SÓ os arquivos necessários para ESTA issue; NÃO toque em código não "
+        "relacionado; NÃO commite mudança de lockfile/deps a menos que a issue exija de fato. "
         "Siga TODAS as regras do AGENTS.md — inclusive doc-in-sync (§5): mudança de regra/domínio "
         "exige atualizar a doc (.md/docs/ADR) no MESMO commit. "
         "Rode os checks do repo (lint, typecheck, testes, doc-sync) e corrija até passarem "

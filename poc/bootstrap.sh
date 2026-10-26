@@ -38,6 +38,10 @@ say "📦 gerenciador: $PM ($(grep -o '"packageManager":[^,]*' package.json 2>/d
 say "⬇️  instalando deps ($PM install)... (pode demorar na 1ª vez)"
 if "$PM" install >>"$LOG" 2>&1; then
   ver=$("$PM" -v 2>/dev/null)
+  # descarta o CHURN do install (lockfile/package.json reescritos pelo pm) — o node_modules fica
+  # (é untracked), mas a árvore volta ao estado commitado. Senão o `commit_all` da implementação
+  # varreria o lockfile (+2000 linhas) pro PR, poluindo o diff.
+  git checkout -- . >>"$LOG" 2>&1 || true
   finish "✅ PRONTO: $PM $ver + deps instaladas — ambiente operável" 0
 else
   say "---- fim do log ----"; tail -8 "$LOG"
