@@ -528,6 +528,39 @@ def console_routes(
         run, _ = await store.insert_run_if_absent(ev, when)
         return JSONResponse({"run_id": run.id})
 
+    async def implement_with_engine(request: Request) -> JSONResponse:
+        # Executar a issue PELO cockpit: enfileira um run `agent='impl'` que o `process_pr_run_tick`
+        # pega p/ codar e abrir PR. Local, a label `roboto` NÃO dispara (é webhook, precisa URL
+        # pública); aqui o gatilho é este botão. Gate de DoR (issue-first): só coda issue PRONTA.
+        if _unauthorized(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        repo = request.query_params.get("repo") or default_repo
+        number = int(request.path_params["number"])
+        if not repo:
+            return JSONResponse({"error": "repo não configurado"}, status_code=409)
+        if issues is None:
+            return JSONResponse({"error": "GitHub não configurado"}, status_code=409)
+        got = await issues.get_issue(repo, number)
+        if isinstance(got, Err):
+            return JSONResponse({"error": got.error.message}, status_code=502)
+        title, body = got.value
+        verdict = check_issue_readiness(IssueDraft(title=title, body=body))
+        if not verdict.ready:
+            return JSONResponse(
+                {"error": "issue não está pronta (DoR)", "missing": verdict.missing},
+                status_code=409,
+            )
+        when = datetime.now(UTC)
+        ev = GithubEvent(
+            tenant=tenant,
+            repo=repo,
+            issue_id=str(number),
+            agent="impl",
+            idempotency_key=f"impl:{repo}:{number}:{when.isoformat()}",
+        )
+        run, _ = await store.insert_run_if_absent(ev, when)
+        return JSONResponse({"run_id": run.id})
+
     async def proposal(request: Request) -> JSONResponse:
         # Último texto do motor nesta execução = o rascunho proposto (pré-preenche o "aplicar").
         if _unauthorized(request):
@@ -579,6 +612,7 @@ def console_routes(
         Route("/issues/{number:int}", issue_detail),
         Route("/issues/{number:int}/refine", issue_refine, methods=["POST"]),
         Route("/issues/{number:int}/refine-engine", refine_with_engine, methods=["POST"]),
+        Route("/issues/{number:int}/implement", implement_with_engine, methods=["POST"]),
         Route("/executions/{run_id:int}/proposal", proposal),
         Route("/executions/{run_id:int}/apply", apply_proposal, methods=["POST"]),
         Route("/interactions", pending_interactions),

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { dispatchEngineRefine, getIssue, refineIssue } from '@/lib/api'
+import { dispatchEngineRefine, dispatchImplement, getIssue, refineIssue } from '@/lib/api'
 import type { IssueDetail } from '@/types'
 import { Button } from './ui/button'
 import { Card, CardLabel, CardTitle } from './ui/card'
@@ -37,6 +37,16 @@ export function IssueRefine({
       onOpenRun(run_id)
     } catch {
       setError('erro ao disparar o motor (engine ligado no stack do PoC?)')
+    }
+  }
+
+  // Executar PELO cockpit: enfileira a implementação (coda + abre PR). Só habilita com DoR pronta.
+  async function runImplement() {
+    try {
+      const { run_id } = await dispatchImplement(number)
+      onOpenRun(run_id)
+    } catch {
+      setError('não deu p/ executar — a issue está pronta (DoR)? aplique o refino antes.')
     }
   }
 
@@ -84,15 +94,23 @@ export function IssueRefine({
             </pre>
           </>
         )}
-        <div className="mt-3">
+        <div className="mt-3 flex flex-wrap gap-2">
           <Button variant="default" onClick={() => void runWithEngine()}>
             Refinar com o motor (lê o repo) ⚡
           </Button>
-          <p className="mt-1 text-xs text-muted">
-            O Claude Code lê o repositório (código, ADRs, arquivos citados) e propõe a issue
-            fundamentada — você acompanha no feed ao vivo.
-          </p>
+          <Button
+            variant="outline"
+            disabled={!detail?.dor.ready}
+            title={detail?.dor.ready ? 'enfileira a implementação (coda + abre PR)' : 'issue precisa estar pronta (DoR)'}
+            onClick={() => void runImplement()}
+          >
+            ▶ Implementar (coda + PR)
+          </Button>
         </div>
+        <p className="mt-1 text-xs text-muted">
+          <b>Refinar</b>: o Claude lê o repo e propõe a issue (acompanhe no feed). <b>Implementar</b>:
+          só com a issue pronta (DoR) — o motor coda e abre um PR (merge é seu, gate humano).
+        </p>
       </Card>
 
       <Card>

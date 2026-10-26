@@ -52,6 +52,10 @@ export const refineIssue = (n: number, transcript: [string, string][]) =>
 // Refino engine-scoped (Fatia 6/C): enfileira um run; o motor lê o repo e propõe. Devolve o run_id.
 export const dispatchEngineRefine = (n: number) =>
   api<{ run_id: number }>(`/issues/${n}/refine-engine`, { method: 'POST' })
+// Executar/implementar a issue PELO cockpit: enfileira run agent="impl" (coda + abre PR). 409 se a
+// issue não está pronta (DoR). Local, este é o gatilho (a label é webhook/URL pública, não dispara).
+export const dispatchImplement = (n: number) =>
+  api<{ run_id: number }>(`/issues/${n}/implement`, { method: 'POST' })
 export const listInteractions = () => api<{ interactions: Interaction[] }>('/interactions')
 export const answerInteraction = (id: number, answer: string) =>
   api<{ id: number; accepted: boolean; status: string }>(`/interactions/${id}/answer`, {
