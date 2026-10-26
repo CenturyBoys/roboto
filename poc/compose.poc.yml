@@ -27,6 +27,7 @@ services:
       DATABASE_URL: postgresql://roboto:${DB_PASSWORD:-dev-only-change-me}@db:5432/roboto
       TTYD_BASE: ${TTYD_BASE:-http://localhost:7681} # terminal web (ttyd+tmux) p/ o console
       COPILOT_MODE: ${COPILOT_MODE:-tmux} # co-piloto do chat: tmux (CLI real + terminal) | sdk
+      ROBOTO_BASE_BRANCH: ${ROBOTO_BASE_BRANCH:-develop} # gitflow do alvo: PR vai pra develop, não main
     ports:
       - "8090:8080" # servidor ASGI (webhook + console) — 8090 no host (8080 ocupada)
       - "7681:7681" # ttyd — terminal web (tmux no container)

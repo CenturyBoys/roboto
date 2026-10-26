@@ -61,15 +61,20 @@ async def run_pr_cycle(
     now: datetime | None = None,
 ) -> CycleResult:
     branch = f"roboto/run-{run.id}"
-    title = f"run {run.id}: {run.issue_id}"
-    # injeta o CORPO da issue (requisitos) — senão o motor só vê o número "107" e se perde
-    # procurando "issue 107" no código. Falha graciosa pro prompt simples se o GitHub não responder.
+    # título/corpo do PR seguem a ISSUE (não "run 1: 107"): título = título da issue; corpo linka
+    # `Closes #N` — alinha com a convenção do repo. Injeta o CORPO no prompt (requisitos) — senão o
+    # motor só vê o número e se perde. Falha graciosa se o GitHub não responder.
     contexto = ""
+    pr_title = f"issue #{run.issue_id}"
     if run.issue_id.isdigit():
         got = await github.get_issue(run.repo, int(run.issue_id))
         if isinstance(got, Ok):
             issue_title, issue_body = got.value
+            pr_title = issue_title.strip() or pr_title
             contexto = f"\n\nTítulo: {issue_title}\nRequisitos (corpo da issue):\n{issue_body}\n"
+    title = pr_title
+    closes = f"Closes #{run.issue_id}\n\n" if run.issue_id.isdigit() else ""
+    pr_body = f"{closes}{pr_title}\n\n_Gerado pelo fleet roboto (run {run.id})._"
     # perfil do repo (como OPERAR: pm, monorepo, test/lint, deps já instaladas) — pro motor rodar
     # os checks como um dev, sem flailar em "como rodar teste" / sem gambiarra de .cjs.
     profile = build_repo_profile(workdir)
@@ -137,7 +142,7 @@ async def run_pr_cycle(
                 state["pr"] = existing.value
             else:
                 opened = await github.open_pr(
-                    run.repo, title=title, body="PR automático do fleet.", head=branch, base=base
+                    run.repo, title=title, body=pr_body, head=branch, base=base
                 )
                 state["pr"] = opened.value.number if isinstance(opened, Ok) else 0
         number = state["pr"]
