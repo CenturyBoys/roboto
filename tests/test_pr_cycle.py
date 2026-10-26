@@ -42,6 +42,9 @@ class _FakeGit:
     async def push(self, name: str) -> None:
         self.pushes.append(name)
 
+    async def log_since(self, base: str) -> str:
+        return "- " + "\n- ".join(self.commits) if self.commits else ""
+
 
 _READY_BODY = "## Contexto\nx\n## Escopo\ny\n## Critérios de aceite\n- [ ] z\n## DoD\n- [ ] ci"
 

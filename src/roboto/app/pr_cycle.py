@@ -30,6 +30,8 @@ class GitOps(Protocol):
     async def prepare_branch(self, name: str) -> None: ...
     async def commit_all(self, message: str) -> None: ...
     async def push(self, name: str) -> None: ...
+    # mensagens dos commits da branch vs base — vira a "história da implementação" no corpo do PR
+    async def log_since(self, base: str) -> str: ...
 
 
 class GithubPrOps(Protocol):
@@ -73,8 +75,21 @@ async def run_pr_cycle(
             pr_title = issue_title.strip() or pr_title
             contexto = f"\n\nTítulo: {issue_title}\nRequisitos (corpo da issue):\n{issue_body}\n"
     title = pr_title
-    closes = f"Closes #{run.issue_id}\n\n" if run.issue_id.isdigit() else ""
-    pr_body = f"{closes}{pr_title}\n\n_Gerado pelo fleet roboto (run {run.id})._"
+    closes = f"Closes #{run.issue_id}" if run.issue_id.isdigit() else ""
+
+    async def build_pr_body() -> str:
+        # corpo do PR = objetivo da issue + a HISTÓRIA da implementação (assuntos dos commits que o
+        # motor escreveu). Montado DEPOIS dos commits, pra o log existir. Conta o que foi feito.
+        story = ""
+        try:
+            story = (await git.log_since(base)).strip()
+        except Exception:  # noqa: BLE001 — log é best-effort; corpo degrada p/ só o objetivo
+            story = ""
+        parts = [p for p in (closes, f"## Objetivo\n{pr_title}") if p]
+        if story:
+            parts.append(f"## O que foi feito\n{story}")
+        parts.append(f"_Gerado pelo fleet roboto (run {run.id}). Revisar antes do merge._")
+        return "\n\n".join(parts)
     # perfil do repo (como OPERAR: pm, monorepo, test/lint, deps já instaladas) — pro motor rodar
     # os checks como um dev, sem flailar em "como rodar teste" / sem gambiarra de .cjs.
     profile = build_repo_profile(workdir)
@@ -142,7 +157,7 @@ async def run_pr_cycle(
                 state["pr"] = existing.value
             else:
                 opened = await github.open_pr(
-                    run.repo, title=title, body=pr_body, head=branch, base=base
+                    run.repo, title=title, body=await build_pr_body(), head=branch, base=base
                 )
                 state["pr"] = opened.value.number if isinstance(opened, Ok) else 0
         number = state["pr"]
