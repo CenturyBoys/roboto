@@ -22,7 +22,7 @@ from starlette.routing import BaseRoute, Mount, Route
 from starlette.staticfiles import StaticFiles
 
 from roboto.agents.refiner import IssueDraft, converse
-from roboto.agents.review import check_issue_readiness
+from roboto.agents.review import PullRequest, check_issue_readiness, review_pr
 from roboto.app.loops import ISSUE_BODY_END, ISSUE_BODY_START
 from roboto.app.session_hub import SessionHub
 from roboto.app.tmux_copilot import session_name
@@ -96,6 +96,10 @@ class IssueSource(Protocol):
     ) -> Result[None, Error]: ...
 
     async def comment_pr(self, repo: str, number: int, body: str) -> Result[None, Error]: ...
+
+    async def get_pr(self, repo: str, number: int) -> Result[tuple[str, str], Error]: ...
+
+    async def get_pr_diff(self, repo: str, number: int) -> Result[str, Error]: ...
 
 # SPA buildado pelo front (web/ui → vite build). Se presente, o console serve o app React; senão,
 # cai no viewer legado embutido (dev/teste sem Node não quebram). Ver research/O §7.
@@ -528,6 +532,33 @@ def console_routes(
         run, _ = await store.insert_run_if_absent(ev, when)
         return JSONResponse({"run_id": run.id})
 
+    async def review_pr_action(request: Request) -> JSONResponse:
+        # Revisar QUALQUER PR aberto (do time/bot, não só do fleet) com o revisor deepseek (JUDGE)
+        # e postar o parecer como comentário. reviewer≠autor: o autor é o dono real do PR.
+        if _unauthorized(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        if issues is None or gateway is None:
+            return JSONResponse({"error": "GitHub/gateway não configurado"}, status_code=409)
+        repo = request.query_params.get("repo") or default_repo
+        number = int(request.path_params["number"])
+        meta = await issues.get_pr(repo, number)
+        diff = await issues.get_pr_diff(repo, number)
+        if isinstance(meta, Err) or isinstance(diff, Err):
+            return JSONResponse({"error": "não achei o PR (nº/repo?)"}, status_code=404)
+        title, author = meta.value
+        pr = PullRequest(number=number, author=author, title=title, diff=diff.value)
+        verdict = await review_pr(pr, gateway, reviewer="review")
+        if isinstance(verdict, Err):
+            return JSONResponse({"error": verdict.error.message}, status_code=502)
+        v = verdict.value
+        head = "✅ Review aprovado." if v.approved else "🔁 Review pediu correções:"
+        body = head + ("" if v.approved else "\n- " + "\n- ".join(v.issues))
+        body += "\n\n_Revisão do fleet roboto (deepseek)._"
+        await issues.comment_pr(repo, number, body)
+        return JSONResponse(
+            {"approved": v.approved, "issues": v.issues, "number": number, "author": author}
+        )
+
     async def implement_with_engine(request: Request) -> JSONResponse:
         # Executar a issue PELO cockpit: enfileira um run `agent='impl'` que o `process_pr_run_tick`
         # pega p/ codar e abrir PR. Local, a label `roboto` NÃO dispara (é webhook, precisa URL
@@ -627,6 +658,7 @@ def console_routes(
         Route("/issues/{number:int}/refine", issue_refine, methods=["POST"]),
         Route("/issues/{number:int}/refine-engine", refine_with_engine, methods=["POST"]),
         Route("/issues/{number:int}/implement", implement_with_engine, methods=["POST"]),
+        Route("/prs/{number:int}/review", review_pr_action, methods=["POST"]),
         Route("/executions/{run_id:int}/proposal", proposal),
         Route("/executions/{run_id:int}/apply", apply_proposal, methods=["POST"]),
         Route("/interactions", pending_interactions),

@@ -8,9 +8,10 @@ import { Costs } from '@/components/Costs'
 import { Interactions } from '@/components/Interactions'
 import { IssuesList } from '@/components/IssuesList'
 import { IssueRefine } from '@/components/IssueRefine'
+import { ReviewPr } from '@/components/ReviewPr'
 import { Setup } from '@/components/Setup'
 
-type View = 'execs' | 'issues' | 'interactions' | 'costs'
+type View = 'execs' | 'issues' | 'interactions' | 'costs' | 'reviewpr'
 type Mode = 'loading' | 'setup' | 'running'
 
 export default function App() {
@@ -95,6 +96,12 @@ export default function App() {
               <Button variant={view === 'costs' ? 'default' : 'outline'} onClick={() => go('costs')}>
                 Custos
               </Button>
+              <Button
+                variant={view === 'reviewpr' ? 'default' : 'outline'}
+                onClick={() => go('reviewpr')}
+              >
+                Revisar PR
+              </Button>
               <Button variant={auto ? 'default' : 'outline'} onClick={() => setAuto((a) => !a)}>
                 Auto-refresh: {auto ? 'on' : 'off'}
               </Button>
@@ -128,6 +135,7 @@ export default function App() {
             )}
             {view === 'interactions' && <Interactions />}
             {view === 'costs' && <Costs />}
+            {view === 'reviewpr' && <ReviewPr />}
           </>
         )}
       </main>
