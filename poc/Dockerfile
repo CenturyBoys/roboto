@@ -12,8 +12,12 @@ RUN npm run build  # -> /app/src/roboto/web/static
 # base noble (Ubuntu 24.04) => Python 3.12 (roboto exige >=3.11; jammy tem só 3.10)
 FROM mcr.microsoft.com/playwright:v1.48.0-noble
 
-# Node já vem na imagem Playwright; habilita pnpm (versão do .nvmrc/engines do alvo).
-RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
+# Node já vem na imagem Playwright. corepack@latest: o bundled (0.29.x) tem chaves velhas e falha
+# com 'Cannot find matching keyid' ao provisionar pnpm novo (ex.: o 10.x que o alvo fixa).
+# COREPACK_INTEGRITY_KEYS=0: pula a verificação de assinatura (sandbox) — provisiona a versão PINADA
+# pelo `packageManager` do repo-alvo em runtime (não cravamos versão aqui — cada repo fixa a sua).
+RUN npm install -g corepack@latest && corepack enable
+ENV COREPACK_INTEGRITY_KEYS=0
 
 # Python + venv + git + gettext (envsubst) + base Rust de busca (ripgrep/fd) p/ token economy (F)
 # + tmux (sessão observável) + ttyd (terminal web no browser, D25)
@@ -43,6 +47,7 @@ COPY poc/check_config.py /opt/roboto/poc/check_config.py
 COPY poc/run_engine.py /opt/roboto/poc/run_engine.py
 COPY poc/run_cycle.py /opt/roboto/poc/run_cycle.py
 COPY poc/migrate.py /opt/roboto/poc/migrate.py
+COPY poc/bootstrap.sh /opt/roboto/poc/bootstrap.sh
 COPY migrations /opt/roboto/migrations
 COPY poc/entrypoint.sh /usr/local/bin/poc-entrypoint
 RUN chmod +x /usr/local/bin/poc-entrypoint
