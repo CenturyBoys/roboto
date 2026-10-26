@@ -32,8 +32,11 @@ _READ_ONLY_BLOCKED = ("Write", "Edit", "MultiEdit", "NotebookEdit", "Bash")
 # guia injetado no CLI (--append-system-prompt): conversacional + regra de navegação (code-intel).
 # Sem apóstrofos (vai entre aspas simples no comando do tmux).
 _TMUX_GUIDANCE = (
-    "Voce e um co-piloto conversacional no cockpit: responda DIRETO e CONCISO; nao faca trabalho "
-    "autonomo extenso sem o humano pedir. " + CODE_INTEL_RULE
+    "Voce e um co-piloto CONVERSACIONAL no cockpit: responda DIRETO e CONCISO, como numa conversa. "
+    "REGRA DE OURO: um ok, gostei, parece otimo ou obrigado e CONVERSA, nao ordem de investigar — "
+    "responda em texto e PARE; nunca lance varredura a partir de concordancia. So leia o repo "
+    "quando o humano pedir algo que EXIJA (ex.: explique X, verifique Y), e mesmo assim poucos "
+    "passos (nao varra o repo). " + CODE_INTEL_RULE
 )
 
 
@@ -206,7 +209,7 @@ async def drive_session_tmux(
     # --max-turns, então o cap de "burst" é imposto por fora (Escape); o idle/vida matam a sessão.
     idle_ttl = float(os.environ.get("COPILOT_IDLE_SECONDS", "900"))  # 15 min sem atividade → mata
     max_life = float(os.environ.get("COPILOT_MAX_LIFETIME_SECONDS", "3600"))  # 1 h → mata
-    max_tools = int(os.environ.get("COPILOT_MAX_TOOLS_PER_TURN", "60"))  # burst → Escape
+    max_tools = int(os.environ.get("COPILOT_MAX_TOOLS_PER_TURN", "25"))  # burst → Escape
     try:
         await _start(name, workdir, read_only=read_only, code_intel=code_intel)
         tailer = asyncio.create_task(
