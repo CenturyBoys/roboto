@@ -65,10 +65,18 @@ d.setdefault("projects", {}).setdefault(workdir, {})["hasTrustDialogAccepted"] =
 with open(cj, "w") as f: json.dump(d, f)
 sp = os.path.join(home, ".claude", "settings.json")
 os.makedirs(os.path.dirname(sp), exist_ok=True)
-s = load(sp); s["skipDangerousModePermissionPrompt"] = True
+s = load(sp)
+s["skipDangerousModePermissionPrompt"] = True
+s["includeCoAuthoredBy"] = False  # NÃO adicionar "Co-Authored-By: Claude Code" nos commits do alvo
 with open(sp, "w") as f: json.dump(s, f)
 print("onboarding semeado p/", workdir)
 PY
+
+# identidade git do FLEET no repo-alvo: os commits que o motor faz NÃO podem ir como "Claude Code"
+# (vai pro repo do cliente). Configurável por env; default = bot do fleet.
+git -C "$TARGET_WORKDIR" config user.name "${ROBOTO_GIT_NAME:-roboto fleet}" 2>/dev/null || true
+git -C "$TARGET_WORKDIR" config user.email "${ROBOTO_GIT_EMAIL:-fleet@roboto.local}" 2>/dev/null || true
+echo "git identity do fleet setada p/ $TARGET_WORKDIR"
 
 # 4b) terminal web (ttyd): anexa na tmux POR-RUN passada via ?arg=<sessão> (modo -a/url-arg). Assim
 #     o botão "Terminal" do cockpit mostra a sessão REAL do motor; sem sessão, cai no terminal padrão.
