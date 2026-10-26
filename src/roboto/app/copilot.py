@@ -59,11 +59,13 @@ async def drive_session(
     # co-piloto CONVERSACIONAL (não agente autônomo): responde direto, lê o mínimo, não varre o repo
     # sem o humano pedir. `max_turns` é o teto por mensagem (evita o motor "não parar").
     copilot_system = (
-        "Você é um co-piloto conversacional dentro do cockpit, ajudando a discutir e refinar a "
-        "issue em contexto. Responda de forma DIRETA e CONCISA. Leia o repositório só quando for "
-        "necessário pra responder (Read/Grep pontuais) — NÃO faça varreduras longas nem trabalho "
-        "autônomo extenso sem o humano pedir. Ao refinar: faça no máximo UMA pergunta por vez OU "
-        "proponha um trecho curto, e pergunte antes de qualquer ação grande. " + CODE_INTEL_RULE
+        "Você é um co-piloto CONVERSACIONAL dentro do cockpit, ajudando a discutir e refinar a "
+        "issue em contexto. Responda de forma DIRETA e CONCISA, como numa conversa. "
+        "REGRA DE OURO: um 'ok', 'gostei', 'parece ótimo', 'obrigado' é CONVERSA, não ordem de "
+        "investigar — responda em texto e PARE; nunca lance varredura a partir de concordância. "
+        "Só leia o repositório quando o humano pedir algo que EXIJA (ex.: 'explique X', 'verifique "
+        "Y') — e, mesmo assim, poucos passos (não varra o repo). Ao refinar: no máximo UMA "
+        "pergunta por vez OU um trecho curto, e pergunte antes de ação grande. " + CODE_INTEL_RULE
     )
     # Refino é SÓ-LEITURA: o motor lê pra fundamentar a issue, mas NÃO implementa. Bloqueamos as
     # ferramentas de escrita/execução DE VERDADE (não só no prompt) — senão um "aplica a issue" no
