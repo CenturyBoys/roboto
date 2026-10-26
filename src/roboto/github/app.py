@@ -95,6 +95,30 @@ class GithubAppClient:
             if owns:
                 await client.aclose()
 
+    async def get_pr(self, repo: str, number: int) -> Result[tuple[str, str], Error]:
+        """(título, login do autor) do PR — p/ revisar PR de terceiros (reviewer≠autor)."""
+        owns = self._client is None
+        client = (
+            self._client if self._client is not None else httpx.AsyncClient(timeout=self._timeout)
+        )
+        try:
+            token = await self._installation_token(client)
+            resp = await client.get(
+                f"{self._api}/repos/{repo}/pulls/{number}",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                },
+            )
+            resp.raise_for_status()
+            d = resp.json()
+            return Ok((str(d.get("title", "")), str((d.get("user") or {}).get("login", ""))))
+        except httpx.HTTPError as exc:
+            return Err(Error("github", f"get_pr {repo}#{number}: {exc}"))
+        finally:
+            if owns:
+                await client.aclose()
+
     async def get_pr_diff(self, repo: str, number: int) -> Result[str, Error]:
         owns = self._client is None
         client = (

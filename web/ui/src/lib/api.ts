@@ -56,6 +56,12 @@ export const dispatchEngineRefine = (n: number) =>
 // issue não está pronta (DoR). Local, este é o gatilho (a label é webhook/URL pública, não dispara).
 export const dispatchImplement = (n: number) =>
   api<{ run_id: number }>(`/issues/${n}/implement`, { method: 'POST' })
+// Revisar QUALQUER PR aberto (time/bot) com o revisor deepseek; posta o parecer como comentário.
+export const reviewPr = (n: number) =>
+  api<{ approved: boolean; issues: string[]; number: number; author: string }>(
+    `/prs/${n}/review`,
+    { method: 'POST' },
+  )
 export const listInteractions = () => api<{ interactions: Interaction[] }>('/interactions')
 export const answerInteraction = (id: number, answer: string) =>
   api<{ id: number; accepted: boolean; status: string }>(`/interactions/${id}/answer`, {
