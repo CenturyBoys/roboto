@@ -166,7 +166,7 @@ async def _run_daemon(config: Config, store: Store) -> None:
         # "discovery" puxam o modelo a explorar — teto um pouco maior como rede, e o prompt obriga
         # a terminar com a proposta (senão batia no teto em 0 mensagens e falhava).
         refiner_engine = ClaudeCodeEngine(
-            model=engine_model,
+            model=config.refine_model or engine_model,  # REFINE_MODEL: raciocínio forte no refino
             permission_mode="bypassPermissions",
             mcp_servers=mcp,
             max_turns=60,
