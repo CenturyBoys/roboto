@@ -35,7 +35,7 @@ class Adapters:
 
 
 def build_adapters(config: Config, store: Store | None = None) -> Adapters:
-    # JUDGE_MODEL: review/juiz num modelo de raciocínio (ex.: deepseek-r1), sem tocar nos outros tiers
+    # JUDGE_MODEL: review/juiz num modelo de raciocínio (deepseek-r1), sem tocar os outros tiers
     judge_override = {Tier.JUDGE: config.judge_model} if config.judge_model else None
     gateway = OpenRouterGateway(
         config.models.openrouter_api_key,
