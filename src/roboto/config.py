@@ -57,6 +57,9 @@ class Config:
     ttyd_base: str = ""  # URL do terminal web (ttyd/tmux) p/ o console; vazio = botão desabilitado
     copilot_mode: str = "sdk"  # co-piloto do chat: "sdk" (ClaudeSDKClient) | "tmux" (CLI em tmux,
     # terminal real anexado + feed via transcript). COPILOT_MODE.
+    # modelo do REFINO (REFINE_MODEL); vazio = default do motor (qwen). Mix por etapa (trilha I):
+    # testar raciocínio forte (ex.: deepseek/deepseek-r1-0528) só no refino.
+    refine_model: str = ""
 
 
 _REQUIRED = (
@@ -93,6 +96,7 @@ SETTABLE_KEYS: tuple[str, ...] = (
     "ROBOTO_CODE_INTEL",
     "TTYD_BASE",
     "COPILOT_MODE",
+    "REFINE_MODEL",
 )
 
 
@@ -180,5 +184,6 @@ def load_config(env: Mapping[str, str]) -> Result[Config, Error]:
             code_intel=env.get("ROBOTO_CODE_INTEL", "1") not in ("0", "false", "no"),
             ttyd_base=env.get("TTYD_BASE", ""),
             copilot_mode=env.get("COPILOT_MODE", "sdk"),
+            refine_model=env.get("REFINE_MODEL", ""),
         )
     )
