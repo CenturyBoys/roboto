@@ -32,6 +32,9 @@ RUN curl -fsSL https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_
 
 # Claude Code CLI + claude-code-router (validar nomes/versões dos pacotes npm)
 RUN npm install -g @anthropic-ai/claude-code @musistudio/claude-code-router
+# tsgo (TypeScript nativo): o code-intel SPAWNA `tsgo` p/ analisar TS. Sem ele, toda chamada
+# semântica em .ts dava "falha ao spawnar tsgo" → o motor caía no Bash e NUNCA usava o code-intel.
+RUN npm install -g @typescript/native-preview && tsgo --version 2>/dev/null || true
 
 # venv dedicado: evita PEP 668 (externally-managed) e garante pip novo (sem --break-system-packages)
 RUN python3 -m venv /opt/venv
