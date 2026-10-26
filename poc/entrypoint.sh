@@ -36,6 +36,12 @@ if [ ! -d "$TARGET_DIR/.git" ]; then
 fi
 export TARGET_WORKDIR="$TARGET_DIR"
 
+# 3b) BOOTSTRAP + validação do ambiente do repo-alvo (em BACKGROUND: não trava o cockpit). Prepara a
+#     toolchain (corepack/pnpm), instala deps e valida — grava /tmp/env-status com ✅ PRONTO/❌ FALHOU.
+#     Assim a 1ª implementação não quebra por ambiente (ex.: corepack sem provisionar pnpm).
+echo "⏳ bootstrap em andamento…" >/tmp/env-status
+bash /opt/roboto/poc/bootstrap.sh "$TARGET_WORKDIR" >>/tmp/bootstrap.log 2>&1 &
+
 cd /opt/roboto
 
 # 4a) smoke observável da Fase 1 (POC_TASK setado): roda só o motor e imprime eventos; sem DB/daemon
