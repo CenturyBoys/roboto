@@ -162,12 +162,14 @@ async def _run_daemon(config: Config, store: Store) -> None:
             model=engine_model, permission_mode="bypassPermissions", mcp_servers=mcp, max_turns=80
         )
         # motor dedicado ao refino (read-only por prompt): evita corrida com o ciclo de PR.
-        # max_turns=40: refino é LER + PROPOR; teto contra o sprawl (modelo fraco varrendo o repo).
+        # max_turns=60: refino é LER+PROPOR; o PROMPT força parar em ~10 consultas, mas issues de
+        # "discovery" puxam o modelo a explorar — teto um pouco maior como rede, e o prompt obriga
+        # a terminar com a proposta (senão batia no teto em 0 mensagens e falhava).
         refiner_engine = ClaudeCodeEngine(
             model=engine_model,
             permission_mode="bypassPermissions",
             mcp_servers=mcp,
-            max_turns=40,
+            max_turns=60,
         )
 
         # second brain (G/D32): grava o PERFIL do repo (como operar) uma vez no boot — o motor não
