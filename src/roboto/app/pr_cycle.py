@@ -19,7 +19,7 @@ from roboto.agents.review import PullRequest, ReviewVerdict, check_issue_readine
 from roboto.app.correction import CycleResult, correction_cycle
 from roboto.app.repo_profile import build_repo_profile
 from roboto.app.tiering import classificar_tier
-from roboto.app.verify import arquivos_ts, secao_verify, verificar
+from roboto.app.verify import VerifyResult, arquivos_ts, secao_verify, verificar
 from roboto.engines.port import CodingEngine, EngineEventKind, RunSpec
 from roboto.github.app import IssueRef
 from roboto.llm.port import ModelGateway
@@ -111,19 +111,27 @@ async def run_pr_cycle(
         parts.append(f"_Gerado pelo fleet roboto (run {run.id}). Revisar antes do merge._")
         return "\n\n".join(parts)
 
-    async def _verify_section() -> str:
-        # verify determinístico shift-left (anota-e-segue): o code-intel (tsgo, sem script) diz
-        # quais erros de tipo a mudança introduziu vs a base. Best-effort — nunca derruba o ciclo.
+    verify_cache: dict[str, VerifyResult] = {}  # último resultado do verify (reusado no review)
+
+    async def _run_verify() -> VerifyResult | None:
+        # verify determinístico (code-intel/tsgo, sem script): erros de tipo introduzidos vs a base.
+        # Best-effort — nunca derruba o ciclo. Cacheia p/ o review reusar (ideia 1) sem recomputar.
         try:
             changed = arquivos_ts(await git.changed_files(base))  # type: ignore[attr-defined]
             if not changed:
-                return ""
-            pares = [(f, await git.show(f"origin/{base}", f)) for f in changed]  # type: ignore[attr-defined]
-            cmd = os.environ.get("ROBOTO_CODE_INTEL_CMD", "code-intel-mcp")
-            res = await asyncio.to_thread(verificar, workdir, pares, cmd=cmd)
-            return secao_verify(res)
+                res = VerifyResult(True, [])
+            else:
+                pares = [(f, await git.show(f"origin/{base}", f)) for f in changed]  # type: ignore[attr-defined]
+                cmd = os.environ.get("ROBOTO_CODE_INTEL_CMD", "code-intel-mcp")
+                res = await asyncio.to_thread(verificar, workdir, pares, cmd=cmd)
+            verify_cache["last"] = res
+            return res
         except Exception:  # noqa: BLE001 — verify é best-effort
-            return ""
+            return None
+
+    async def _verify_section() -> str:
+        res = await _run_verify()
+        return secao_verify(res) if res is not None else ""
     # perfil do repo (como OPERAR: pm, monorepo, test/lint, deps já instaladas) — pro motor rodar
     # os checks como um dev, sem flailar em "como rodar teste" / sem gambiarra de .cjs.
     profile = build_repo_profile(workdir)
@@ -221,7 +229,11 @@ async def run_pr_cycle(
         review_gw = MeteredGateway(gateway, store, tenant=run.tenant, run_id=run.id, now=now)
 
     async def review(pr: PullRequest) -> ReviewVerdict:
-        verdict = await review_pr(pr, review_gw, reviewer=reviewer)
+        # ideia 1: injeta os achados do verify (code-intel) como FATOS no review, pra o revisor não
+        # aprovar por cima de erro de tipo. Reusa o cache do _run_verify (do build_pr_body).
+        vr = verify_cache.get("last")
+        achados = vr.introduzidos if (vr is not None and not vr.ok) else None
+        verdict = await review_pr(pr, review_gw, reviewer=reviewer, verify_findings=achados)
         value = (
             verdict.value
             if isinstance(verdict, Ok)
