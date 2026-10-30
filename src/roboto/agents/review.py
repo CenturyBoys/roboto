@@ -89,9 +89,14 @@ async def review_issue_semantics(
 
 
 async def review_pr(
-    pr: PullRequest, gateway: ModelGateway, *, reviewer: str
+    pr: PullRequest, gateway: ModelGateway, *, reviewer: str,
+    verify_findings: list[str] | None = None,
 ) -> Result[ReviewVerdict, Error]:
-    """Review de PR com reviewer ≠ autor (D): mesmo autor/revisor = bloqueado, sem LLM."""
+    """Review de PR com reviewer ≠ autor (D): mesmo autor/revisor = bloqueado, sem LLM.
+
+    `verify_findings`: erros de tipo achados pelo verify determinístico (code-intel/tsgo). Entram no
+    prompt como FATOS (não opinião) p/ o revisor não aprovar por cima deles (ideia 1).
+    """
     if reviewer == pr.author:
         return Ok(
             ReviewVerdict(
@@ -100,7 +105,16 @@ async def review_pr(
                 summary="bloqueado: reviewer=autor",
             )
         )
-    content = f"PR #{pr.number} (autor={pr.author}): {pr.title}\n\n{pr.diff}"
+    bloco_verify = ""
+    if verify_findings:
+        itens = "\n".join(f"- {e}" for e in verify_findings[:30])
+        bloco_verify = (
+            "\n\n## Verify (code-intel/tsgo) — POSSÍVEIS erros de tipo (pode haver falso positivo "
+            "de contexto):\n"
+            "AVALIE cada um contra o diff: se for real, NÃO aprove sem tratar; se for falso "
+            f"positivo (ex.: global do Node mal-resolvido), diga isso no parecer:\n{itens}\n"
+        )
+    content = f"PR #{pr.number} (autor={pr.author}): {pr.title}\n\n{pr.diff}{bloco_verify}"
     messages = [
         ChatMessage(role="system", content=REVIEW_PR_SYSTEM),
         ChatMessage(role="user", content=content),
