@@ -6,7 +6,7 @@
       "name": "openrouter",
       "api_base_url": "https://openrouter.ai/api/v1/chat/completions",
       "api_key": "${OPENROUTER_API_KEY}",
-      "models": ["qwen/qwen3-coder-next", "qwen/qwen3-coder-flash", "deepseek/deepseek-r1-0528"],
+      "models": ["qwen/qwen3-coder-next", "qwen/qwen3-coder-flash", "deepseek/deepseek-r1-0528", "anthropic/claude-sonnet-4.6"],
       "transformer": { "use": ["openrouter"] }
     }
   ],

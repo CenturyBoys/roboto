@@ -8,6 +8,7 @@ no real). Aprovação NÃO mergeia — gate humano (D7).
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from datetime import datetime
 from typing import Protocol
@@ -16,6 +17,7 @@ from roboto.agents.refiner import IssueDraft
 from roboto.agents.review import PullRequest, ReviewVerdict, check_issue_readiness, review_pr
 from roboto.app.correction import CycleResult, correction_cycle
 from roboto.app.repo_profile import build_repo_profile
+from roboto.app.tiering import classificar_tier
 from roboto.engines.port import CodingEngine, EngineEventKind, RunSpec
 from roboto.github.app import IssueRef
 from roboto.llm.port import ModelGateway
@@ -77,6 +79,17 @@ async def run_pr_cycle(
     title = pr_title
     closes = f"Closes #{run.issue_id}" if run.issue_id.isdigit() else ""
 
+    # right-sizing do motor por CLASSE de tarefa (D/F, determinístico): tarefa grande/arquitetural
+    # roda no tier FORTE (ROBOTO_STRONG_MODEL, default Sonnet); pequena fica no motor barato (qwen,
+    # modelo "" = default do ccr). Classificador em app/tiering.py — não é decisão de LLM.
+    decisao_tier = classificar_tier(pr_title, contexto or run.issue_id)
+    modelo_forte = os.environ.get("ROBOTO_STRONG_MODEL", "anthropic/claude-sonnet-4.6")
+    modelo_do_motor = modelo_forte if (decisao_tier.forte and modelo_forte) else ""
+    print(
+        f"[tier] forte={decisao_tier.forte} modelo={modelo_do_motor or '(default/qwen)'} "
+        f"— {decisao_tier.motivo}"
+    )
+
     async def build_pr_body() -> str:
         # corpo do PR = objetivo da issue + a HISTÓRIA da implementação (assuntos dos commits que o
         # motor escreveu). Montado DEPOIS dos commits, pra o log existir. Conta o que foi feito.
@@ -122,7 +135,9 @@ async def run_pr_cycle(
         prompt = base_prompt
         if feedback:
             prompt += "\nCorrija os pontos do review:\n- " + "\n- ".join(feedback)
-        spec = RunSpec(tenant=run.tenant, repo=run.repo, workdir=workdir, prompt=prompt)
+        spec = RunSpec(
+            tenant=run.tenant, repo=run.repo, workdir=workdir, prompt=prompt, model=modelo_do_motor
+        )
         started = await engine.start(spec)
         tin = tout = 0
         async for event in engine.events():  # deixa o motor editar o repo
