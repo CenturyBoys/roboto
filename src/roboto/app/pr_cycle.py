@@ -106,8 +106,15 @@ async def run_pr_cycle(
         "exige atualizar a doc (.md/docs/ADR) no MESMO commit. "
         "Rode os checks do repo (lint, typecheck, testes, doc-sync) e corrija até passarem "
         "ANTES de concluir. "
-        "Economia de token (F): use code-intel (símbolos/refs/rename) e ripgrep (texto literal) "
-        "em vez de ler arquivos inteiros."
+        "ECONOMIA DE TOKEN (F) — REGRA OBRIGATÓRIA de navegação: para DESCOBRIR onde algo está, "
+        "quem usa um símbolo ou o que quebra ao mudá-lo, use SEMPRE as ferramentas do code-intel "
+        "(mcp__code-intel__find_symbol, find_references, document_symbols, blast_radius) e o "
+        "ripgrep para texto literal — NUNCA leia um arquivo inteiro com Read só para 'procurar'. "
+        "Read é "
+        "permitido apenas no trecho exato que o code-intel já localizou. Para editar um símbolo "
+        "(renomear/mover/alterar corpo), prefira as tools do code-intel (rename_symbol/"
+        "replace_symbol_body) a sed/regex. Se você precisa de um símbolo e NÃO chamou o code-intel "
+        "antes, está errando."
     )
     state: dict[str, int] = {}  # guarda o número do PR entre tentativas
 
