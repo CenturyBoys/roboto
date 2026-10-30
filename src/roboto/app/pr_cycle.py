@@ -8,6 +8,7 @@ no real). Aprovação NÃO mergeia — gate humano (D7).
 
 from __future__ import annotations
 
+import asyncio
 import os
 from collections.abc import Callable
 from datetime import datetime
@@ -18,6 +19,7 @@ from roboto.agents.review import PullRequest, ReviewVerdict, check_issue_readine
 from roboto.app.correction import CycleResult, correction_cycle
 from roboto.app.repo_profile import build_repo_profile
 from roboto.app.tiering import classificar_tier
+from roboto.app.verify import arquivos_ts, secao_verify, verificar
 from roboto.engines.port import CodingEngine, EngineEventKind, RunSpec
 from roboto.github.app import IssueRef
 from roboto.llm.port import ModelGateway
@@ -103,8 +105,25 @@ async def run_pr_cycle(
         parts = [p for p in (closes, f"## Objetivo\n{pr_title}") if p]
         if story:
             parts.append(f"## O que foi feito\n{story}")
+        verify_md = await _verify_section()
+        if verify_md:
+            parts.append(verify_md)
         parts.append(f"_Gerado pelo fleet roboto (run {run.id}). Revisar antes do merge._")
         return "\n\n".join(parts)
+
+    async def _verify_section() -> str:
+        # verify determinístico shift-left (anota-e-segue): o code-intel (tsgo, sem script) diz
+        # quais erros de tipo a mudança introduziu vs a base. Best-effort — nunca derruba o ciclo.
+        try:
+            changed = arquivos_ts(await git.changed_files(base))  # type: ignore[attr-defined]
+            if not changed:
+                return ""
+            pares = [(f, await git.show(f"origin/{base}", f)) for f in changed]  # type: ignore[attr-defined]
+            cmd = os.environ.get("ROBOTO_CODE_INTEL_CMD", "code-intel-mcp")
+            res = await asyncio.to_thread(verificar, workdir, pares, cmd=cmd)
+            return secao_verify(res)
+        except Exception:  # noqa: BLE001 — verify é best-effort
+            return ""
     # perfil do repo (como OPERAR: pm, monorepo, test/lint, deps já instaladas) — pro motor rodar
     # os checks como um dev, sem flailar em "como rodar teste" / sem gambiarra de .cjs.
     profile = build_repo_profile(workdir)

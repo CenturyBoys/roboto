@@ -48,3 +48,12 @@ class SubprocessGit:
         return await self._git_out(
             "log", f"origin/{base}..HEAD", "--no-merges", "--pretty=format:### %s%n%n%b"
         )
+
+    async def changed_files(self, base: str) -> list[str]:
+        """Arquivos alterados na branch vs a base (p/ o verify determinístico focar só neles)."""
+        out = await self._git_out("diff", "--name-only", f"origin/{base}...HEAD")
+        return [ln for ln in out.splitlines() if ln.strip()]
+
+    async def show(self, ref: str, path: str) -> str:
+        """Conteúdo do arquivo num ref (ex.: a base); "" se não existe lá (arquivo novo)."""
+        return await self._git_out("show", f"{ref}:{path}")
