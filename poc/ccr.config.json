@@ -6,15 +6,15 @@
       "name": "openrouter",
       "api_base_url": "https://openrouter.ai/api/v1/chat/completions",
       "api_key": "${OPENROUTER_API_KEY}",
-      "models": ["qwen/qwen3-coder", "qwen/qwen-2.5-72b-instruct", "deepseek/deepseek-r1-0528"],
+      "models": ["qwen/qwen3-coder-next", "qwen/qwen3-coder-flash", "deepseek/deepseek-r1-0528"],
       "transformer": { "use": ["openrouter"] }
     }
   ],
   "Router": {
-    "default": "openrouter,qwen/qwen3-coder",
-    "background": "openrouter,qwen/qwen-2.5-72b-instruct",
-    "think": "openrouter,qwen/qwen3-coder",
-    "longContext": "openrouter,qwen/qwen3-coder",
+    "default": "openrouter,qwen/qwen3-coder-next",
+    "background": "openrouter,qwen/qwen3-coder-flash",
+    "think": "openrouter,qwen/qwen3-coder-next",
+    "longContext": "openrouter,qwen/qwen3-coder-flash",
     "longContextThreshold": 60000
   }
 }
