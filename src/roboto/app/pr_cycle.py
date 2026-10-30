@@ -83,7 +83,9 @@ async def run_pr_cycle(
     # roda no tier FORTE (ROBOTO_STRONG_MODEL, default Sonnet); pequena fica no motor barato (qwen,
     # modelo "" = default do ccr). Classificador em app/tiering.py — não é decisão de LLM.
     decisao_tier = classificar_tier(pr_title, contexto or run.issue_id)
-    modelo_forte = os.environ.get("ROBOTO_STRONG_MODEL", "anthropic/claude-sonnet-4.6")
+    # id no formato "provider,model": o ccr IGNORA o model do cliente e roteia pela config, MENOS
+    # quando vem com a sintaxe de override "provider,model" — aí usa esse (validado no PoC).
+    modelo_forte = os.environ.get("ROBOTO_STRONG_MODEL", "openrouter,anthropic/claude-sonnet-4.6")
     modelo_do_motor = modelo_forte if (decisao_tier.forte and modelo_forte) else ""
     print(
         f"[tier] forte={decisao_tier.forte} modelo={modelo_do_motor or '(default/qwen)'} "
