@@ -131,7 +131,9 @@ async def run_pr_cycle(
 
     async def _verify_section() -> str:
         res = await _run_verify()
-        return secao_verify(res) if res is not None else ""
+        # (1) só anota quando o verify é CONFIÁVEL (disponivel); senão pula — não polui o PR com
+        # falso positivo (ex.: tsconfig do monorepo não resolvido pelo code-intel).
+        return secao_verify(res) if (res is not None and res.disponivel) else ""
     # perfil do repo (como OPERAR: pm, monorepo, test/lint, deps já instaladas) — pro motor rodar
     # os checks como um dev, sem flailar em "como rodar teste" / sem gambiarra de .cjs.
     profile = build_repo_profile(workdir)
@@ -229,10 +231,13 @@ async def run_pr_cycle(
         review_gw = MeteredGateway(gateway, store, tenant=run.tenant, run_id=run.id, now=now)
 
     async def review(pr: PullRequest) -> ReviewVerdict:
-        # ideia 1: injeta os achados do verify (code-intel) como FATOS no review, pra o revisor não
-        # aprovar por cima de erro de tipo. Reusa o cache do _run_verify (do build_pr_body).
+        # ideia 1: injeta os achados do verify (code-intel) no review como "possíveis" (avaliar),
+        # pra o revisor não aprovar por cima. Reusa o cache do _run_verify (do build_pr_body).
         vr = verify_cache.get("last")
-        achados = vr.introduzidos if (vr is not None and not vr.ok) else None
+        # só alimenta o review quando o verify é confiável E achou algo (senão None = normal).
+        achados = (
+            vr.introduzidos if (vr is not None and vr.disponivel and vr.introduzidos) else None
+        )
         verdict = await review_pr(pr, review_gw, reviewer=reviewer, verify_findings=achados)
         value = (
             verdict.value

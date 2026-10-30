@@ -47,8 +47,8 @@ def secao_verify(r: VerifyResult) -> str:
     extra = "" if len(r.introduzidos) <= 30 else f"\n- _(+{len(r.introduzidos) - 30} outros)_"
     return (
         f"## Verify (code-intel · tsgo)\n"
-        f"⚠️ **{len(r.introduzidos)} novo(s) erro(s) de tipo** introduzido(s) pela mudança:\n"
-        f"{linhas}{extra}"
+        f"⚠️ **{len(r.introduzidos)} possível(is) erro(s) de tipo** (pode haver falso positivo de "
+        f"contexto — o CI é o juiz final):\n{linhas}{extra}"
     )
 
 
@@ -97,6 +97,20 @@ class _McpClient:
         self._send({"jsonrpc": "2.0", "method": "notifications/initialized"})
         return True
 
+    def doctor(self, project: str, timeout: float) -> dict:
+        self._id += 1
+        self._send({
+            "jsonrpc": "2.0", "id": self._id, "method": "tools/call",
+            "params": {"name": "doctor", "arguments": {"project": project}},
+        })
+        msg = self._read(self._id, timeout) or {}
+        blocos = msg.get("result", {}).get("content", [])
+        texto = " ".join(b.get("text", "") for b in blocos if isinstance(b, dict))
+        try:
+            return json.loads(texto)
+        except ValueError:
+            return {}
+
     def simulate_edit(self, project: str, file: str, new_content: str, timeout: float) -> dict:
         self._id += 1
         self._send({
@@ -136,6 +150,15 @@ def verificar(
         cli = _McpClient(cmd, project)
         if not cli.handshake(timeout=30.0):
             return VerifyResult(False, detalhe="handshake do code-intel falhou")
+        # (1) auto-desliga onde o type-check não é confiável: se o code-intel não resolve o tsconfig
+        # do projeto (ex.: monorepo com project-references, sem tsconfig.json na raiz), o tsgo roda
+        # com default e dá falso positivo em globals/aliases (@types/node etc.). Aí NÃO anotamos.
+        doc = cli.doctor(project, timeout=30.0)
+        relatorio = doc.get("report", []) if isinstance(doc, dict) else []
+        ts = next((r for r in relatorio if r.get("lang") == "typescript"), {})
+        if ts and ts.get("workspace_config", {}).get("ok") is False:
+            motivo = ts.get("workspace_config", {}).get("issue", "tsconfig não resolvido")
+            return VerifyResult(False, detalhe=f"não confiável ({motivo}); CI é o juiz")
         introduzidos: list[str] = []
         for arquivo, base in pares:
             res = cli.simulate_edit(project, arquivo, base, timeout=timeout)

@@ -109,9 +109,10 @@ async def review_pr(
     if verify_findings:
         itens = "\n".join(f"- {e}" for e in verify_findings[:30])
         bloco_verify = (
-            "\n\n## Verify determinístico (code-intel/tsgo) — FATOS confirmados, não opinião:\n"
-            "A mudança INTRODUZ os erros de tipo abaixo. NÃO aprove o PR sem que estejam tratados "
-            f"(ou justifique por que não procedem):\n{itens}\n"
+            "\n\n## Verify (code-intel/tsgo) — POSSÍVEIS erros de tipo (pode haver falso positivo "
+            "de contexto):\n"
+            "AVALIE cada um contra o diff: se for real, NÃO aprove sem tratar; se for falso "
+            f"positivo (ex.: global do Node mal-resolvido), diga isso no parecer:\n{itens}\n"
         )
     content = f"PR #{pr.number} (autor={pr.author}): {pr.title}\n\n{pr.diff}{bloco_verify}"
     messages = [

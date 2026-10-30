@@ -113,4 +113,4 @@ async def test_pr_review_injeta_achados_do_verify_no_prompt() -> None:
     assert isinstance(result, Ok)
     prompt_user = "\n".join(m.content for m in gw.seen if m.role == "user")
     assert "env.ts:226" in prompt_user  # o achado determinístico entrou no prompt
-    assert "FATOS" in prompt_user  # como fato, não opinião
+    assert "POSSÍVEIS" in prompt_user  # como possível (avaliar), não fato absoluto
