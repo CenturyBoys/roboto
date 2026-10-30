@@ -46,7 +46,11 @@ async def main() -> int:
         created_at=moment,
         updated_at=moment,
     )
-    engine = ClaudeCodeEngine(permission_mode="bypassPermissions")
+    # code-intel ligado por default (ROBOTO_CODE_INTEL=0 desliga) — igual ao daemon (runtime.py):
+    # navegação semântica (find_symbol/find_references) em vez de ler arquivo inteiro = menos token.
+    code_intel = os.environ.get("ROBOTO_CODE_INTEL", "1") not in ("0", "false", "no")
+    mcp = {"code-intel": {"command": "code-intel-mcp"}} if code_intel else None
+    engine = ClaudeCodeEngine(permission_mode="bypassPermissions", mcp_servers=mcp)
     gateway = OpenRouterGateway(os.environ["OPENROUTER_API_KEY"])
     github = GithubAppClient(
         app_id="", private_key="", installation_id="", token=os.environ["GITHUB_API_TOKEN"]
