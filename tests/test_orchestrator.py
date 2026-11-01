@@ -93,6 +93,21 @@ async def test_outbox_efeito_venenoso_nao_bloqueia_o_lote() -> None:
     assert again.unwrap() == 0  # venenoso segue pendente p/ retry, sem bloquear a drenagem
 
 
+async def test_concurrency_lock_serializa_por_issue() -> None:
+    # dois eventos distintos da MESMA issue -> não rodam em paralelo (#165)
+    store = InMemoryStore()
+    ev_a = GithubEvent("acme", "acme/app", "42", "review", "pr:synchronize:acme/app:42:sha1")
+    ev_b = GithubEvent("acme", "acme/app", "42", "review", "pr:synchronize:acme/app:42:sha2")
+    await ingest(store, ev_a, T0)
+    await ingest(store, ev_b, T0)
+    first = await store.claim_next_queued("acme", T0, 60)
+    assert first is not None  # 1º run da issue 42 é reclamado
+    assert await store.claim_next_queued("acme", T0, 60) is None  # 2º da MESMA issue espera
+    await store.set_state(first.id, RunState.DONE, T0)  # 1º saiu do estado ativo
+    second = await store.claim_next_queued("acme", T0, 60)
+    assert second is not None and second.id != first.id  # agora o 2º pode rodar
+
+
 async def test_sweep_requeue_backoff_then_dead_letter() -> None:
     store, runner = InMemoryStore(), StubRunner()
     await ingest(store, _ev(), T0)

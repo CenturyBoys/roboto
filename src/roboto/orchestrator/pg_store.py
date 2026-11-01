@@ -194,12 +194,21 @@ class PostgresStore:
     ) -> Run | None:
         lease_until = now + timedelta(seconds=lease_seconds)
         async with self._pool.acquire() as conn, conn.transaction():
+            # concurrency-lock por (tenant, issue) (#165): advisory xact lock impede dois workers de
+            # pegarem runs da MESMA issue em paralelo; o NOT EXISTS pula issues com irmão ativo
+            # (running/waiting/verifying). Juntos serializam por entidade, sem travar outras.
             picked = await conn.fetchrow(
                 """
-                SELECT id FROM run
-                WHERE tenant = $1 AND state = 'queued' AND ($2::text IS NULL OR agent = $2)
-                  AND (next_attempt_at IS NULL OR next_attempt_at <= $3)
-                ORDER BY id
+                SELECT r.id, r.issue_id FROM run r
+                WHERE r.tenant = $1 AND r.state = 'queued' AND ($2::text IS NULL OR r.agent = $2)
+                  AND (r.next_attempt_at IS NULL OR r.next_attempt_at <= $3)
+                  AND NOT EXISTS (
+                      SELECT 1 FROM run s
+                      WHERE s.tenant = r.tenant AND s.issue_id = r.issue_id
+                        AND s.state IN ('running', 'waiting', 'verifying')
+                  )
+                  AND pg_try_advisory_xact_lock(hashtext(r.tenant || ':' || r.issue_id))
+                ORDER BY r.id
                 FOR UPDATE SKIP LOCKED
                 LIMIT 1
                 """,

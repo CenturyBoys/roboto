@@ -27,6 +27,9 @@ from roboto.orchestrator.model import (
     SessionEvent,
 )
 
+# estados em que uma issue está "sendo trabalhada" — base do concurrency-lock por entidade (#165).
+_ACTIVE_STATES = frozenset({RunState.RUNNING, RunState.WAITING, RunState.VERIFYING})
+
 
 class Store(Protocol):
     async def insert_run_if_absent(self, ev: GithubEvent, now: datetime) -> tuple[Run, bool]: ...
@@ -223,6 +226,11 @@ class InMemoryStore:
     async def claim_next_queued(
         self, tenant: str, now: datetime, lease_seconds: int, *, agent: str | None = None
     ) -> Run | None:
+        # concurrency-lock por (tenant, issue): no máximo 1 run ATIVO por entidade (#165). Dois
+        # eventos da mesma issue não rodam em paralelo — o 2º espera o 1º sair do estado ativo.
+        busy = {
+            (r.tenant, r.issue_id) for r in self._runs.values() if r.state in _ACTIVE_STATES
+        }
         for run_id in sorted(self._runs):
             run = self._runs[run_id]
             if (
@@ -230,6 +238,7 @@ class InMemoryStore:
                 and run.state == RunState.QUEUED
                 and (agent is None or run.agent == agent)
                 and (run.next_attempt_at is None or run.next_attempt_at <= now)  # backoff
+                and (run.tenant, run.issue_id) not in busy  # concurrency-lock por entidade
             ):
                 # lock + reconferir: transição atômica queued -> running
                 claimed = replace(
