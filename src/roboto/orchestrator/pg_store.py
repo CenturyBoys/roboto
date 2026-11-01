@@ -14,6 +14,7 @@ from typing import Any
 import asyncpg  # type: ignore[import-untyped]
 
 from roboto.orchestrator.model import (
+    DeadLetter,
     Engine,
     ExecutionPr,
     GithubEvent,
@@ -31,9 +32,15 @@ from roboto.orchestrator.model import (
 
 _RUN_COLS = (
     "id, tenant, repo, issue_id, agent, state, attempt, "
-    "idempotency_key, created_at, updated_at, lease_until, origin_chat_id"
+    "idempotency_key, created_at, updated_at, lease_until, origin_chat_id, next_attempt_at"
 )
-_OUTBOX_COLS = "id, tenant, run_id, kind, payload, dedup_key, status, created_at, sent_at"
+_OUTBOX_COLS = (
+    "id, tenant, run_id, kind, payload, dedup_key, status, created_at, sent_at, "
+    "attempt, next_attempt_at"
+)
+_DEAD_LETTER_COLS = (
+    "id, tenant, source, ref_id, kind, payload, error, attempts, created_at"
+)
 _SESSION_COLS = (
     "id, tenant, execution_id, engine, native_session_id, state, created_at, updated_at"
 )
@@ -72,6 +79,7 @@ def _row_to_run(row: Any) -> Run:
         updated_at=row["updated_at"],
         lease_until=row["lease_until"],
         origin_chat_id=row["origin_chat_id"],
+        next_attempt_at=row["next_attempt_at"],
     )
 
 
@@ -89,6 +97,25 @@ def _row_to_outbox(row: Any) -> OutboxItem:
         status=row["status"],
         created_at=row["created_at"],
         sent_at=row["sent_at"],
+        attempt=row["attempt"],
+        next_attempt_at=row["next_attempt_at"],
+    )
+
+
+def _row_to_dead_letter(row: Any) -> DeadLetter:
+    payload = row["payload"]
+    if isinstance(payload, str):
+        payload = json.loads(payload)
+    return DeadLetter(
+        id=row["id"],
+        tenant=row["tenant"],
+        source=row["source"],
+        ref_id=row["ref_id"],
+        kind=row["kind"],
+        payload=payload,
+        error=row["error"],
+        attempts=row["attempts"],
+        created_at=row["created_at"],
     )
 
 
@@ -171,11 +198,12 @@ class PostgresStore:
                 """
                 SELECT id FROM run
                 WHERE tenant = $1 AND state = 'queued' AND ($2::text IS NULL OR agent = $2)
+                  AND (next_attempt_at IS NULL OR next_attempt_at <= $3)
                 ORDER BY id
                 FOR UPDATE SKIP LOCKED
                 LIMIT 1
                 """,
-                tenant, agent,
+                tenant, agent, now,
             )
             if picked is None:
                 return None
@@ -241,6 +269,35 @@ class PostgresStore:
                 effect_id, now,
             )
 
+    async def defer_effect(
+        self, effect_id: int, attempt: int, next_attempt_at: datetime, now: datetime
+    ) -> None:
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE outbox SET attempt = $2, next_attempt_at = $3 WHERE id = $1",
+                effect_id, attempt, next_attempt_at,
+            )
+
+    async def dead_letter_effect(self, effect_id: int, error: str, now: datetime) -> None:
+        async with self._pool.acquire() as conn, conn.transaction():
+            row = await conn.fetchrow(
+                "UPDATE outbox SET status = 'dead' WHERE id = $1 "
+                "RETURNING tenant, kind, payload, dedup_key, attempt",
+                effect_id,
+            )
+            if row is None:
+                return
+            raw = row["payload"]
+            payload = raw if isinstance(raw, str) else json.dumps(raw)
+            await conn.execute(
+                """
+                INSERT INTO dead_letter (tenant, source, ref_id, kind, payload, error, attempts,
+                                         created_at)
+                VALUES ($1, 'effect', $2, $3, $4::jsonb, $5, $6, $7)
+                """,
+                row["tenant"], effect_id, row["kind"], payload, error, row["attempt"] + 1, now,
+            )
+
     async def find_abandoned(self, now: datetime) -> list[Run]:
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
@@ -252,6 +309,68 @@ class PostgresStore:
                 now,
             )
             return [_row_to_run(r) for r in rows]
+
+    async def requeue_run_with_backoff(
+        self, run_id: int, attempt: int, next_attempt_at: datetime, now: datetime
+    ) -> None:
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                """
+                UPDATE run SET state = 'queued', attempt = $2, lease_until = NULL,
+                    next_attempt_at = $3, updated_at = $4
+                WHERE id = $1
+                """,
+                run_id, attempt, next_attempt_at, now,
+            )
+
+    async def dead_letter_run(self, run_id: int, error: str, now: datetime) -> None:
+        async with self._pool.acquire() as conn, conn.transaction():
+            row = await conn.fetchrow(
+                "UPDATE run SET state = 'failed', lease_until = NULL, updated_at = $2 "
+                "WHERE id = $1 RETURNING tenant, agent, repo, issue_id, attempt",
+                run_id, now,
+            )
+            if row is None:
+                return
+            payload = json.dumps({"repo": row["repo"], "issue_id": row["issue_id"]})
+            await conn.execute(
+                """
+                INSERT INTO dead_letter (tenant, source, ref_id, kind, payload, error, attempts,
+                                         created_at)
+                VALUES ($1, 'run', $2, $3, $4::jsonb, $5, $6, $7)
+                """,
+                row["tenant"], run_id, row["agent"], payload, error, row["attempt"], now,
+            )
+
+    async def list_dead_letter(self, tenant: str) -> list[DeadLetter]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                f"SELECT {_DEAD_LETTER_COLS} FROM dead_letter WHERE tenant = $1 ORDER BY id DESC",
+                tenant,
+            )
+            return [_row_to_dead_letter(r) for r in rows]
+
+    async def replay_dead_letter(self, dead_letter_id: int, now: datetime) -> bool:
+        async with self._pool.acquire() as conn, conn.transaction():
+            dl = await conn.fetchrow(
+                "SELECT source, ref_id FROM dead_letter WHERE id = $1", dead_letter_id
+            )
+            if dl is None:
+                return False
+            if dl["source"] == "effect":
+                await conn.execute(
+                    "UPDATE outbox SET status = 'pending', attempt = 0, next_attempt_at = NULL, "
+                    "sent_at = NULL WHERE id = $1",
+                    dl["ref_id"],
+                )
+            else:
+                await conn.execute(
+                    "UPDATE run SET state = 'queued', attempt = 0, lease_until = NULL, "
+                    "next_attempt_at = NULL, updated_at = $2 WHERE id = $1",
+                    dl["ref_id"], now,
+                )
+            await conn.execute("DELETE FROM dead_letter WHERE id = $1", dead_letter_id)
+            return True
 
     async def create_session(
         self, tenant: str, execution_id: int, engine: Engine, now: datetime

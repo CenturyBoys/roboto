@@ -6,7 +6,7 @@ lock (no store); gravar->commit->efetuar (outbox); tenant em tudo.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from roboto.orchestrator.model import Error, GithubEvent, Run, RunState
@@ -43,30 +43,58 @@ async def enqueue_effect(
     return Ok(created)
 
 
+_BACKOFF_BASE_S = 30
+_BACKOFF_FACTOR = 2
+_BACKOFF_CAP_S = 3600
+
+
+def backoff_until(attempt: int, now: datetime) -> datetime:
+    """Próxima tentativa com backoff exponencial: 30s, 60s, 120s... (teto 1h). ``attempt`` >= 1."""
+    delay = min(_BACKOFF_CAP_S, _BACKOFF_BASE_S * (_BACKOFF_FACTOR ** max(0, attempt - 1)))
+    return now + timedelta(seconds=delay)
+
+
 async def publish_outbox(
-    store: Store, publisher: Publisher, now: datetime, limit: int = 100
+    store: Store, publisher: Publisher, now: datetime, limit: int = 100, max_attempts: int = 5
 ) -> Result[int, Error]:
     """Efetua os efeitos pendentes (gravar->commit->efetuar) e marca como enviados.
 
-    Processa item a item: a falha de UM efeito não interrompe o lote — o item falho fica
-    **pendente** (retentado no próximo ciclo) e os demais seguem, de modo que um efeito "venenoso"
-    não bloqueia a drenagem do outbox. Retorna quantos foram enviados. (DLQ/backoff: ver Trilha B.)
+    Processa item a item: a falha de UM efeito não interrompe o lote. Em falha, o item é **adiado**
+    com backoff exponencial (não bloqueia os demais); ao esgotar ``max_attempts`` vai para a
+    **dead-letter** (com contexto do erro, p/ replay manual). Retorna quantos foram enviados.
     """
     sent = 0
     for item in await store.pending_effects(limit):
+        if item.next_attempt_at is not None and item.next_attempt_at > now:
+            continue  # ainda em backoff — não tenta antes da hora
         outcome = await publisher.send(item)
         if isinstance(outcome, Err):
-            continue  # não bloqueia os outros; segue pendente p/ retry no próximo ciclo
+            attempt = item.attempt + 1
+            if attempt >= max_attempts:
+                await store.dead_letter_effect(item.id, str(outcome.error), now)
+            else:
+                await store.defer_effect(item.id, attempt, backoff_until(attempt, now), now)
+            continue
         await store.mark_sent(item.id, now)
         sent += 1
     return Ok(sent)
 
 
 async def sweep(store: Store, now: datetime, max_attempts: int = 3) -> Result[int, Error]:
-    """Reclama runs abandonados (lease expirada): re-enfileira ou falha ao estourar o teto."""
+    """Reclama runs abandonados (lease expirada): re-enfileira com backoff ou manda à dead-letter.
+
+    Antes de reclamável de novo, o run espera o backoff (``next_attempt_at``). Ao estourar
+    ``max_attempts`` vai para a dead-letter (com contexto), em vez de só virar FAILED mudo.
+    """
     abandoned = await store.find_abandoned(now)
     for run in abandoned:
         next_attempt = run.attempt + 1
-        target = RunState.QUEUED if next_attempt < max_attempts else RunState.FAILED
-        await store.set_state(run.id, target, now, attempt=next_attempt)
+        if next_attempt < max_attempts:
+            await store.requeue_run_with_backoff(
+                run.id, next_attempt, backoff_until(next_attempt, now), now
+            )
+        else:
+            await store.dead_letter_run(
+                run.id, f"lease esgotado após {next_attempt} tentativa(s)", now
+            )
     return Ok(len(abandoned))

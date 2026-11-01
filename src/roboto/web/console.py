@@ -640,9 +640,31 @@ def console_routes(
         await issues.comment_pr(run.repo, number, "📝 Issue refinada pelo fleet (via cockpit).")
         return JSONResponse({"ok": True, "number": number})
 
+    async def dead_letter_list(request: Request) -> JSONResponse:
+        if _unauthorized(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        items = await store.list_dead_letter(tenant)
+        return JSONResponse({
+            "dead_letter": [
+                {"id": d.id, "source": d.source, "ref_id": d.ref_id, "kind": d.kind,
+                 "error": d.error, "attempts": d.attempts, "created_at": d.created_at.isoformat()}
+                for d in items
+            ]
+        })
+
+    async def dead_letter_replay(request: Request) -> JSONResponse:
+        if _unauthorized(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        ok = await store.replay_dead_letter(int(request.path_params["dl_id"]), datetime.now(UTC))
+        if not ok:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        return JSONResponse({"ok": True})
+
     return [
         *shell_routes(),
         Route("/healthz", healthz),
+        Route("/dead-letter", dead_letter_list),
+        Route("/dead-letter/{dl_id:int}/replay", dead_letter_replay, methods=["POST"]),
         Route("/executions", list_executions),
         Route("/executions/{run_id:int}", execution_detail),
         Route("/executions/{run_id:int}/cancel", cancel, methods=["POST"]),

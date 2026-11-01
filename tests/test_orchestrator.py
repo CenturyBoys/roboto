@@ -93,19 +93,44 @@ async def test_outbox_efeito_venenoso_nao_bloqueia_o_lote() -> None:
     assert again.unwrap() == 0  # venenoso segue pendente p/ retry, sem bloquear a drenagem
 
 
-async def test_sweep_requeue_then_fail() -> None:
+async def test_sweep_requeue_backoff_then_dead_letter() -> None:
     store, runner = InMemoryStore(), StubRunner()
     await ingest(store, _ev(), T0)
     await process_next(store, runner, "acme", T0, lease_seconds=60)
     later = T0 + timedelta(seconds=120)
     first = await sweep(store, later, max_attempts=2)
-    assert first.unwrap() == 1  # lease expirada -> re-enfileira (attempt 1)
-    await process_next(store, runner, "acme", later, lease_seconds=60)
-    later2 = later + timedelta(seconds=120)
+    assert first.unwrap() == 1  # lease expirada -> re-enfileira (attempt 1) com backoff
+    # backoff: ainda NÃO reclamável imediatamente (next_attempt_at no futuro)
+    assert await store.claim_next_queued("acme", later, 60) is None
+    # após a janela de backoff, reclamável de novo
+    claim_at = later + timedelta(seconds=90)
+    await process_next(store, runner, "acme", claim_at, lease_seconds=60)
+    later2 = claim_at + timedelta(seconds=120)
     second = await sweep(store, later2, max_attempts=2)
-    assert second.unwrap() == 1  # attempt 2 >= teto -> FAILED
-    final = await process_next(store, runner, "acme", later2)
-    assert final.unwrap() is None  # falhado, não volta à fila
+    assert second.unwrap() == 1  # attempt 2 >= teto -> dead-letter (não só FAILED mudo)
+    final = await process_next(store, runner, "acme", later2 + timedelta(seconds=120))
+    assert final.unwrap() is None  # em dead-letter, não volta à fila
+    dl = await store.list_dead_letter("acme")
+    assert len(dl) == 1 and dl[0].source == "run"
+
+
+async def test_outbox_backoff_dead_letter_and_replay() -> None:
+    store, pub = InMemoryStore(), _FailOnePublisher()
+    run = (await ingest(store, _ev(), T0)).unwrap()
+    await enqueue_effect(store, run, "ruim", {"m": "x"}, "d1", T0)
+    # max_attempts=2: 1ª falha -> adia (backoff); 2ª falha -> dead-letter
+    moment = T0
+    for _ in range(4):
+        await publish_outbox(store, pub, moment, max_attempts=2)
+        moment = moment + timedelta(hours=2)  # avança além do backoff
+    dead = await store.list_dead_letter("acme")
+    assert len(dead) == 1 and dead[0].source == "effect" and dead[0].kind == "ruim"
+    # replay volta o efeito à fila; publisher que aceita agora -> envia
+    good = StubPublisher()
+    assert await store.replay_dead_letter(dead[0].id, moment) is True
+    sent = await publish_outbox(store, good, moment)
+    assert sent.unwrap() == 1 and len(good.sent) == 1
+    assert await store.list_dead_letter("acme") == []
 
 
 if __name__ == "__main__":

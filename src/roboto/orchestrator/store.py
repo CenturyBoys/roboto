@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from typing import Any, Protocol
 
 from roboto.orchestrator.model import (
+    DeadLetter,
     Engine,
     ExecutionPr,
     GithubEvent,
@@ -52,7 +53,23 @@ class Store(Protocol):
 
     async def mark_sent(self, effect_id: int, now: datetime) -> None: ...
 
+    async def defer_effect(
+        self, effect_id: int, attempt: int, next_attempt_at: datetime, now: datetime
+    ) -> None: ...
+
+    async def dead_letter_effect(self, effect_id: int, error: str, now: datetime) -> None: ...
+
     async def find_abandoned(self, now: datetime) -> list[Run]: ...
+
+    async def dead_letter_run(self, run_id: int, error: str, now: datetime) -> None: ...
+
+    async def requeue_run_with_backoff(
+        self, run_id: int, attempt: int, next_attempt_at: datetime, now: datetime
+    ) -> None: ...
+
+    async def list_dead_letter(self, tenant: str) -> list[DeadLetter]: ...
+
+    async def replay_dead_letter(self, dead_letter_id: int, now: datetime) -> bool: ...
 
     async def create_session(
         self, tenant: str, execution_id: int, engine: Engine, now: datetime
@@ -172,6 +189,8 @@ class InMemoryStore:
         self._app_config: dict[str, str] = {}
         self._session_events: list[SessionEvent] = []
         self._execution_prs: dict[int, ExecutionPr] = {}
+        self._dead_letters: dict[int, DeadLetter] = {}
+        self._dl_seq = 0
         self._fact_seq = 0
         self._run_seq = 0
         self._effect_seq = 0
@@ -210,6 +229,7 @@ class InMemoryStore:
                 run.tenant == tenant
                 and run.state == RunState.QUEUED
                 and (agent is None or run.agent == agent)
+                and (run.next_attempt_at is None or run.next_attempt_at <= now)  # backoff
             ):
                 # lock + reconferir: transição atômica queued -> running
                 claimed = replace(
@@ -271,12 +291,67 @@ class InMemoryStore:
         item = self._effects[effect_id]
         self._effects[effect_id] = replace(item, status="sent", sent_at=now)
 
+    async def defer_effect(
+        self, effect_id: int, attempt: int, next_attempt_at: datetime, now: datetime
+    ) -> None:
+        item = self._effects[effect_id]
+        self._effects[effect_id] = replace(item, attempt=attempt, next_attempt_at=next_attempt_at)
+
+    async def dead_letter_effect(self, effect_id: int, error: str, now: datetime) -> None:
+        item = self._effects[effect_id]
+        self._effects[effect_id] = replace(item, status="dead")
+        self._dl_seq += 1
+        self._dead_letters[self._dl_seq] = DeadLetter(
+            id=self._dl_seq, tenant=item.tenant, source="effect", ref_id=item.id, kind=item.kind,
+            payload=item.payload, error=error, attempts=item.attempt + 1, created_at=now,
+        )
+
     async def find_abandoned(self, now: datetime) -> list[Run]:
         return [
             r
             for r in self._runs.values()
             if r.state == RunState.RUNNING and r.lease_until is not None and r.lease_until < now
         ]
+
+    async def dead_letter_run(self, run_id: int, error: str, now: datetime) -> None:
+        run = self._runs[run_id]
+        self._runs[run_id] = replace(run, state=RunState.FAILED, lease_until=None, updated_at=now)
+        self._dl_seq += 1
+        self._dead_letters[self._dl_seq] = DeadLetter(
+            id=self._dl_seq, tenant=run.tenant, source="run", ref_id=run.id, kind=run.agent,
+            payload={"repo": run.repo, "issue_id": run.issue_id}, error=error,
+            attempts=run.attempt, created_at=now,
+        )
+
+    async def requeue_run_with_backoff(
+        self, run_id: int, attempt: int, next_attempt_at: datetime, now: datetime
+    ) -> None:
+        run = self._runs[run_id]
+        self._runs[run_id] = replace(
+            run, state=RunState.QUEUED, attempt=attempt, lease_until=None,
+            next_attempt_at=next_attempt_at, updated_at=now,
+        )
+
+    async def list_dead_letter(self, tenant: str) -> list[DeadLetter]:
+        return [d for d in self._dead_letters.values() if d.tenant == tenant]
+
+    async def replay_dead_letter(self, dead_letter_id: int, now: datetime) -> bool:
+        dl = self._dead_letters.get(dead_letter_id)
+        if dl is None:
+            return False
+        if dl.source == "effect":
+            item = self._effects[dl.ref_id]
+            self._effects[dl.ref_id] = replace(
+                item, status="pending", attempt=0, next_attempt_at=None, sent_at=None
+            )
+        else:  # run
+            run = self._runs[dl.ref_id]
+            self._runs[dl.ref_id] = replace(
+                run, state=RunState.QUEUED, attempt=0, lease_until=None,
+                next_attempt_at=None, updated_at=now,
+            )
+        del self._dead_letters[dead_letter_id]
+        return True
 
     async def create_session(
         self, tenant: str, execution_id: int, engine: Engine, now: datetime
