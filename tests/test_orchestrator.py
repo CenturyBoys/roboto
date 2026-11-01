@@ -17,6 +17,8 @@ from roboto.orchestrator import (
     publish_outbox,
     sweep,
 )
+from roboto.orchestrator.model import Error, OutboxItem
+from roboto.result import Err, Ok, Result
 
 T0 = datetime(2026, 10, 18, 12, 0, 0, tzinfo=UTC)
 
@@ -64,6 +66,31 @@ async def test_outbox_dedup_and_publish() -> None:
     assert first.unwrap() == 1 and len(pub.sent) == 1
     again = await publish_outbox(store, pub, T0)
     assert again.unwrap() == 0  # nada pendente após enviar
+
+
+class _FailOnePublisher:
+    """Publisher que falha só no kind 'ruim' e registra os demais (simula efeito venenoso)."""
+
+    def __init__(self) -> None:
+        self.sent: list[OutboxItem] = []
+
+    async def send(self, item: OutboxItem) -> Result[None, Error]:
+        if item.kind == "ruim":
+            return Err(Error("effect", "falha proposital"))
+        self.sent.append(item)
+        return Ok(None)
+
+
+async def test_outbox_efeito_venenoso_nao_bloqueia_o_lote() -> None:
+    store, pub = InMemoryStore(), _FailOnePublisher()
+    run = (await ingest(store, _ev(), T0)).unwrap()
+    await enqueue_effect(store, run, "ruim", {"m": "x"}, "d-ruim", T0)  # venenoso, enfileirado 1º
+    await enqueue_effect(store, run, "telegram_notify", {"m": "ok"}, "d-ok", T0)
+    sent = await publish_outbox(store, pub, T0)
+    assert sent.unwrap() == 1 and len(pub.sent) == 1  # o bom foi enviado APESAR do venenoso
+    assert pub.sent[0].kind == "telegram_notify"
+    again = await publish_outbox(store, pub, T0)
+    assert again.unwrap() == 0  # venenoso segue pendente p/ retry, sem bloquear a drenagem
 
 
 async def test_sweep_requeue_then_fail() -> None:

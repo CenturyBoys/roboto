@@ -46,12 +46,17 @@ async def enqueue_effect(
 async def publish_outbox(
     store: Store, publisher: Publisher, now: datetime, limit: int = 100
 ) -> Result[int, Error]:
-    """Efetua os efeitos pendentes (gravar->commit->efetuar) e marca como enviados."""
+    """Efetua os efeitos pendentes (gravar->commit->efetuar) e marca como enviados.
+
+    Processa item a item: a falha de UM efeito não interrompe o lote — o item falho fica
+    **pendente** (retentado no próximo ciclo) e os demais seguem, de modo que um efeito "venenoso"
+    não bloqueia a drenagem do outbox. Retorna quantos foram enviados. (DLQ/backoff: ver Trilha B.)
+    """
     sent = 0
     for item in await store.pending_effects(limit):
         outcome = await publisher.send(item)
         if isinstance(outcome, Err):
-            return Err(outcome.error)
+            continue  # não bloqueia os outros; segue pendente p/ retry no próximo ciclo
         await store.mark_sent(item.id, now)
         sent += 1
     return Ok(sent)
