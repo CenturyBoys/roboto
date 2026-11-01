@@ -26,6 +26,14 @@ def test_complete_issue_is_ready() -> None:
     assert verdict.missing == []
 
 
+def test_checkbox_only_in_dod_is_not_ready() -> None:
+    # '- [ ]' só no DoD, nenhum sob 'Critérios de aceite' -> não testável -> not ready (#160)
+    body = "## Contexto\nx\n## Escopo\ny\n## Critérios de aceite\nfaz z\n## DoD\n- [ ] ci"
+    verdict = check_issue_readiness(IssueDraft(title="feat: x", body=body))
+    assert verdict.ready is False
+    assert any("Critérios de aceite" in m for m in verdict.missing)
+
+
 def test_missing_sections_listed() -> None:
     verdict = check_issue_readiness(IssueDraft(title="feat: x", body="## Contexto\nsó isso"))
     assert verdict.ready is False

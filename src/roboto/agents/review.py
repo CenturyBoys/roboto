@@ -48,6 +48,26 @@ class PullRequest:
     diff: str
 
 
+def _section_text(body: str, heading: str) -> str:
+    """Texto sob a seção `## {heading}` até a próxima `##` (vazio se a seção não existe).
+
+    Match leniente do título (substring, case-insensitive) p/ aceitar variações como
+    'Critérios de aceite (TDD)'.
+    """
+    target = heading.strip().lower()
+    out: list[str] = []
+    capturing = False
+    for line in body.splitlines():
+        if line.strip().startswith("##"):
+            if capturing:
+                break
+            capturing = target in line.strip().lstrip("#").strip().lower()
+            continue
+        if capturing:
+            out.append(line)
+    return "\n".join(out)
+
+
 def check_issue_readiness(draft: IssueDraft) -> ReadinessVerdict:
     """Checagem estrutural do DoR (tier 1, sem LLM). ``ready`` só quando nada falta."""
     missing: list[str] = []
@@ -57,8 +77,11 @@ def check_issue_readiness(draft: IssueDraft) -> ReadinessVerdict:
     for section in _REQUIRED_SECTIONS:
         if section.lower() not in body:
             missing.append(f"seção '{section}'")
-    if "- [ ]" not in draft.body:
-        missing.append("critério de aceite (nenhum item '- [ ]')")
+    # DoR "testável": o item verificável tem de estar SOB 'Critérios de aceite' — não basta um
+    # '- [ ]' em qualquer lugar (ex.: só no DoD). Checa só se a seção existe.
+    aceite = _section_text(draft.body, "Critérios de aceite")
+    if "critérios de aceite" in body and "- [ ]" not in aceite:
+        missing.append("critério de aceite verificável (item '- [ ]' sob 'Critérios de aceite')")
     return ReadinessVerdict(ready=not missing, missing=missing)
 
 
