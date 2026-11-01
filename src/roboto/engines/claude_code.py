@@ -60,7 +60,9 @@ class ClaudeCodeEngine:
             permission_mode=self._permission_mode,
             allowed_tools=self._allowed_tools,
             resume=self._spec.resume_session_id or None,
-            model=self._model or None,
+            # modelo por-run (spec.model) tem precedência sobre o fixo do construtor: deixa o
+            # right-sizing escolher o tier (forte/barato) por tarefa (ver app/tiering.py).
+            model=(self._spec.model or self._model) or None,
             mcp_servers=self._mcp_servers,  # code-intel (navegação semântica, F)
             max_turns=self._max_turns or None,
         )

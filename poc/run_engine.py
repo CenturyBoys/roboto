@@ -23,7 +23,10 @@ async def main() -> int:
     print(f"[fase1] repo={repo} cwd={workdir}")
     print(f"[fase1] tarefa: {task}")
 
-    engine = ClaudeCodeEngine(permission_mode="bypassPermissions")
+    # code-intel ligado por default (ROBOTO_CODE_INTEL=0 desliga) — igual ao daemon (runtime.py).
+    code_intel = os.environ.get("ROBOTO_CODE_INTEL", "1") not in ("0", "false", "no")
+    mcp = {"code-intel": {"command": "code-intel-mcp"}} if code_intel else None
+    engine = ClaudeCodeEngine(permission_mode="bypassPermissions", mcp_servers=mcp)
     spec = RunSpec(
         tenant=os.environ.get("ROBOTO_TENANT", "poc"), repo=repo, workdir=workdir, prompt=task
     )

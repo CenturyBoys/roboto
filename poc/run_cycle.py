@@ -29,12 +29,16 @@ async def main() -> int:
     workdir = os.environ.get("TARGET_WORKDIR", f"/work/{repo}")
     base = os.environ.get("ROBOTO_BASE_BRANCH", "main")
     task = os.environ.get("POC_TASK") or _DEFAULT_TASK
+    # POC_ISSUE=<n>: usa o NÚMERO da issue (run_pr_cycle puxa título+corpo do GitHub e põe Closes #n).
+    # Sem POC_ISSUE, cai no texto livre de POC_TASK (modo smoke antigo).
+    issue = os.environ.get("POC_ISSUE", "").strip()
+    issue_id = issue if issue.isdigit() else task
     moment = datetime(2026, 1, 1, tzinfo=UTC)
     run = Run(
         id=1,
         tenant=os.environ.get("ROBOTO_TENANT", "poc"),
         repo=repo,
-        issue_id=task,
+        issue_id=issue_id,
         agent="impl",
         state=RunState.RUNNING,
         attempt=0,
@@ -42,7 +46,11 @@ async def main() -> int:
         created_at=moment,
         updated_at=moment,
     )
-    engine = ClaudeCodeEngine(permission_mode="bypassPermissions")
+    # code-intel ligado por default (ROBOTO_CODE_INTEL=0 desliga) — igual ao daemon (runtime.py):
+    # navegação semântica (find_symbol/find_references) em vez de ler arquivo inteiro = menos token.
+    code_intel = os.environ.get("ROBOTO_CODE_INTEL", "1") not in ("0", "false", "no")
+    mcp = {"code-intel": {"command": "code-intel-mcp"}} if code_intel else None
+    engine = ClaudeCodeEngine(permission_mode="bypassPermissions", mcp_servers=mcp)
     gateway = OpenRouterGateway(os.environ["OPENROUTER_API_KEY"])
     github = GithubAppClient(
         app_id="", private_key="", installation_id="", token=os.environ["GITHUB_API_TOKEN"]

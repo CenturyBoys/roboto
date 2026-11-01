@@ -8,6 +8,8 @@ no real). Aprovação NÃO mergeia — gate humano (D7).
 
 from __future__ import annotations
 
+import asyncio
+import os
 from collections.abc import Callable
 from datetime import datetime
 from typing import Protocol
@@ -16,6 +18,8 @@ from roboto.agents.refiner import IssueDraft
 from roboto.agents.review import PullRequest, ReviewVerdict, check_issue_readiness, review_pr
 from roboto.app.correction import CycleResult, correction_cycle
 from roboto.app.repo_profile import build_repo_profile
+from roboto.app.tiering import classificar_tier
+from roboto.app.verify import VerifyResult, arquivos_ts, secao_verify, verificar
 from roboto.engines.port import CodingEngine, EngineEventKind, RunSpec
 from roboto.github.app import IssueRef
 from roboto.llm.port import ModelGateway
@@ -77,6 +81,19 @@ async def run_pr_cycle(
     title = pr_title
     closes = f"Closes #{run.issue_id}" if run.issue_id.isdigit() else ""
 
+    # right-sizing do motor por CLASSE de tarefa (D/F, determinístico): tarefa grande/arquitetural
+    # roda no tier FORTE (ROBOTO_STRONG_MODEL, default Sonnet); pequena fica no motor barato (qwen,
+    # modelo "" = default do ccr). Classificador em app/tiering.py — não é decisão de LLM.
+    decisao_tier = classificar_tier(pr_title, contexto or run.issue_id)
+    # id no formato "provider,model": o ccr IGNORA o model do cliente e roteia pela config, MENOS
+    # quando vem com a sintaxe de override "provider,model" — aí usa esse (validado no PoC).
+    modelo_forte = os.environ.get("ROBOTO_STRONG_MODEL", "openrouter,anthropic/claude-sonnet-4.6")
+    modelo_do_motor = modelo_forte if (decisao_tier.forte and modelo_forte) else ""
+    print(
+        f"[tier] forte={decisao_tier.forte} modelo={modelo_do_motor or '(default/qwen)'} "
+        f"— {decisao_tier.motivo}"
+    )
+
     async def build_pr_body() -> str:
         # corpo do PR = objetivo da issue + a HISTÓRIA da implementação (assuntos dos commits que o
         # motor escreveu). Montado DEPOIS dos commits, pra o log existir. Conta o que foi feito.
@@ -88,8 +105,35 @@ async def run_pr_cycle(
         parts = [p for p in (closes, f"## Objetivo\n{pr_title}") if p]
         if story:
             parts.append(f"## O que foi feito\n{story}")
+        verify_md = await _verify_section()
+        if verify_md:
+            parts.append(verify_md)
         parts.append(f"_Gerado pelo fleet roboto (run {run.id}). Revisar antes do merge._")
         return "\n\n".join(parts)
+
+    verify_cache: dict[str, VerifyResult] = {}  # último resultado do verify (reusado no review)
+
+    async def _run_verify() -> VerifyResult | None:
+        # verify determinístico (code-intel/tsgo, sem script): erros de tipo introduzidos vs a base.
+        # Best-effort — nunca derruba o ciclo. Cacheia p/ o review reusar (ideia 1) sem recomputar.
+        try:
+            changed = arquivos_ts(await git.changed_files(base))  # type: ignore[attr-defined]
+            if not changed:
+                res = VerifyResult(True, [])
+            else:
+                pares = [(f, await git.show(f"origin/{base}", f)) for f in changed]  # type: ignore[attr-defined]
+                cmd = os.environ.get("ROBOTO_CODE_INTEL_CMD", "code-intel-mcp")
+                res = await asyncio.to_thread(verificar, workdir, pares, cmd=cmd)
+            verify_cache["last"] = res
+            return res
+        except Exception:  # noqa: BLE001 — verify é best-effort
+            return None
+
+    async def _verify_section() -> str:
+        res = await _run_verify()
+        # (1) só anota quando o verify é CONFIÁVEL (disponivel); senão pula — não polui o PR com
+        # falso positivo (ex.: tsconfig do monorepo não resolvido pelo code-intel).
+        return secao_verify(res) if (res is not None and res.disponivel) else ""
     # perfil do repo (como OPERAR: pm, monorepo, test/lint, deps já instaladas) — pro motor rodar
     # os checks como um dev, sem flailar em "como rodar teste" / sem gambiarra de .cjs.
     profile = build_repo_profile(workdir)
@@ -106,8 +150,15 @@ async def run_pr_cycle(
         "exige atualizar a doc (.md/docs/ADR) no MESMO commit. "
         "Rode os checks do repo (lint, typecheck, testes, doc-sync) e corrija até passarem "
         "ANTES de concluir. "
-        "Economia de token (F): use code-intel (símbolos/refs/rename) e ripgrep (texto literal) "
-        "em vez de ler arquivos inteiros."
+        "ECONOMIA DE TOKEN (F) — REGRA OBRIGATÓRIA de navegação: para DESCOBRIR onde algo está, "
+        "quem usa um símbolo ou o que quebra ao mudá-lo, use SEMPRE as ferramentas do code-intel "
+        "(mcp__code-intel__find_symbol, find_references, document_symbols, blast_radius) e o "
+        "ripgrep para texto literal — NUNCA leia um arquivo inteiro com Read só para 'procurar'. "
+        "Read é "
+        "permitido apenas no trecho exato que o code-intel já localizou. Para editar um símbolo "
+        "(renomear/mover/alterar corpo), prefira as tools do code-intel (rename_symbol/"
+        "replace_symbol_body) a sed/regex. Se você precisa de um símbolo e NÃO chamou o code-intel "
+        "antes, está errando."
     )
     state: dict[str, int] = {}  # guarda o número do PR entre tentativas
 
@@ -115,7 +166,9 @@ async def run_pr_cycle(
         prompt = base_prompt
         if feedback:
             prompt += "\nCorrija os pontos do review:\n- " + "\n- ".join(feedback)
-        spec = RunSpec(tenant=run.tenant, repo=run.repo, workdir=workdir, prompt=prompt)
+        spec = RunSpec(
+            tenant=run.tenant, repo=run.repo, workdir=workdir, prompt=prompt, model=modelo_do_motor
+        )
         started = await engine.start(spec)
         tin = tout = 0
         async for event in engine.events():  # deixa o motor editar o repo
@@ -178,7 +231,14 @@ async def run_pr_cycle(
         review_gw = MeteredGateway(gateway, store, tenant=run.tenant, run_id=run.id, now=now)
 
     async def review(pr: PullRequest) -> ReviewVerdict:
-        verdict = await review_pr(pr, review_gw, reviewer=reviewer)
+        # ideia 1: injeta os achados do verify (code-intel) no review como "possíveis" (avaliar),
+        # pra o revisor não aprovar por cima. Reusa o cache do _run_verify (do build_pr_body).
+        vr = verify_cache.get("last")
+        # só alimenta o review quando o verify é confiável E achou algo (senão None = normal).
+        achados = (
+            vr.introduzidos if (vr is not None and vr.disponivel and vr.introduzidos) else None
+        )
+        verdict = await review_pr(pr, review_gw, reviewer=reviewer, verify_findings=achados)
         value = (
             verdict.value
             if isinstance(verdict, Ok)

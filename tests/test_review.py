@@ -9,8 +9,10 @@ from roboto.agents.review import (
     review_issue_semantics,
     review_pr,
 )
+from roboto.llm.port import ChatMessage, Completion, Tier
 from roboto.llm.stub import StubModelGateway
-from roboto.result import Ok
+from roboto.orchestrator.model import Error
+from roboto.result import Ok, Result
 
 _READY_BODY = (
     "## Contexto\nx\n## Escopo\ny\n## Critérios de aceite\n- [ ] faz z\n"
@@ -88,3 +90,27 @@ async def test_pr_review_requests_changes() -> None:
     assert isinstance(result, Ok)
     assert result.value.approved is False
     assert "sem teste" in result.value.issues
+
+
+class _CapturingGateway:
+    """Gateway que guarda as mensagens recebidas, p/ inspecionar o prompt do review (ideia 1)."""
+
+    def __init__(self, reply: str) -> None:
+        self._reply = reply
+        self.seen: list[ChatMessage] = []
+
+    async def complete(
+        self, messages: list[ChatMessage], tier: Tier
+    ) -> Result[Completion, Error]:
+        self.seen = messages
+        return Ok(Completion(text=self._reply, model="cap", tokens_in=0, tokens_out=0))
+
+
+async def test_pr_review_injeta_achados_do_verify_no_prompt() -> None:
+    gw = _CapturingGateway("VEREDITO: reprovado\nPROBLEMAS:\n- erro de tipo não tratado")
+    achados = ["env.ts:226 Cannot find name 'process'."]
+    result = await review_pr(_pr(author="alice"), gw, reviewer="bob", verify_findings=achados)
+    assert isinstance(result, Ok)
+    prompt_user = "\n".join(m.content for m in gw.seen if m.role == "user")
+    assert "env.ts:226" in prompt_user  # o achado determinístico entrou no prompt
+    assert "POSSÍVEIS" in prompt_user  # como possível (avaliar), não fato absoluto

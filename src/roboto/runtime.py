@@ -155,7 +155,9 @@ async def _run_daemon(config: Config, store: Store) -> None:
         # Modelo FIXO (ccr→OpenRouter/Qwen): sem isto o CLI cai no default (claude-opus-*), que o
         # ccr não roteia → a query falha com "selected model ... may not exist". O co-piloto já
         # fixava; o batch (impl/refino) precisa do mesmo pino.
-        engine_model = "qwen/qwen3-coder"
+        # DEVE bater com um id do poc/ccr.config.json (senão ccr responde unrecognized_model e o
+        # run trava em running). Env p/ não voltar a driftar quando o ccr mudar o id.
+        engine_model = os.environ.get("ROBOTO_ENGINE_MODEL", "qwen/qwen3-coder-next")
         # max_turns=80: implementação é mais longa que o refino (editar + rodar checks + corrigir),
         # mas ainda um backstop contra flail infinito (ex.: loop tentando instalar deps).
         claude = ClaudeCodeEngine(
