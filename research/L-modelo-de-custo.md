@@ -41,6 +41,8 @@ Como **orçar e medir** o custo (token/$) do fleet por **agente**, por **etapa**
 - **Alerta de runaway** (loop de agente) via observabilidade (Trilha H).
 - **Atribuição de custo** por feature/modelo/agente → mede o ganho real da ferramentificação (F) e
   do right-sizing (I) contra um **baseline**.
+- **Latência também é orçada** (resolve finding rodada-02): a escada encadeada (check → Jev → frontier)
+  e o multi-pass de review somam latência; orçar/medir **latência por etapa** junto do $/token (cross H/I).
 
 ## Base de orçamento (decidida pelo dono, 2026-10-18)
 
@@ -58,6 +60,12 @@ grandeza → tier **Max 5x**; se for o Max 20x/US$200, dobrar os números), auto
 > Max **não se aplicam** ao fleet; o orçamento é puramente o valor em dólar gasto na API.
 > Pool multi-provedor via OpenRouter, **incluindo modelos chineses** baratos para geração (Trilha I).
 
+> **Precisão do teto (resolve finding rodada-02)**: como escolhemos **API**, o teto é simplesmente
+> **R$ 550/mês de gasto de API**, convertido a USD ao câmbio corrente (~R$ 5,5/US$ → ~US$100; câmbio a
+> fixar na implementação). Não há "fungibilidade assinatura↔API" a demonstrar — é só o valor em dinheiro.
+> **Baseline numérico (tokens/$ por issue) ainda NÃO existe** — precisa ser **medido** no golden set
+> (Trilha H). Até lá, este doc é **estrutura de custo, não número verificável**.
+
 ### Referência de preço de API (verificado — claude-api, cache 2026-06-04)
 | Modelo | Input $/MTok | Output $/MTok |
 |--------|--------------|---------------|
@@ -65,6 +73,9 @@ grandeza → tier **Max 5x**; se for o Max 20x/US$200, dobrar os números), auto
 | Sonnet 4.6 | 3 | 15 |
 | Haiku 4.5 | 1 | 5 |
 | **Jev** (judge, Trilha I) | ~0,042 | **grátis** |
+
+> Nota: as linhas **Claude** são verificadas via skill `claude-api` (que só cobre modelos Claude);
+> a linha **Jev** é **preço de vendor (TypeSafe), não verificado** por essa fonte — tratar como indicativo.
 
 Ordem de grandeza do que ~US$100/mês compra (ilustrativo; blend real varia): Opus ≈ 20M in / 4M out ·
 Sonnet ≈ 33M in / 6,7M out · Haiku ≈ 100M in / 20M out · Jev praticamente desprezível. → o
