@@ -74,7 +74,9 @@ mudou?"** periodicamente. Agnóstico: um *adapter de plataforma* lista o estado;
 
 ### 5.1 Gatilho por atividade de PR, com debounce (#166)
 `app/pr_poll.py` — a cada ~60s, para cada PR aberto:
-1. pega `(número, head_sha)` via `github.list_open_prs` (adapter);
+0. **pula PRs de bot** (`is_bot_author`: `*[bot]`, renovate, dependabot) — o fleet não revisa/corrige
+   PR de bot de dependência (gastava token à toa; pego na validação ponta-a-ponta);
+1. pega `(número, head_sha, autor)` via `github.list_open_prs` (adapter);
 2. `decide_pr` (lógica **pura**, testável) aplica o **debounce**: se o `head_sha` mudou, reinicia o
    relógio; só quando o PR **estabiliza** (≥ `ROBOTO_PR_POLL_DEBOUNCE`, default **30 min**) e o sha
    ainda não foi avaliado → **dispara**;

@@ -60,7 +60,7 @@ class _FakeGH:
 
 async def test_tick_dispatches_correct_after_debounce() -> None:
     store = InMemoryStore()
-    gh = _FakeGH([(7, "shaX")])
+    gh = _FakeGH([(7, "shaX", "alice")])
     # 1ª passada: só registra o PR, nada enfileirado (espera estabilizar)
     await process_pr_poll_tick(
         gh, store, tenant="acme", repos=["acme/app"], now=lambda: _T0, debounce_seconds=1800
@@ -77,10 +77,32 @@ async def test_tick_dispatches_correct_after_debounce() -> None:
     assert runs[0].issue_id == "7"
 
 
+def test_is_bot_author() -> None:
+    from roboto.app.pr_poll import is_bot_author
+
+    assert is_bot_author("renovate[bot]")
+    assert is_bot_author("dependabot[bot]")
+    assert is_bot_author("github-actions[bot]")
+    assert not is_bot_author("alice")
+    assert not is_bot_author("XimitGaia")
+
+
+async def test_tick_skips_bot_prs() -> None:
+    # polling PULA PRs de bot (renovate/dependabot) — não gasta token revisando PR de dependência
+    store = InMemoryStore()
+    gh = _FakeGH([(9, "shaB", "renovate[bot]")])
+    later = _T0 + timedelta(minutes=31)
+    for t in (_T0, later):  # mesmo estabilizando, nunca enfileira
+        await process_pr_poll_tick(
+            gh, store, tenant="acme", repos=["acme/app"], now=lambda t=t: t, debounce_seconds=1800
+        )
+    assert await store.list_runs("acme", 10) == []  # nenhum run p/ PR de bot
+
+
 async def test_tick_ci_failed_dispatches_before_debounce() -> None:
     # check_suite falhou -> antecipa o `correct` sem esperar o debounce de 30 min (#166).
     store = InMemoryStore()
-    gh = _FakeGH([(7, "shaX")], ci_failed=True)
+    gh = _FakeGH([(7, "shaX", "alice")], ci_failed=True)
     # 1ª passada: registra o PR (ainda não avalia)
     await process_pr_poll_tick(
         gh, store, tenant="acme", repos=["acme/app"], now=lambda: _T0, debounce_seconds=1800

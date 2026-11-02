@@ -473,8 +473,9 @@ class GithubAppClient:
             if owns:
                 await client.aclose()
 
-    async def list_open_prs(self, repo: str) -> Result[list[tuple[int, str]], Error]:
-        """(número, head_sha) dos PRs abertos — alimenta o gatilho por POLLING (Trilha B, #166)."""
+    async def list_open_prs(self, repo: str) -> Result[list[tuple[int, str, str]], Error]:
+        """(número, head_sha, autor) dos PRs abertos — alimenta o POLLING (B, #166). O autor deixa o
+        polling pular PRs de bot (renovate/dependabot)."""
         owns = self._client is None
         client = (
             self._client if self._client is not None else httpx.AsyncClient(timeout=self._timeout)
@@ -491,7 +492,12 @@ class GithubAppClient:
             )
             resp.raise_for_status()
             out = [
-                (int(p["number"]), str((p.get("head") or {}).get("sha", ""))) for p in resp.json()
+                (
+                    int(p["number"]),
+                    str((p.get("head") or {}).get("sha", "")),
+                    str((p.get("user") or {}).get("login", "")),
+                )
+                for p in resp.json()
             ]
             return Ok(out)
         except httpx.HTTPError as exc:
