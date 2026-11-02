@@ -25,6 +25,18 @@ Barato-primeiro: só escala o custo quando a dúvida justifica.
 **JUDGE/FRONTIER** — modelos diferentes pelo roteamento do gateway. O juiz é **determinístico**
 (`temperature=0`) + rubrica (ver trilha B / `REVIEW_PR_SYSTEM`).
 
+```mermaid
+flowchart TB
+  L1["Camada 1 — estrutural (sem LLM)<br/>seções + critério '- [ ]'"]
+  L1 -->|falta| X1[reprovado: complete a issue]
+  L1 -->|ok| L2["Camada 2 — juiz estruturado<br/>bem_definida · confiança · lacunas"]
+  L2 -->|confiança baixa| L3["Camada 3 — escala frontier"]
+  L2 -->|confiança ok| V{bem definida?}
+  L3 --> V
+  V -->|sim| OK([pronta p/ implementar])
+  V -->|não| X2[lacunas apontadas]
+```
+
 ## 3. Tipagem de task + gate anti-codar-definição (#158)
 
 Toda task tem uma **natureza** (classificador determinístico, `app/task_class.classificar_task`):
@@ -40,6 +52,16 @@ right-sizing e priorização. **Gate:** no dispatch de `impl` (`process_pr_run_t
 Implementar do cockpit, uma task de **definição CONFIANTE** (keyword ADR/RFC/decidir, sem critério) é
 **barrada** — fica `WAITING` com aviso. Ambíguo (sem critério + sem keyword) segue pro gate de DoR
 (pedir pra completar), sem bloquear. O Jev (LLM barato) entra como **escalada** na dúvida.
+
+```mermaid
+flowchart TD
+  S{keyword de spike?} -->|sim| SP([spike])
+  S -->|não| C{"tem critério '- [ ]'?"}
+  C -->|não| D([definição — gate: não coda])
+  C -->|sim| K{keyword ADR/decidir?}
+  K -->|sim| D
+  K -->|não| DEV([desenvolvimento])
+```
 
 ## 4. Máquina de estados da issue → labels (#161)
 

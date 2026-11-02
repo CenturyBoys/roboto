@@ -20,6 +20,20 @@ Uma **máquina de estados durável** que pega trabalho (evento → `run`), execu
   é *at-least-once* — reprocessar é seguro.
 - **Claim serializado**: `claim_next_queued` usa `FOR UPDATE SKIP LOCKED` (sem corrida entre workers).
 
+```mermaid
+stateDiagram-v2
+  [*] --> queued
+  queued --> running: claim (lock por issue)
+  running --> waiting: precisa de humano
+  waiting --> running: resposta
+  running --> verifying: PR aberto
+  running --> failed: erro / watchdog
+  verifying --> done: merge humano
+  failed --> queued: retry (backoff)
+  failed --> [*]: dead-letter
+  done --> [*]
+```
+
 ## 3. Garantias de resiliência (as 4 peças)
 
 | Peça | O que faz | Onde |
@@ -71,6 +85,20 @@ mesmo diff dava vereditos diferentes e o gate era não-confiável.
   comentários com `<!-- potter:bot -->`; o poller ignora comentário com o marcador.
 - **check_suite failed:** se o CI do head do PR falhou, o poller **antecipa** o `correct` (não espera
   o debounce) — `github.checks_failed` + `decide_pr(ci_failed=True)`.
+
+```mermaid
+flowchart LR
+  subgraph poll["Gatilhos por polling (sem webhook)"]
+    PR[PR mudou] -->|debounce ~30 min| EV[avalia PR]
+    CI[check_suite falhou] -->|antecipa| EV
+    CM["comentário @potter"] --> EV
+  end
+  EV --> COR["run 'correct'"]
+  COR --> V{re-review ≠ autor}
+  V -->|reprova| FIX[corrige + force-push]
+  FIX --> V
+  V -->|aprova| OK[avisa p/ merge humano]
+```
 
 ## 6. O que ainda falta na B (backlog)
 
