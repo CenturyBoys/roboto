@@ -1,0 +1,71 @@
+[
+  {
+    "id": "dor-complete-ready",
+    "grader": "dor",
+    "input": {
+      "title": "feat: exportar relatório",
+      "body": "## Contexto\nx\n## Escopo\ny\n## Critérios de aceite\n- [ ] gera CSV\n## DoD\n- [ ] testes"
+    },
+    "expect": { "ready": true }
+  },
+  {
+    "id": "dor-missing-criteria",
+    "grader": "dor",
+    "input": { "title": "feat: algo", "body": "## Contexto\nx\n## Escopo\ny\n## DoD\n- [ ] ci" },
+    "expect": { "ready": false }
+  },
+  {
+    "id": "dor-skeleton",
+    "grader": "dor",
+    "input": { "title": "ajuste", "body": "só um esqueleto" },
+    "expect": { "ready": false }
+  },
+  {
+    "id": "task-definicao-adr",
+    "grader": "task_class",
+    "input": {
+      "title": "RFC: decidir arquitetura de filas",
+      "body": "Precisamos decidir entre SQS e Rabbit. Registrar ADR."
+    },
+    "expect": { "task_type": "definicao" }
+  },
+  {
+    "id": "task-desenvolvimento",
+    "grader": "task_class",
+    "input": {
+      "title": "feat: botão de exportar",
+      "body": "## Critérios de aceite\n- [ ] exporta CSV\n- [ ] testa o fluxo"
+    },
+    "expect": { "task_type": "desenvolvimento" }
+  },
+  {
+    "id": "risk-migrations-high",
+    "grader": "risk",
+    "input": { "files": ["src/db/migrations/0004_add.sql", "src/api/x.py"] },
+    "expect": { "level": "alto" }
+  },
+  {
+    "id": "risk-ci-high",
+    "grader": "risk",
+    "input": { "files": [".github/workflows/deploy.yml"] },
+    "expect": { "level": "alto" }
+  },
+  {
+    "id": "risk-small-low",
+    "grader": "risk",
+    "input": { "files": ["src/util/strings.py", "tests/test_strings.py"] },
+    "expect": { "level": "baixo" }
+  },
+  {
+    "id": "secret-github-token",
+    "grader": "secret",
+    "input": { "diff": "+TOKEN = \"ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"" },
+    "expect": { "has_secret": true }
+  },
+  {
+    "id": "secret-clean",
+    "grader": "secret",
+    "input": { "diff": "+def soma(a, b):\n+    return a + b" },
+    "expect": { "has_secret": false }
+  }
+]
