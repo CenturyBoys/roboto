@@ -107,15 +107,31 @@ CI**: regressão numa das decisões **determinísticas** de segurança barra o m
 Cobre os graders que **são** a camada de segurança (determinismo primeiro). Cada caso que escapou em
 produção vira um caso no golden — o gate impede que volte.
 
-## 8. Confiança e escalada
+## 8. Anti-loopjacking (aprovação por ação — primitivo)
+
+*Loopjacking* = fazer o humano aprovar uma ação enquanto o sistema executa **outra** (troca de estado
+entre aprovar e usar). Defesa verificada (pesquisa H): **canonical rendering** + **comparação EXATA
+no uso** — o que foi aprovado tem de ser idêntico ao que executa.
+
+| Peça | O que faz | Onde |
+|---|---|---|
+| canonical_action | renderização determinística (chaves ordenadas) da tool + args | `app/approval_guard` |
+| action_digest / sign | digest sha256 assinado no momento da aprovação | `app/approval_guard` |
+| matches | recomputa no uso e compara por digest; divergiu → **nega** | `app/approval_guard` |
+
+**Entregue:** o primitivo puro + testes (rejeita argumento trocado, tool trocada, argumento extra).
+**Sliver:** o *enforcement* real (gatear a tool via callback `can_use_tool`) depende do **SDK vivo**
+(TODO em `engines/claude_code`); o primitivo já está pronto pra plugar quando o callback existir.
+
+## 9. Confiança e escalada
 
 A validação de prontidão (DoR, trilha A) escala **JUDGE → FRONTIER** quando a confiança é baixa
 (`agents/review.validar_issue_semantica`) — o mesmo fio de "proposta validada por camada
 determinística". O veredito do review é determinístico (`aprovado_por_findings`, trilha D).
 
-## 9. Follow-ups (backlog)
+## 10. Follow-ups (backlog)
 
 - **evals — LLM-as-judge** (dimensões subjetivas: qualidade de refino/review), em run **agendado**.
 - **jev-guard — escalada automática**: alto risco → esperar OK humano (hoje só surfa o nível).
-- **Aprovação por ação** (tool-level) ligada ao SDK vivo, com *canonical rendering* anti-loopjacking.
+- **Aprovação por ação — enforcement**: plugar o primitivo anti-loopjacking no callback do SDK vivo.
 - **Secret-scan: heurística de entropia** além dos formatos canônicos (hoje: alta precisão).
