@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from roboto.app.pr_cycle import process_pr_run_tick, run_pr_cycle
+from roboto.app.pr_cycle import process_correct_tick, process_pr_run_tick, run_pr_cycle
 from roboto.engines.port import EngineEvent, EngineEventKind
 from roboto.engines.stub import StubEngine
 from roboto.github.app import IssueRef
 from roboto.llm.port import ChatMessage, Completion, Tier
-from roboto.orchestrator.model import Error, GithubEvent
+from roboto.orchestrator.model import Error, GithubEvent, RunState
 from roboto.orchestrator.store import InMemoryStore
 from roboto.result import Ok, Result
 
@@ -32,9 +32,13 @@ class _FakeGit:
         self.branches: list[str] = []
         self.commits: list[str] = []
         self.pushes: list[str] = []
+        self.checked_out: list[str] = []
 
     async def prepare_branch(self, name: str) -> None:
         self.branches.append(name)
+
+    async def checkout_remote(self, name: str) -> None:
+        self.checked_out.append(name)
 
     async def commit_all(self, message: str) -> None:
         self.commits.append(message)
@@ -68,6 +72,9 @@ class _FakeGithub:
     ) -> Result[IssueRef, Error]:
         self.opened += 1
         return Ok(IssueRef(repo=repo, number=42, url="https://github.com/acme/app/pull/42"))
+
+    async def get_pr_head(self, repo: str, number: int) -> Result[str, Error]:
+        return Ok(f"feature/pr-{number}")
 
     async def get_pr_diff(self, repo: str, number: int) -> Result[str, Error]:
         return Ok("diff --git a/x b/x\n+linha")
@@ -252,3 +259,61 @@ async def test_process_pr_run_tick_empty_queue_is_noop() -> None:
         now=lambda: _T0,
     )
     assert engine.started == []  # fila vazia -> nada rodou
+
+
+async def test_correct_tick_fixes_pr_on_its_branch() -> None:
+    # B: corrige um PR já aberto NO branch do PR (checkout) → review → corrige → push → re-review.
+    store = InMemoryStore()
+    ev = GithubEvent(
+        tenant="acme", repo="acme/app", issue_id="221", agent="correct", idempotency_key="c"
+    )
+    run, _ = await store.insert_run_if_absent(ev, _T0)
+    engine = StubEngine(
+        [
+            EngineEvent(EngineEventKind.MESSAGE, text="corrigido"),
+            EngineEvent(EngineEventKind.FINISHED),
+        ]
+    )
+    git, github = _FakeGit(), _FakeGithub()
+    gw = _SeqGateway(["VEREDITO: reprovado\n- falta doc", "VEREDITO: aprovado"])  # reprova->aprova
+    await process_correct_tick(
+        engine,
+        gw,  # type: ignore[arg-type]
+        github,
+        store,
+        tenant="acme",
+        workdir_root="/work",
+        reviewer="review",
+        git_factory=lambda ws: git,
+        now=lambda: _T0,
+    )
+    assert git.checked_out == ['feature/pr-221']  # entrou NA branch do PR (não resetou p/ base)
+    assert len(engine.started) == 1  # o motor corrigiu
+    assert git.pushes == ['feature/pr-221']  # force-push atualizou o MESMO PR
+    assert store._runs[run.id].state is RunState.VERIFYING  # re-review aprovou
+    assert any('re-aprovado' in c for c in github.comments)
+
+
+async def test_correct_tick_approved_pr_is_noop() -> None:
+    # PR já aprovado no review -> não edita, não dá push, comenta "nada a corrigir", vai a DONE.
+    store = InMemoryStore()
+    ev = GithubEvent(
+        tenant="acme", repo="acme/app", issue_id="221", agent="correct", idempotency_key="c2"
+    )
+    run, _ = await store.insert_run_if_absent(ev, _T0)
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    git, github = _FakeGit(), _FakeGithub()
+    await process_correct_tick(
+        engine,
+        _SeqGateway(["VEREDITO: aprovado"]),  # type: ignore[arg-type]
+        github,
+        store,
+        tenant="acme",
+        workdir_root="/work",
+        reviewer="review",
+        git_factory=lambda ws: git,
+        now=lambda: _T0,
+    )
+    assert engine.started == []  # nada a corrigir -> motor não roda
+    assert git.pushes == []
+    assert store._runs[run.id].state is RunState.DONE

@@ -31,6 +31,13 @@ class SubprocessGit:
     async def prepare_branch(self, name: str) -> None:
         await self._git("checkout", "-B", name)
 
+    async def checkout_remote(self, name: str) -> None:
+        """Traz a branch REMOTA e entra NELA — p/ corrigir um PR já aberto (B). NÃO reseta p/ a
+        base: o motor edita sobre o estado atual do PR. Sem isto, um `checkout -B` sobre um clone
+        novo (em `develop`) + force-push SOBRESCREVERIA o PR."""
+        await self._git("fetch", "origin", name)
+        await self._git("checkout", "-B", name, f"origin/{name}")
+
     async def commit_all(self, message: str) -> None:
         await self._git("add", "-A")
         # -c define identidade do bot; commit vazio é tolerado (ignora código de saída)

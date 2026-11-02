@@ -141,6 +141,29 @@ class GithubAppClient:
             if owns:
                 await client.aclose()
 
+    async def get_pr_head(self, repo: str, number: int) -> Result[str, Error]:
+        """Branch head do PR — p/ CORRIGIR um PR já aberto no seu próprio branch (B)."""
+        owns = self._client is None
+        client = (
+            self._client if self._client is not None else httpx.AsyncClient(timeout=self._timeout)
+        )
+        try:
+            token = await self._installation_token(client)
+            resp = await client.get(
+                f"{self._api}/repos/{repo}/pulls/{number}",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                },
+            )
+            resp.raise_for_status()
+            return Ok(str(((resp.json() or {}).get("head") or {}).get("ref", "")))
+        except httpx.HTTPError as exc:
+            return Err(Error("github", f"get_pr_head {repo}#{number}: {exc}"))
+        finally:
+            if owns:
+                await client.aclose()
+
     async def comment_pr(self, repo: str, number: int, body: str) -> Result[None, Error]:
         owns = self._client is None
         client = (

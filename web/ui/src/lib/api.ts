@@ -62,6 +62,10 @@ export const reviewPr = (n: number) =>
     `/prs/${n}/review`,
     { method: 'POST' },
   )
+// Corrigir um PR já aberto conforme o review (B): enfileira run agent="correct" que corrige no
+// branch do PR (checkout → review → corrige → force-push → re-review). Acompanhe em Execuções.
+export const correctPr = (n: number) =>
+  api<{ run_id: number }>(`/prs/${n}/correct`, { method: 'POST' })
 export const listInteractions = () => api<{ interactions: Interaction[] }>('/interactions')
 export const answerInteraction = (id: number, answer: string) =>
   api<{ id: number; accepted: boolean; status: string }>(`/interactions/${id}/answer`, {

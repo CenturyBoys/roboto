@@ -143,7 +143,7 @@ async def _run_daemon(config: Config, store: Store) -> None:
         tasks.append(run_periodic(_run_stub, 5.0, stop))
     elif config.engine == "claude_code":
         from roboto.app.git_ops import SubprocessGit
-        from roboto.app.pr_cycle import process_pr_run_tick
+        from roboto.app.pr_cycle import process_correct_tick, process_pr_run_tick
         from roboto.app.scope import process_scope_tick
         from roboto.engines.claude_code import ClaudeCodeEngine
 
@@ -225,9 +225,18 @@ async def _run_daemon(config: Config, store: Store) -> None:
                 if isinstance(merged, Ok) and merged.value:
                     await store.set_state(r.id, RunState.DONE, _now())
 
+        async def _run_correct() -> None:
+            # B: corrige um PR já aberto conforme o review (no branch do PR). reviewer≠autor.
+            await process_correct_tick(
+                claude, adapters.gateway, adapters.github, store,
+                tenant=config.tenant, workdir_root="/work", reviewer="review",
+                git_factory=lambda ws: SubprocessGit(ws), now=_now, base=config.base_branch,
+            )
+
         tasks.append(run_periodic(_run_claude, 5.0, stop))
         tasks.append(run_periodic(_run_scope, 5.0, stop))
         tasks.append(run_periodic(_run_refine, 5.0, stop))
+        tasks.append(run_periodic(_run_correct, 5.0, stop))
         tasks.append(run_periodic(_close_merged, 15.0, stop))
 
     await asyncio.gather(*tasks)

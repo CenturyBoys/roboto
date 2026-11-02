@@ -33,6 +33,7 @@ _COST_PER_MTOK = 0.4  # custo aprox. Qwen/OpenRouter ($/milhão de tokens) — m
 
 class GitOps(Protocol):
     async def prepare_branch(self, name: str) -> None: ...
+    async def checkout_remote(self, name: str) -> None: ...  # entra na branch REMOTA do PR (B)
     async def commit_all(self, message: str) -> None: ...
     async def push(self, name: str) -> None: ...
     # mensagens dos commits da branch vs base — vira a "história da implementação" no corpo do PR
@@ -41,6 +42,9 @@ class GitOps(Protocol):
 
 class GithubPrOps(Protocol):
     async def get_issue(self, repo: str, number: int) -> Result[tuple[str, str], Error]: ...
+
+    # branch head do PR — p/ corrigir um PR já aberto (B)
+    async def get_pr_head(self, repo: str, number: int) -> Result[str, Error]: ...
 
     async def find_open_pr(self, repo: str, head_branch: str) -> Result[int | None, Error]: ...
 
@@ -343,4 +347,109 @@ async def process_pr_run_tick(
         await store.enqueue_effect(
             run.tenant, run.id, "telegram_notify",
             {"chat_id": run.origin_chat_id, "text": txt}, f"done:{run.id}", moment,
+        )
+
+
+def _correct_prompt(repo: str, pr_number: int, workdir: str, issues: list[str]) -> str:
+    return (
+        f"Corrija os APONTAMENTOS do review no PR #{pr_number} do repo {repo} (cwd {workdir}). "
+        "Você está NA branch do PR, com o código já implementado — faça SÓ os ajustes abaixo, sem "
+        "reimplementar nem sair do escopo. Rode os checks do repo e corrija até passarem ANTES de "
+        "concluir. Pontos do review:\n- " + "\n- ".join(issues)
+    )
+
+
+async def process_correct_tick(
+    engine: CodingEngine,
+    gateway: ModelGateway,
+    github: GithubPrOps,
+    store: Store,
+    *,
+    tenant: str,
+    workdir_root: str,
+    reviewer: str,
+    git_factory: Callable[[str], GitOps],
+    now: Callable[[], datetime],
+    base: str = "main",
+    lease_seconds: int = 3600,
+) -> None:
+    """B — corrige um PR JÁ ABERTO conforme o review, no PRÓPRIO branch do PR. `run.issue_id`
+    carrega o NÚMERO do PR. Fluxo: checkout da branch do PR (contexto do PR, não da base) → review
+    independente (revisor≠autor) → se reprova, o motor corrige os apontamentos → commit → force-push
+    (atualiza o MESMO PR) → re-review → comenta. Merge = gate humano (D7)."""
+    moment = now()
+    run = await store.claim_next_queued(tenant, moment, lease_seconds, agent="correct")
+    if run is None:
+        return
+    if not run.issue_id.isdigit():
+        await store.set_state(run.id, RunState.FAILED, moment)
+        return
+    pr_number = int(run.issue_id)
+    workdir = f"{workdir_root}/{run.repo}"
+    git = git_factory(workdir)
+
+    async def _review_now() -> ReviewVerdict:
+        diff = await github.get_pr_diff(run.repo, pr_number)
+        pr = PullRequest(
+            number=pr_number,
+            author=str(engine.engine),
+            title=f"PR #{pr_number}",
+            diff=diff.value if isinstance(diff, Ok) else "",
+        )
+        v = await review_pr(pr, gateway, reviewer=reviewer)
+        if isinstance(v, Ok):
+            return v.value
+        return ReviewVerdict(approved=False, issues=["review falhou"])
+
+    try:
+        head = await github.get_pr_head(run.repo, pr_number)
+        if not isinstance(head, Ok) or not head.value:
+            raise RuntimeError(f"PR #{pr_number} sem branch head")
+        branch = head.value
+        await git.checkout_remote(branch)  # estado do PR na árvore ANTES de editar (B: seguro)
+
+        verdict = await _review_now()
+        if verdict.approved:
+            await github.comment_pr(
+                run.repo, pr_number, "✅ Correção: nada a ajustar — o review já está aprovado."
+            )
+            await store.append_session_event(
+                run.tenant, run.id, "message", moment, text="✅ review aprovado — nada a corrigir"
+            )
+            await store.set_state(run.id, RunState.DONE, moment)
+            return
+
+        # motor corrige NA branch do PR (código já implementado) com os apontamentos do review
+        prompt = _correct_prompt(run.repo, pr_number, workdir, verdict.issues)
+        await engine.start(
+            RunSpec(tenant=run.tenant, repo=run.repo, workdir=workdir, prompt=prompt)
+        )
+        async for event in guarded_events(engine.events()):  # feed ao vivo no cockpit
+            if event.kind is EngineEventKind.MESSAGE and event.text:
+                await store.append_session_event(
+                    run.tenant, run.id, "message", moment, text=event.text
+                )
+            elif event.kind is EngineEventKind.TOOL_CALL:
+                await store.append_session_event(
+                    run.tenant, run.id, "tool_call", moment, tool=event.tool
+                )
+
+        await git.commit_all(f"fix(review): corrige apontamentos do review (PR #{pr_number})")
+        await git.push(branch)  # force-push atualiza o MESMO PR
+
+        again = await _review_now()
+        body = (
+            "✅ Correção aplicada — review re-aprovado."
+            if again.approved
+            else "🔁 Correção aplicada; ainda restam pontos:\n- " + "\n- ".join(again.issues)
+        )
+        await github.comment_pr(
+            run.repo, pr_number, body + "\n\n_(correção do fleet, reviewer≠autor)_"
+        )
+        final = RunState.VERIFYING if again.approved else RunState.FAILED
+        await store.set_state(run.id, final, moment)
+    except Exception as exc:  # noqa: BLE001 — falha não pode deixar o run preso em RUNNING
+        await store.set_state(run.id, RunState.FAILED, moment)
+        await store.append_session_event(
+            run.tenant, run.id, "message", moment, text=f"⚠️ correção falhou: {exc}"
         )

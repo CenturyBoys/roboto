@@ -606,6 +606,39 @@ def console_routes(
         run, _ = await store.insert_run_if_absent(ev, when)
         return JSONResponse({"run_id": run.id})
 
+    async def correct_pr_action(request: Request) -> JSONResponse:
+        # B: corrigir um PR JÁ ABERTO conforme o review. Enfileira um run `agent='correct'` que o
+        # `process_correct_tick` pega (checkout da branch do PR → review → corrige → force-push →
+        # re-review). `issue_id` carrega o NÚMERO do PR.
+        if _unauthorized(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        repo = request.query_params.get("repo") or default_repo
+        number = int(request.path_params["number"])
+        if not repo:
+            return JSONResponse({"error": "repo não configurado"}, status_code=409)
+        active_states = {RunState.QUEUED, RunState.RUNNING, RunState.VERIFYING}
+        for r in await store.list_runs(tenant, 100):
+            if (
+                r.agent == "correct"
+                and r.repo == repo
+                and r.issue_id == str(number)
+                and r.state in active_states
+            ):
+                return JSONResponse(
+                    {"error": "já existe correção ativa para este PR", "run_id": r.id},
+                    status_code=409,
+                )
+        when = datetime.now(UTC)
+        ev = GithubEvent(
+            tenant=tenant,
+            repo=repo,
+            issue_id=str(number),
+            agent="correct",
+            idempotency_key=f"correct:{repo}:{number}:{when.isoformat()}",
+        )
+        run, _ = await store.insert_run_if_absent(ev, when)
+        return JSONResponse({"run_id": run.id})
+
     async def proposal(request: Request) -> JSONResponse:
         # Último texto do motor nesta execução = o rascunho proposto (pré-preenche o "aplicar").
         if _unauthorized(request):
@@ -681,6 +714,7 @@ def console_routes(
         Route("/issues/{number:int}/refine-engine", refine_with_engine, methods=["POST"]),
         Route("/issues/{number:int}/implement", implement_with_engine, methods=["POST"]),
         Route("/prs/{number:int}/review", review_pr_action, methods=["POST"]),
+        Route("/prs/{number:int}/correct", correct_pr_action, methods=["POST"]),
         Route("/executions/{run_id:int}/proposal", proposal),
         Route("/executions/{run_id:int}/apply", apply_proposal, methods=["POST"]),
         Route("/interactions", pending_interactions),
