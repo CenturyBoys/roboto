@@ -121,6 +121,24 @@ async def _run_daemon(config: Config, store: Store) -> None:
             engine_scope=(config.engine == "claude_code"),
         )
 
+    # preflight (K): valida pré-condições de infra antes de trabalhar — loga claro se faltar algo.
+    import shutil
+
+    from roboto.app.preflight import check as preflight_check
+
+    _free_mb = shutil.disk_usage("/").free // (1024 * 1024)
+    _pf = preflight_check(
+        env=os.environ,
+        required_keys=("OPENROUTER_API_KEY",),
+        workdir=f"/work/{config.default_repo}",
+        min_disk_mb=500,
+        disk_free_mb=_free_mb,
+    )
+    for _c in _pf.checks:
+        print(f"[preflight] {'✓' if _c.ok else '✗'} {_c.name}: {_c.detail}")
+    if not _pf.ok:
+        print(f"[preflight] ⚠️ {len(_pf.failures)} pré-condição(ões) falhou(ram) — pode flailar.")
+
     import uvicorn  # import tardio: só o daemon precisa
 
     server = uvicorn.Server(uvicorn.Config(app, host="0.0.0.0", port=_PORT, log_level="info"))
