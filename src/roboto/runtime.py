@@ -167,9 +167,14 @@ async def _run_daemon(config: Config, store: Store) -> None:
         # max_turns=60: refino é LER+PROPOR; o PROMPT força parar em ~10 consultas, mas issues de
         # "discovery" puxam o modelo a explorar — teto um pouco maior como rede, e o prompt obriga
         # a terminar com a proposta (senão batia no teto em 0 mensagens e falhava).
+        # least privilege (H): o refino é read-only (LÊ e PROPÕE a issue) — negar mutação/shell
+        # fecha a brecha por política determinística, não só pelo prompt "read-only por prompt".
+        from roboto.app.tool_policy import disallowed_tools_for
+
         refiner_engine = ClaudeCodeEngine(
             model=config.refine_model or engine_model,  # REFINE_MODEL: raciocínio forte no refino
             permission_mode="bypassPermissions",
+            disallowed_tools=disallowed_tools_for("refine"),
             mcp_servers=mcp,
             max_turns=60,
         )

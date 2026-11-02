@@ -15,6 +15,42 @@ from pathlib import Path
 _ENV_STATUS = Path("/tmp/env-status")  # gravado pelo bootstrap: "✅ PRONTO ..." / "❌ FALHOU ..."
 _SCRIPT_KEYS = ("test", "lint", "typecheck", "build", "dev")
 
+# AGENTS.md é o padrão de fato (E); CLAUDE.md costuma só apontar pra ele — por isso a ordem.
+_CONVENTION_FILES = ("AGENTS.md", "CLAUDE.md")
+# teto de token (F): o AGENTS.md do repo-alvo entra no prompt de impl; o alvo não é nosso, então
+# capamos pra não estourar o orçamento. ~6k chars ≈ 1.5k tokens.
+_CONVENTIONS_MAX_CHARS = 6000
+
+
+def read_agents_conventions(workdir: str, *, max_chars: int = _CONVENTIONS_MAX_CHARS) -> str:
+    """Lê o AGENTS.md (ou CLAUDE.md) do repo-alvo e devolve um bloco pronto pra injetar no prompt.
+
+    DETERMINÍSTICO (E, determinismo primeiro): o harness injeta as convenções do repo-alvo em vez de
+    mandar o motor "ler o AGENTS.md você mesmo" — que gasta token (F) e pode ser ignorado. Capado a
+    `max_chars` (orçamento de token); se truncar, aponta pro arquivo completo. Vazio se não existir.
+    """
+    root = Path(workdir)
+    for name in _CONVENTION_FILES:
+        path = root / name
+        try:
+            content = path.read_text(errors="replace").strip()
+        except OSError:
+            continue
+        if not content:
+            continue
+        truncated = len(content) > max_chars
+        if truncated:
+            content = content[:max_chars].rstrip()
+        header = f"CONVENÇÕES DO REPO-ALVO ({name} — siga à risca):"
+        footer = (
+            f"\n[… truncado em {max_chars} de {len(path.read_text(errors='replace'))} chars — "
+            f"o {name} completo está no cwd]"
+            if truncated
+            else ""
+        )
+        return f"{header}\n{content}{footer}"
+    return ""
+
 
 def build_repo_profile(workdir: str, *, env_status_path: Path = _ENV_STATUS) -> str:
     """Bloco de texto com como operar o repo. Vazio se não for projeto JS (nada a dizer)."""

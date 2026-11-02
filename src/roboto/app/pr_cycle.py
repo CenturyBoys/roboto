@@ -25,7 +25,7 @@ from roboto.agents.review import (
 from roboto.app.comment_poll import BOT_MARKER
 from roboto.app.correction import CycleResult, correction_cycle
 from roboto.app.engine_loop import guarded_events
-from roboto.app.repo_profile import build_repo_profile
+from roboto.app.repo_profile import build_repo_profile, read_agents_conventions
 from roboto.app.task_class import TaskType, classificar_task
 from roboto.app.tiering import classificar_tier
 from roboto.app.verify import VerifyResult, arquivos_ts, secao_verify, verificar
@@ -155,9 +155,13 @@ async def run_pr_cycle(
     # os checks como um dev, sem flailar em "como rodar teste" / sem gambiarra de .cjs.
     profile = build_repo_profile(workdir)
     profile_block = f"\n{profile}\n" if profile else ""
+    # convenções do repo-alvo (E, determinismo primeiro): o harness LÊ o AGENTS.md e injeta — não
+    # manda o motor "ler sozinho" (gasta token F e pode ignorar). Capado pelo orçamento de token.
+    conventions = read_agents_conventions(workdir)
+    conventions_block = f"\n{conventions}\n" if conventions else ""
     base_prompt = (
         f"Implemente a issue {run.issue_id} no repo {run.repo} (cwd {workdir}).{contexto}"
-        f"{profile_block}\n"
+        f"{profile_block}{conventions_block}\n"
         "ESCOPO MÍNIMO: entregue APENAS o que os Critérios de aceite da issue pedem — nada além. "
         "NÃO crie documentos/arquivos extras (ex.: breakdown ou 'update' de épico), NÃO edite o "
         "épico nem outras issues, NÃO toque em código não relacionado, NÃO commite lockfile/deps "
