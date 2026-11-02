@@ -11,7 +11,7 @@ from roboto.github.app import IssueRef
 from roboto.llm.port import ChatMessage, Completion, Tier
 from roboto.orchestrator.model import Error, GithubEvent, RunState
 from roboto.orchestrator.store import InMemoryStore
-from roboto.result import Ok, Result
+from roboto.result import Err, Ok, Result
 
 _T0 = datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -33,7 +33,8 @@ class _FakeGit:
         self.commits: list[str] = []
         self.pushes: list[str] = []
         self.checked_out: list[str] = []
-        self.diff_text = ""  # secret-scan (H): default sem segredo; teste de vazamento injeta aqui
+        # diff NÃO-vazio por default (motor editou algo); #144 testa o caso vazio setando "".
+        self.diff_text = "diff --git a/x.py b/x.py\n+edit"
         self.reverts: list[tuple[str, str, str]] = []  # revert (H): (base, source, revert_branch)
         self.revert_ok = True  # o teste de conflito seta False
 
@@ -76,6 +77,8 @@ class _FakeGithub:
         custom_body: str | None = None,
     ) -> None:
         self.opened = 0
+        self.open_fails = False  # #144: simula open_pr sem permissão (PAT sem PR:write)
+        self.assignees: list[tuple[int, str]] = []  # #150: (issue_number, login)
         self.comments: list[str] = []
         self.issue_states: list[tuple[int, str]] = []  # revert (H): (issue_number, state)
         self.reviews: list[str] = []  # corpos de submit_review (review estruturado, Trilha D)
@@ -95,8 +98,14 @@ class _FakeGithub:
     async def open_pr(
         self, repo: str, *, title: str, body: str, head: str, base: str = "main"
     ) -> Result[IssueRef, Error]:
+        if self.open_fails:
+            return Err(Error("github", "403 Pull requests: write ausente"))
         self.opened += 1
         return Ok(IssueRef(repo=repo, number=42, url="https://github.com/acme/app/pull/42"))
+
+    async def add_assignee(self, repo: str, number: int, login: str) -> Result[None, Error]:
+        self.assignees.append((number, login))
+        return Ok(None)
 
     async def get_pr_head(self, repo: str, number: int) -> Result[str, Error]:
         return Ok(f"feature/pr-{number}")
@@ -238,6 +247,55 @@ async def test_process_pr_run_tick_fails_and_warns_on_secret_leak() -> None:
     assert github.opened == 0  # PR não aberto
     events = await store.session_events(run.id, 0, 50)
     assert any("secret-scan" in e.text for e in events)  # avisou no feed
+
+
+async def test_self_assign_on_claim() -> None:
+    # #150: ao pegar o run de impl, o fleet se atribui como assignee da issue
+    store = InMemoryStore()
+    await _run(store)
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    github = _FakeGithub()
+    await process_pr_run_tick(
+        engine, _SeqGateway([""]), github, store,  # type: ignore[arg-type]
+        tenant="acme", workdir_root="/work", reviewer="review",
+        git_factory=lambda ws: _FakeGit(), now=lambda: _T0, self_assign_login="potter-bot",
+    )
+    assert (7, "potter-bot") in github.assignees  # issue 7 atribuída ao fleet
+
+
+async def test_open_pr_failure_fails_run_not_review() -> None:
+    # #144: open_pr falho NÃO vira PR nº 0 silencioso — o run FALHA, sem review sobre diff vazio
+    from roboto.orchestrator.model import RunState
+
+    store = InMemoryStore()
+    run = await _run(store)  # type: ignore[assignment]
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    github = _FakeGithub()
+    github.open_fails = True
+    await process_pr_run_tick(
+        engine, _SeqGateway([""]), github, store,  # type: ignore[arg-type]
+        tenant="acme", workdir_root="/work", reviewer="review",
+        git_factory=lambda ws: _FakeGit(), now=lambda: _T0,
+    )
+    assert store._runs[run.id].state is RunState.FAILED  # type: ignore[attr-defined]
+    assert github.reviews == []  # não revisou nada
+
+
+async def test_empty_diff_fails_run() -> None:
+    # #144: diff vazio (motor não editou) → run falha explicitamente
+    from roboto.orchestrator.model import RunState
+
+    store = InMemoryStore()
+    run = await _run(store)  # type: ignore[assignment]
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    git = _FakeGit()
+    git.diff_text = ""  # motor não editou nada
+    await process_pr_run_tick(
+        engine, _SeqGateway([""]), _FakeGithub(), store,  # type: ignore[arg-type]
+        tenant="acme", workdir_root="/work", reviewer="review",
+        git_factory=lambda ws: git, now=lambda: _T0,
+    )
+    assert store._runs[run.id].state is RunState.FAILED  # type: ignore[attr-defined]
 
 
 async def test_implement_prompt_injects_recalled_memory() -> None:
