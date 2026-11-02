@@ -4,11 +4,17 @@ from __future__ import annotations
 
 from roboto.agents.refiner import IssueDraft
 from roboto.agents.review import (
+    Finding,
     IssueReadiness,
     PullRequest,
+    aprovado_por_findings,
     check_issue_readiness,
+    formatar_finding,
+    montar_review,
+    resumo_review,
     review_issue_semantics,
     review_pr,
+    review_pr_findings,
     validar_issue_semantica,
 )
 from roboto.llm.port import ChatMessage, Completion, Tier
@@ -181,3 +187,63 @@ async def test_validar_issue_escala_em_baixa() -> None:
     assert isinstance(r, Ok)
     assert gw.calls == 2  # escalou
     assert r.value.bem_definida is True and r.value.confianca == "alta"
+
+
+# ---- review estruturado por finding (Trilha D) ----
+_FIND_TXT = (
+    "FINDING\nseveridade: bloqueador\narquivo: src/a.py\nlinha: 42\nconfianca: alta\n"
+    "titulo: race na escrita\nevidencia: write sem lock\nrecomendacao: usar lock\nEND\n"
+    "FINDING\nseveridade: menor\narquivo: -\nlinha: 0\nconfianca: media\n"
+    "titulo: nome ruim\nevidencia: x\nrecomendacao: renomear\nEND"
+)
+
+
+async def test_review_pr_findings_parseia() -> None:
+    gw = StubModelGateway(reply=_FIND_TXT)
+    r = await review_pr_findings(_pr(author="alice"), gw, reviewer="bob")
+    assert isinstance(r, Ok)
+    fs = r.value
+    assert len(fs) == 2
+    assert fs[0].severidade == "bloqueador" and fs[0].arquivo == "src/a.py" and fs[0].linha == 42
+    assert fs[1].severidade == "menor" and fs[1].linha == 0
+
+
+def test_veredito_por_findings() -> None:
+    blk = Finding("x", "bloqueador", "-", 0, "alta")
+    menor = Finding("y", "menor", "-", 0, "media")
+    assert aprovado_por_findings([menor]) is True
+    assert aprovado_por_findings([menor, blk]) is False
+    assert aprovado_por_findings([]) is True
+
+
+async def test_review_findings_bloqueia_self_review() -> None:
+    gw = StubModelGateway(reply="irrelevante")
+    r = await review_pr_findings(_pr(author="alice"), gw, reviewer="alice")
+    assert isinstance(r, Ok)
+    assert len(r.value) == 1 and r.value[0].severidade == "bloqueador"
+    assert aprovado_por_findings(r.value) is False
+
+
+def test_formatar_finding_enxuto_com_details() -> None:
+    f = Finding(
+        "race", "bloqueador", "a.py", 10, "alta", evidencia="write sem lock", recomendacao="lock"
+    )
+    md = formatar_finding(f)
+    assert "race" in md and "lock" in md
+    assert "<details>" in md and "write sem lock" in md  # evidência COLAPSADA, não à vista
+
+
+def test_resumo_review() -> None:
+    assert "sem apontamentos" in resumo_review([])
+    blk = Finding("bug", "bloqueador", "a.py", 3, "alta")
+    s = resumo_review([blk])
+    assert s.startswith("🔁") and "bug" in s and "a.py" in s
+
+
+def test_montar_review_separa_inline_e_resumo() -> None:
+    com_loc = Finding("bug", "bloqueador", "a.py", 5, "alta", evidencia="x", recomendacao="y")
+    sem_loc = Finding("design ruim", "menor", "-", 0, "media")
+    inline, body, aprovado = montar_review([com_loc, sem_loc])
+    assert inline == [("a.py", 5, formatar_finding(com_loc))]  # com localização -> inline
+    assert "design ruim" in body  # sem localização -> entra no resumo (não some)
+    assert aprovado is False  # há bloqueador

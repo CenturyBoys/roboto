@@ -59,6 +59,7 @@ nav:
   - Trilhas (como funciona):
       - A — Contratos de trabalho: trilha-a-contratos.md
       - B — Orquestração e gatilhos: trilha-b-orquestracao.md
+      - D — Review de PR: trilha-d-review.md
   - Fluxos:
       - Visão geral: fluxos/README.md
       - Refinamento: fluxos/01-refinamento.md

@@ -187,6 +187,38 @@ class GithubAppClient:
             if owns:
                 await client.aclose()
 
+    async def submit_review(
+        self, repo: str, number: int, body: str, comments: list[tuple[str, int, str]]
+    ) -> Result[None, Error]:
+        """Posta um PR review (event=COMMENT, não bloqueia — merge é humano) com comentários INLINE
+        por (path, line) + um corpo-resumo. Trilha D (review estruturado). Linhas fora do diff que o
+        GitHub recusar caem no 422 — tratamos como falha suave no chamador."""
+        owns = self._client is None
+        client = (
+            self._client if self._client is not None else httpx.AsyncClient(timeout=self._timeout)
+        )
+        inline = [
+            {"path": path, "line": line, "side": "RIGHT", "body": cbody}
+            for (path, line, cbody) in comments
+        ]
+        try:
+            token = await self._installation_token(client)
+            resp = await client.post(
+                f"{self._api}/repos/{repo}/pulls/{number}/reviews",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                },
+                json={"event": "COMMENT", "body": body, "comments": inline},
+            )
+            resp.raise_for_status()
+            return Ok(None)
+        except httpx.HTTPError as exc:
+            return Err(Error("github", f"submit_review {repo}#{number}: {exc}"))
+        finally:
+            if owns:
+                await client.aclose()
+
     async def list_recent_comments(
         self, repo: str
     ) -> Result[list[tuple[int, int, str]], Error]:

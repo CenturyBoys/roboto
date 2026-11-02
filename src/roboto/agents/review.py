@@ -7,6 +7,7 @@ semântico da issue (`review_issue_semantics`, tier judge); (3) review de PR (`r
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 from roboto.agents.refiner import IssueDraft
@@ -217,3 +218,158 @@ async def review_pr(
     if isinstance(result, Err):
         return Err(result.error)
     return Ok(_parse_verdict(result.value.text))
+
+
+# ---- Review ESTRUTURADO por finding (Trilha D) ----
+# Estratégia plugável: "single" (juiz único, bem-feito, default) hoje; "multi" (multi-dimensão +
+# verificação) é um hook pra ligar depois sem mexer nos chamadores (ROBOTO_REVIEW_STRATEGY).
+
+REVIEW_PR_STRUCT_SYSTEM = (
+    "Você é revisor de PR. Foque em LÓGICA e DESIGN — NÃO reflague lint/type/test/build/secret "
+    "(o CI já pega isso; é desperdício). Revisor ≠ autor. Para CADA problema REAL, emita um bloco "
+    "EXATAMENTE neste formato (campos nesta ordem):\n"
+    "FINDING\n"
+    "severidade: bloqueador|menor\n"
+    "arquivo: <path ou ->\n"
+    "linha: <número ou 0>\n"
+    "confianca: alta|media|baixa\n"
+    "titulo: <frase curta>\n"
+    "evidencia: <1-2 linhas; cite só o trecho MÍNIMO, nunca cole o arquivo>\n"
+    "recomendacao: <o que fazer, objetivo>\n"
+    "END\n"
+    "Sem problema real = NÃO emita bloco nenhum. Qualquer BLOQUEADOR não-tratado reprova o PR."
+)
+
+
+@dataclass(frozen=True)
+class Finding:
+    titulo: str
+    severidade: str  # bloqueador | menor
+    arquivo: str
+    linha: int  # 0 = sem linha específica
+    confianca: str  # alta | media | baixa
+    evidencia: str = ""
+    recomendacao: str = ""
+
+
+def _parse_findings(text: str) -> list[Finding]:
+    """Determinístico: extrai os blocos FINDING…END da saída do juiz."""
+    out: list[Finding] = []
+    for bloco in re.findall(r"FINDING\s*(.*?)\s*END", text, re.DOTALL | re.IGNORECASE):
+        campos: dict[str, str] = {}
+        for line in bloco.splitlines():
+            if ":" in line:
+                k, _, v = line.partition(":")
+                campos[k.strip().lower()] = v.strip()
+        titulo = campos.get("titulo", "").strip()
+        if not titulo:
+            continue
+        sev = "bloqueador" if "bloq" in campos.get("severidade", "").lower() else "menor"
+        low_conf = campos.get("confianca", "").lower()
+        conf = next((c for c in ("alta", "baixa", "media", "média") if c in low_conf), "media")
+        try:
+            linha = int(campos.get("linha", "0") or 0)
+        except ValueError:
+            linha = 0
+        out.append(
+            Finding(
+                titulo=titulo,
+                severidade=sev,
+                arquivo=campos.get("arquivo", "-").strip() or "-",
+                linha=linha,
+                confianca="media" if conf == "média" else conf,
+                evidencia=campos.get("evidencia", "").strip(),
+                recomendacao=campos.get("recomendacao", "").strip(),
+            )
+        )
+    return out
+
+
+def aprovado_por_findings(findings: list[Finding]) -> bool:
+    """Veredito determinístico: aprovado só se NÃO há bloqueador."""
+    return not any(f.severidade == "bloqueador" for f in findings)
+
+
+async def review_pr_findings(
+    pr: PullRequest, gateway: ModelGateway, *, reviewer: str,
+    verify_findings: list[str] | None = None,
+) -> Result[list[Finding], Error]:
+    """Review ESTRUTURADO (estratégia 'single'): findings tipados. reviewer==autor bloqueia."""
+    if reviewer == pr.author:
+        bloq = Finding(
+            "revisão exige um par diferente (reviewer≠autor)", "bloqueador", "-", 0, "alta"
+        )
+        return Ok([bloq])
+    bloco_verify = ""
+    if verify_findings:
+        itens = "\n".join(f"- {e}" for e in verify_findings[:30])
+        bloco_verify = (
+            "\n\n## Verify (code-intel/tsgo) — POSSÍVEIS erros de tipo (avalie contra o diff; se "
+            f"real, vire finding; se falso positivo, ignore):\n{itens}\n"
+        )
+    content = f"PR #{pr.number} (autor={pr.author}): {pr.title}\n\n{pr.diff}{bloco_verify}"
+    messages = [
+        ChatMessage(role="system", content=REVIEW_PR_STRUCT_SYSTEM),
+        ChatMessage(role="user", content=content),
+    ]
+    result = await gateway.complete(messages, Tier.JUDGE)
+    if isinstance(result, Err):
+        return Err(result.error)
+    return Ok(_parse_findings(result.value.text))
+
+
+def formatar_finding(f: Finding) -> str:
+    """Comentário INLINE enxuto e legível (regra do dono): título + recomendação à vista; a
+    evidência (trecho) vai COLAPSADA em <details> — nada de parede de código no GitHub."""
+    emoji = "🛑" if f.severidade == "bloqueador" else "🔸"
+    corpo = f"{emoji} **[{f.severidade}]** {f.titulo} · _confiança {f.confianca}_"
+    if f.recomendacao:
+        corpo += f"\n\n{f.recomendacao}"
+    if f.evidencia:
+        det = f"<details><summary>evidência</summary>\n\n```\n{f.evidencia}\n```\n\n</details>"
+        corpo += f"\n\n{det}"
+    return corpo
+
+
+def resumo_review(findings: list[Finding]) -> str:
+    """Comentário-resumo curto (lista escaneável; detalhe fica nos inline)."""
+    if not findings:
+        return "✅ Review do fleet: sem apontamentos de lógica/design. Merge = gate humano."
+    blk = [f for f in findings if f.severidade == "bloqueador"]
+    cab = (
+        f"{'🔁' if blk else '✅'} Review do fleet — {len(blk)} bloqueador(es), "
+        f"{len(findings) - len(blk)} menor(es):"
+    )
+    linhas = [
+        f"- {'🛑' if f.severidade == 'bloqueador' else '🔸'} {f.titulo}"
+        f" (`{f.arquivo}`{':' + str(f.linha) if f.linha else ''})"
+        for f in findings
+    ]
+    return cab + "\n" + "\n".join(linhas) + "\n\n_(parecer do fleet, reviewer≠autor)_"
+
+
+def montar_review(findings: list[Finding]) -> tuple[list[tuple[str, int, str]], str, bool]:
+    """Separa os findings em comentários INLINE (com arquivo+linha) e o corpo-resumo; devolve
+    (inline, body, aprovado). Finding sem localização entra no corpo (não some)."""
+    inline: list[tuple[str, int, str]] = []
+    sem_loc: list[Finding] = []
+    for f in findings:
+        if f.arquivo and f.arquivo != "-" and f.linha > 0:
+            inline.append((f.arquivo, f.linha, formatar_finding(f)))
+        else:
+            sem_loc.append(f)
+    body = resumo_review(findings)
+    if sem_loc:
+        corpos = "\n\n".join(formatar_finding(f) for f in sem_loc)
+        body += f"\n\n**Sem linha específica:**\n\n{corpos}"
+    return inline, body, aprovado_por_findings(findings)
+
+
+async def revisar_pr(
+    pr: PullRequest, gateway: ModelGateway, *, reviewer: str,
+    verify_findings: list[str] | None = None, strategy: str = "single",
+) -> Result[list[Finding], Error]:
+    """Dispatcher de ESTRATÉGIA de review (plugável, ROBOTO_REVIEW_STRATEGY). 'single' = juiz único
+    estruturado (hoje). 'multi' (multi-dimensão+verificação) = hook futuro; por ora, single."""
+    _ = strategy  # 'multi' ainda não implementado; o dono liga quando existir
+    return await review_pr_findings(pr, gateway, reviewer=reviewer, verify_findings=verify_findings)
