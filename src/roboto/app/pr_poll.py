@@ -56,9 +56,16 @@ def decide_pr(
     return PrDecision(number, head_sha, False, prev)  # estável, mas ainda dentro do debounce
 
 
+def is_bot_author(login: str) -> bool:
+    """`True` se o autor do PR é um bot (renovate/dependabot/github-actions etc.). O polling PULA
+    esses — o fleet não deve revisar/corrigir PR de bot de dependência (gasta token à toa)."""
+    low = login.lower()
+    return low.endswith("[bot]") or "renovate" in low or "dependabot" in low
+
+
 class OpenPrLister(Protocol):
-    # (número, head_sha) dos PRs abertos — adapter de plataforma (GitHub hoje, agnóstico depois)
-    async def list_open_prs(self, repo: str) -> Result[list[tuple[int, str]], Error]: ...
+    # (número, head_sha, autor) dos PRs abertos — adapter de plataforma (GitHub hoje)
+    async def list_open_prs(self, repo: str) -> Result[list[tuple[int, str, str]], Error]: ...
 
     # True se algum check falhou no commit (check_suite failed, #166) — antecipa o disparo
     async def checks_failed(self, repo: str, sha: str) -> Result[bool, Error]: ...
@@ -82,7 +89,9 @@ async def process_pr_poll_tick(
         prs = await github.list_open_prs(repo)
         if not isinstance(prs, Ok):
             continue
-        for number, head_sha in prs.value:
+        for number, head_sha, author in prs.value:
+            if is_bot_author(author):
+                continue  # PR de bot de dependência (renovate/dependabot) — fleet não revisa
             prev = await store.get_pr_state(tenant, repo, number)
             # só checa CI quando é candidato (estável e ainda não avaliado neste sha) — evita bater
             # na API à toa. CI falhou -> antecipa o disparo (não espera o debounce).
