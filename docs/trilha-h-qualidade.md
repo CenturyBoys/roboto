@@ -4,8 +4,8 @@
 > [`research/H-qualidade-seguranca-recuperacao.md`](https://github.com/CenturyBoys/roboto/blob/main/research/H-qualidade-seguranca-recuperacao.md).
 > **Princípio unificador:** o output do modelo é uma **PROPOSTA, não um comando** — cada ação passa
 > por uma camada determinística de política/validação antes de executar.
-> **Status:** fundação no `main` (gates humanos, recuperação, least-privilege, observabilidade).
-> Secret-scan, git-revert e evals ficam como follow-up.
+> **Status:** fundação no `main` (gates humanos, least-privilege, **secret-scan**, recuperação,
+> observabilidade). git-revert e evals ficam como follow-up.
 
 ## 1. Gates humanos — ações irreversíveis não são automáticas
 
@@ -32,29 +32,45 @@ O output é proposta → o agente recebe **só as ferramentas que a task exige**
   lista de negados — least privilege sem quebrar a economia de token (trilha F).
 - Fecha a brecha por **política**, não só pelo prompt "read-only por prompt" (que o modelo pode ignorar).
 
-## 3. Recuperação
+## 3. Secret-scan do diff antes do push (novo)
+
+Gate determinístico de segurança: antes de **empurrar** um PR, o harness varre as linhas
+**adicionadas** do diff atrás de credenciais. Achou → **bloqueia o push** (o segredo nem sai da
+máquina), o run vai a `FAILED` e o motivo (redigido) aparece no feed pro humano.
+
+| Peça | O que faz | Onde |
+|---|---|---|
+| scanner | formatos conhecidos (chave privada, AWS, GitHub, Slack, Google, Stripe, sk-*) nas linhas `+` | `app/secret_scan.scan_diff` |
+| gate | varre o diff local nos **dois** pontos de push (impl e correção) e aborta se achar | `app/pr_cycle._guard_secrets` |
+
+- **Alta precisão de propósito:** bloquear tem custo (trava PR legítimo), então só **formatos
+  canônicos** de credencial — nada de heurística de entropia aqui (fica como follow-up). Varre só o
+  que o PR **introduz** (linhas `+`), nunca contexto nem remoções.
+- **Nunca vaza no log:** o finding mostra só um prefixo redigido (`ghp_…*** (40 chars)`).
+
+## 4. Recuperação
 
 - **Dead-letter + replay** (trilha B): run/efeito que falha após os retries vai pra dead-letter (com
   contexto e erro) e pode ser **replayado** pelo cockpit (`orchestrator/*`, endpoints em `web/console`).
 - **Rollback default decidido:** `git revert` + reabrir a issue (git-first, determinístico) — **ainda
   não implementado** (follow-up). Checkpoint/time-travel sofisticado só como exceção justificada.
 
-## 4. Observabilidade (serve a economia de token)
+## 5. Observabilidade (serve a economia de token)
 
 - **Custo por run/tier** medido de verdade (`llm_call`) — trilha F.
 - **Comportamento** por run: eficiência semântica (code-intel vs ler arquivo inteiro) — trilha F,
   `app/tool_usage`. *Não dá pra otimizar nem orçar token sem medir token.*
 
-## 5. Confiança e escalada
+## 6. Confiança e escalada
 
 A validação de prontidão (DoR, trilha A) escala **JUDGE → FRONTIER** quando a confiança é baixa
 (`agents/review.validar_issue_semantica`) — o mesmo fio de "proposta validada por camada
 determinística". O veredito do review é determinístico (`aprovado_por_findings`, trilha D).
 
-## 6. Follow-ups (backlog)
+## 7. Follow-ups (backlog)
 
-- **Secret-scan do diff antes do PR** (gate de segurança — hoje inexistente).
 - **git-revert + reabrir issue** (mecanismo de rollback decidido).
+- **Secret-scan: heurística de entropia** além dos formatos canônicos (hoje: alta precisão).
 - **Evals / golden set** de falhas reais + LLM-as-judge calibrado como **CI gate** anti-regressão.
 - **jev-guard**: allow/deny por confiança + risco pra ações de alto impacto.
 - **Aprovação por ação** (tool-level) ligada ao SDK vivo, com *canonical rendering* anti-loopjacking.

@@ -26,6 +26,7 @@ from roboto.app.comment_poll import BOT_MARKER
 from roboto.app.correction import CycleResult, correction_cycle
 from roboto.app.engine_loop import guarded_events
 from roboto.app.repo_profile import build_repo_profile, read_agents_conventions
+from roboto.app.secret_scan import SecretLeakError, scan_diff
 from roboto.app.task_class import TaskType, classificar_task
 from roboto.app.tiering import classificar_tier
 from roboto.app.verify import VerifyResult, arquivos_ts, secao_verify, verificar
@@ -46,6 +47,8 @@ class GitOps(Protocol):
     async def push(self, name: str) -> None: ...
     # mensagens dos commits da branch vs base — vira a "história da implementação" no corpo do PR
     async def log_since(self, base: str) -> str: ...
+    # diff unificado da branch vs base — alimenta o secret-scan antes do push (H)
+    async def diff(self, base: str) -> str: ...
 
 
 class GithubPrOps(Protocol):
@@ -67,6 +70,26 @@ class GithubPrOps(Protocol):
     async def submit_review(
         self, repo: str, number: int, body: str, comments: list[tuple[str, int, str]]
     ) -> Result[None, Error]: ...
+
+
+async def _guard_secrets(
+    git: GitOps, base: str, *, store: Store | None, run: Run, now: datetime | None
+) -> None:
+    """Gate de segredo (H): varre o diff LOCAL antes do push; se achar credencial, registra no feed
+    e ABORTA (SecretLeakError) — o segredo nem sai da máquina; o ciclo marca FAILED e avisa."""
+    leaks = scan_diff(await git.diff(base))
+    if not leaks:
+        return
+    resumo = "; ".join(f"{leak.pattern} [{leak.redacted}]" for leak in leaks)
+    if store is not None and now is not None:
+        await store.append_session_event(
+            run.tenant, run.id, "message", now,
+            text=(
+                f"🔒 secret-scan BLOQUEOU o push: possível segredo no diff — {resumo}. "
+                "Nada foi enviado; remova o segredo do código e rode de novo."
+            ),
+        )
+    raise SecretLeakError(resumo)
 
 
 async def run_pr_cycle(
@@ -233,6 +256,7 @@ async def run_pr_cycle(
             )
         await git.prepare_branch(branch)
         await git.commit_all(title if not feedback else f"{title} (correção)")
+        await _guard_secrets(git, base, store=store, run=run, now=now)  # H: bloqueia antes do push
         await git.push(branch)
         if "pr" not in state:
             # idempotência contra PR vivo: reaproveita o PR aberto do branch, se houver
@@ -468,6 +492,7 @@ async def process_correct_tick(
                 )
 
         await git.commit_all(f"fix(review): corrige apontamentos do review (PR #{pr_number})")
+        await _guard_secrets(git, base, store=store, run=run, now=moment)  # H: gate antes do push
         await git.push(branch)  # force-push atualiza o MESMO PR
 
         again = await _review_now()
