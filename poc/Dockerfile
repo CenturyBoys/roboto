@@ -67,9 +67,12 @@ USER pwuser
 # ide_cc (code-intel MCP): navegação/edição semântica verificada = menos token (F). Em ~/.local/bin.
 # PILAR da economia de token: o build FALHA se não instalar (antes `|| echo` degradava SILENCIOSO —
 # a imagem subia sem code-intel e o motor lia arquivo inteiro sem ninguém perceber).
+# Versão PINADA (determinismo primeiro): script E binário na mesma tag (v0.9.0 — agent-tooling:
+# verifier, repo_map, symbol_bundle, readOnlyHint; aditivo, sem breaking). Bump = trocar aqui.
+ENV IDE_CC_VERSION=v0.9.0
 ENV PATH="/home/pwuser/.local/bin:$PATH"
-RUN curl -fsSL https://raw.githubusercontent.com/CenturyBoys/ide_cc/main/install.sh \
-      | INSTALL_LSP=1 bash \
+RUN curl -fsSL "https://raw.githubusercontent.com/CenturyBoys/ide_cc/${IDE_CC_VERSION}/install.sh" \
+      | VERSION="${IDE_CC_VERSION}" INSTALL_LSP=1 bash \
     && command -v code-intel-mcp \
     && command -v tsgo
 
