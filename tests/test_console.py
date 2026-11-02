@@ -159,6 +159,24 @@ async def test_execution_detail_includes_cost() -> None:
         assert detail["cost"] == {"tokens": 500, "cost_usd": 0.5}
 
 
+async def test_execution_detail_includes_tool_usage() -> None:
+    store = InMemoryStore()
+    run_id = await _seed(store)
+    for tool, n in {"mcp__code-intel__find_references": 3, "Read": 1, "Bash": 2}.items():
+        for _ in range(n):
+            await store.append_session_event(
+                "acme", run_id, "tool_call", _T0, tool=tool
+            )
+    async with _client(store) as c:
+        detail = (await c.get(f"/executions/{run_id}", headers=_AUTH)).json()
+        tu = detail["tool_usage"]
+        assert tu["total"] == 6
+        assert tu["by_category"]["semantic"] == 3
+        assert tu["by_category"]["read_full"] == 1
+        assert tu["by_category"]["shell"] == 2
+        assert tu["efficiency"] == 0.75  # 3 semânticas / (3 + 1 Read)
+
+
 async def test_pr_diff_endpoint() -> None:
     store = InMemoryStore()
     run_id = await _seed(store)

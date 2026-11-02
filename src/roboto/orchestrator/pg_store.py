@@ -716,3 +716,12 @@ class PostgresStore:
                 execution_id, after_id, limit,
             )
             return [_row_to_session_event(r) for r in rows]
+
+    async def tool_counts_for_execution(self, execution_id: int) -> dict[str, int]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT tool, COUNT(*) AS n FROM session_event "
+                "WHERE execution_id = $1 AND kind = 'tool_call' AND tool <> '' GROUP BY tool",
+                execution_id,
+            )
+            return {r["tool"]: int(r["n"]) for r in rows}

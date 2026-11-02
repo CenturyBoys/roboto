@@ -34,6 +34,7 @@ from roboto.app.loops import ISSUE_BODY_END, ISSUE_BODY_START
 from roboto.app.session_hub import SessionHub
 from roboto.app.task_class import TaskType, classificar_task
 from roboto.app.tmux_copilot import session_name
+from roboto.app.tool_usage import ToolUsage, summarize
 from roboto.llm.port import ModelGateway
 from roboto.orchestrator.model import (
     Error,
@@ -203,6 +204,14 @@ def _llm_dict(c: LlmCall) -> dict[str, object]:
     }
 
 
+def _tool_usage_dict(u: ToolUsage) -> dict[str, object]:
+    return {
+        "total": u.total,
+        "by_category": u.by_category,
+        "efficiency": round(u.efficiency, 3) if u.efficiency is not None else None,
+    }
+
+
 async def _viewer(request: Request) -> HTMLResponse:
     # SPA buildado se existir; senão, viewer legado. Dados sempre exigem o bearer (via JS).
     if _SPA_INDEX.is_file():
@@ -301,6 +310,7 @@ def console_routes(
         sessions = await store.sessions_for_execution(run.id)
         interactions = await store.interactions_for_execution(run.id)
         tokens, cost = await store.cost_for_execution(run.id)  # custo da execução (Fatia 4)
+        usage = summarize(await store.tool_counts_for_execution(run.id))  # comportamento (Trilha F)
         live = hub is not None and hub.get(run.id) is not None  # co-piloto só em sessão interativa
         return JSONResponse(
             {
@@ -308,6 +318,7 @@ def console_routes(
                 "sessions": [_session_dict(s) for s in sessions],
                 "interactions": [_interaction_dict(i) for i in interactions],
                 "cost": {"tokens": tokens, "cost_usd": round(cost, 6)},
+                "tool_usage": _tool_usage_dict(usage),
                 "live": live,
             }
         )
