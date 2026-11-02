@@ -51,6 +51,11 @@ class _FakeGit:
 
 
 _READY_BODY = "## Contexto\nx\n## Escopo\ny\n## Critérios de aceite\n- [ ] z\n## DoD\n- [ ] ci"
+# Review ESTRUTURADO (Trilha D): reprova = 1 bloco FINDING bloqueador; aprova = "" (sem finding).
+_FIND_REPROVA = (
+    "FINDING\nseveridade: bloqueador\narquivo: a.ts\nlinha: 1\nconfianca: alta\n"
+    "titulo: falta teste\nevidencia: x\nrecomendacao: adicionar teste\nEND"
+)
 
 
 class _FakeGithub:
@@ -62,6 +67,7 @@ class _FakeGithub:
     ) -> None:
         self.opened = 0
         self.comments: list[str] = []
+        self.reviews: list[str] = []  # corpos de submit_review (review estruturado, Trilha D)
         self._existing = existing_pr
         self._ready = ready_issue
         self._custom_body = custom_body
@@ -91,6 +97,12 @@ class _FakeGithub:
         self.comments.append(body)
         return Ok(None)
 
+    async def submit_review(
+        self, repo: str, number: int, body: str, comments: list[tuple[str, int, str]]
+    ) -> Result[None, Error]:
+        self.reviews.append(body)
+        return Ok(None)
+
 
 async def _run(store: InMemoryStore) -> object:
     event = GithubEvent(
@@ -113,29 +125,30 @@ async def _cycle(gateway: _SeqGateway, *, max_attempts: int = 3):  # type: ignor
 
 
 async def test_cycle_approves_first_try() -> None:
-    result, engine, git, github = await _cycle(_SeqGateway(["VEREDITO: aprovado"]))
+    result, engine, git, github = await _cycle(_SeqGateway([""]))
     assert result.approved is True
     assert result.attempts == 1
     assert len(engine.started) == 1
     assert github.opened == 1  # PR aberto uma vez
     assert git.pushes == ["roboto/run-1"]
-    assert github.comments == ["✅ Review aprovado."]
+    assert github.comments == []  # review vai por submit_review (inline), não comment_pr
+    assert any("sem apontamentos" in r for r in github.reviews)
 
 
 async def test_cycle_corrects_then_approves() -> None:
-    gw = _SeqGateway(["VEREDITO: reprovado\n- sem teste", "VEREDITO: aprovado"])
+    gw = _SeqGateway([_FIND_REPROVA, ""])
     result, engine, git, github = await _cycle(gw)
     assert result.approved is True
     assert result.attempts == 2
     assert len(engine.started) == 2  # re-implementou com o feedback
     assert github.opened == 1  # reaproveitou o mesmo PR
     assert len(git.pushes) == 2
-    assert "correções" in github.comments[0]  # 1º review pediu correção
+    assert any("bloqueador" in r for r in github.reviews)  # 1º review reprovou (estruturado)
 
 
 async def test_correction_resumes_coder_session() -> None:
     # B: a correção RESUME a sessão do coder (mesmo contexto de quem implementou), não do zero.
-    gw = _SeqGateway(["VEREDITO: reprovado\n- sem teste", "VEREDITO: aprovado"])
+    gw = _SeqGateway([_FIND_REPROVA, ""])
     _, engine, _, _ = await _cycle(gw)
     assert len(engine.started) == 2
     assert engine.started[0].resume_session_id is None  # 1ª impl: sessão nova
@@ -148,7 +161,7 @@ async def test_cycle_reuses_live_pr() -> None:
     run = await _run(store)
     engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
     git, github = _FakeGit(), _FakeGithub(existing_pr=99)
-    gw = _SeqGateway(["VEREDITO: aprovado"])
+    gw = _SeqGateway([""])
     result = await run_pr_cycle(
         engine=engine,
         gateway=gw,  # type: ignore[arg-type]
@@ -165,11 +178,11 @@ async def test_cycle_reuses_live_pr() -> None:
 
 
 async def test_cycle_gives_up_at_max() -> None:
-    gw = _SeqGateway(["VEREDITO: reprovado\n- bug", "VEREDITO: reprovado\n- bug ainda"])
+    gw = _SeqGateway([_FIND_REPROVA, _FIND_REPROVA])
     result, engine, git, github = await _cycle(gw, max_attempts=2)
     assert result.approved is False
     assert result.attempts == 2
-    assert result.issues == ["bug ainda"]
+    assert len(result.issues) == 1 and "falta teste" in result.issues[0]  # feedback estruturado
 
 
 async def test_process_pr_run_tick_claims_and_sets_state() -> None:
@@ -178,7 +191,7 @@ async def test_process_pr_run_tick_claims_and_sets_state() -> None:
     store = InMemoryStore()
     run = await _run(store)  # type: ignore[assignment]
     engine = StubEngine([EngineEvent(EngineEventKind.FINISHED, tokens_in=1000, tokens_out=200)])
-    gw = _SeqGateway(["VEREDITO: aprovado"])
+    gw = _SeqGateway([""])
     await process_pr_run_tick(
         engine,
         gw,  # type: ignore[arg-type]
@@ -307,7 +320,7 @@ async def test_correct_tick_fixes_pr_on_its_branch() -> None:
         ]
     )
     git, github = _FakeGit(), _FakeGithub()
-    gw = _SeqGateway(["VEREDITO: reprovado\n- falta doc", "VEREDITO: aprovado"])  # reprova->aprova
+    gw = _SeqGateway([_FIND_REPROVA, ""])  # reprova->aprova
     await process_correct_tick(
         engine,
         gw,  # type: ignore[arg-type]
@@ -337,7 +350,7 @@ async def test_correct_tick_approved_pr_is_noop() -> None:
     git, github = _FakeGit(), _FakeGithub()
     await process_correct_tick(
         engine,
-        _SeqGateway(["VEREDITO: aprovado"]),  # type: ignore[arg-type]
+        _SeqGateway([""]),  # type: ignore[arg-type]
         github,
         store,
         tenant="acme",
