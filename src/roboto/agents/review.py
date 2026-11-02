@@ -21,6 +21,12 @@ REVIEW_ISSUE_SYSTEM = (
     "escopo claro, DoD significativo, sem ambiguidade. Responda EXATAMENTE:\n"
     "VEREDITO: aprovado|reprovado\nPROBLEMAS:\n- <cada problema, se houver>"
 )
+VALIDAR_ISSUE_SYSTEM = (
+    "Você valida a PRONTIDÃO de uma issue para dev (DoR semântico): critérios de aceite "
+    "verificáveis, escopo claro, sem ambiguidade. Dê também sua CONFIANÇA no julgamento. Responda "
+    "EXATAMENTE:\nBEM_DEFINIDA: sim|nao\nCONFIANCA: alta|media|baixa\n"
+    "LACUNAS:\n- <cada lacuna que impede o dev, se houver>"
+)
 REVIEW_PR_SYSTEM = (
     "Você é revisor de PR. Avalie correção, aderência ao AGENTS.md e cobertura de testes do diff.\n"
     "RUBRICA (decida o veredito por ela, não por impressão):\n"
@@ -46,6 +52,15 @@ class ReviewVerdict:
     approved: bool
     issues: list[str] = field(default_factory=list)
     summary: str = ""
+
+
+@dataclass(frozen=True)
+class IssueReadiness:
+    """Saída ESTRUTURADA do validador semântico da issue (#160): não-binária."""
+
+    bem_definida: bool
+    confianca: str  # alta | media | baixa
+    lacunas: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -126,6 +141,45 @@ async def review_issue_semantics(
     if isinstance(result, Err):
         return Err(result.error)
     return Ok(_parse_verdict(result.value.text))
+
+
+def _parse_readiness(text: str) -> IssueReadiness:
+    """Determinístico: lê BEM_DEFINIDA / CONFIANCA / LACUNAS da saída estruturada do juiz."""
+    bem = False
+    conf = "media"
+    lacunas: list[str] = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        low = line.lower()
+        if low.startswith("bem_definida:"):
+            bem = "sim" in low
+        elif low.startswith(("confianca:", "confiança:")):
+            conf = next((c for c in ("alta", "baixa", "media", "média") if c in low), "media")
+            conf = "media" if conf == "média" else conf
+        elif line.startswith(("-", "*")):
+            lacunas.append(line.lstrip("-* ").strip())
+    return IssueReadiness(bem_definida=bem, confianca=conf, lacunas=lacunas)
+
+
+async def validar_issue_semantica(
+    draft: IssueDraft, gateway: ModelGateway
+) -> Result[IssueReadiness, Error]:
+    """Camadas 2+3 do validador de prontidão (#160): juiz ESTRUTURADO + ESCALADA a frontier quando
+    a confiança é baixa (barato-primeiro; só paga o modelo forte na dúvida). Use APÓS a camada 1
+    determinística (`check_issue_readiness`). Gerador (CHEAP) ≠ validador (JUDGE/FRONTIER)."""
+    messages = [
+        ChatMessage(role="system", content=VALIDAR_ISSUE_SYSTEM),
+        ChatMessage(role="user", content=f"{draft.title}\n\n{draft.body}"),
+    ]
+    result = await gateway.complete(messages, Tier.JUDGE)
+    if isinstance(result, Err):
+        return Err(result.error)
+    verdict = _parse_readiness(result.value.text)
+    if verdict.confianca == "baixa":  # escala p/ o tier forte e usa o veredito dele
+        strong = await gateway.complete(messages, Tier.FRONTIER)
+        if isinstance(strong, Ok):
+            verdict = _parse_readiness(strong.value.text)
+    return Ok(verdict)
 
 
 async def review_pr(
