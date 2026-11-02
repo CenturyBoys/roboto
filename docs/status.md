@@ -32,6 +32,12 @@ Visão única do que cada trilha **entregou** e o principal **follow-up**. Todas
 
 ## O que ainda não é trilha
 
-Operação interativa na sessão viva (épico #152 — co-piloto tmux parcial), re-review *dismissed*
-(#151), e fixes/itens do PoC (#144/#145/#149/#150). O passo natural de validação é rodar as **issues
-reais do repo-alvo** (arenavalendo) por cada etapa do loop, ponta a ponta.
+**14/14 trilhas fechadas.** O backlog pós-trilhas também foi finalizado: operação interativa
+(épico #152 — co-piloto na sessão viva entregue; loops de trabalho em tmux adiados), re-review
+*dismissed* (#151), self-assign (#150), fail-fast do ciclo (#144), gatilho/ccr (#145) — **todos
+fechados**.
+
+**Único item aberto:** **#149** — tornar o `verify` (code-intel) confiável no **monorepo** do
+repo-alvo. É **dependente da fase de teste**: exige rodar o `doctor` contra o arenavalendo real e
+ajustar o tsconfig sem quebrar o repo. O passo natural de validação é rodar as **issues reais do
+repo-alvo** (arenavalendo) por cada etapa do loop, ponta a ponta — onde o #149 se resolve.
