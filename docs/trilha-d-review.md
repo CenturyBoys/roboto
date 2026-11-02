@@ -2,8 +2,8 @@
 
 > Documento **operacional**. O *porquê* está em
 > [`research/D-review-de-pr.md`](https://github.com/CenturyBoys/roboto/blob/main/research/D-review-de-pr.md).
-> **Status: em progresso** — o núcleo abaixo está no `main`; o restante (fluxo automático + #151)
-> está em construção.
+> **Status:** núcleo + fluxo automático no `main`. Falta só a **#151** (re-review com contexto
+> completo do PR + gatilho em *review dismissed*).
 
 ## 1. Princípios
 
@@ -44,8 +44,14 @@ Review reprovou → o **coder corrige** (resume da sessão) → **re-review** �
 por polling (PR estabilizou, `@potter revisa`, `check_suite` falhou) — ver
 [Trilha B](trilha-b-orquestracao.md).
 
-## 5. O que falta (em construção)
+## 5. Onde está ligado
 
-- Ligar o review estruturado no fluxo **automático** (`pr_cycle`/`correct`), não só no botão manual.
-- **#151:** re-review com **contexto completo** do PR (comentários + reviews anteriores) e gatilho em
-  `review dismissed`.
+- **Manual:** botão **Revisar PR** no cockpit → review estruturado + inline.
+- **Automático:** `run_pr_cycle` (ciclo de implementação) e `process_correct_tick` (correção por
+  polling) usam o **mesmo** review estruturado — o PR do fleet já nasce com os comentários inline, e
+  os findings viram feedback rico pra correção.
+
+## 6. O que falta (#151)
+
+Re-review com **contexto completo** do PR (comentários + reviews anteriores, pra não repetir o que já
+foi dito) e gatilho em `review dismissed`.

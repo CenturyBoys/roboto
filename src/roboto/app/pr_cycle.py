@@ -15,7 +15,13 @@ from datetime import datetime
 from typing import Protocol
 
 from roboto.agents.refiner import IssueDraft
-from roboto.agents.review import PullRequest, ReviewVerdict, check_issue_readiness, review_pr
+from roboto.agents.review import (
+    PullRequest,
+    ReviewVerdict,
+    check_issue_readiness,
+    montar_review,
+    revisar_pr,
+)
 from roboto.app.comment_poll import BOT_MARKER
 from roboto.app.correction import CycleResult, correction_cycle
 from roboto.app.engine_loop import guarded_events
@@ -28,7 +34,7 @@ from roboto.github.app import IssueRef
 from roboto.llm.port import ModelGateway
 from roboto.orchestrator.model import Error, Run, RunState
 from roboto.orchestrator.store import Store
-from roboto.result import Ok, Result
+from roboto.result import Err, Ok, Result
 
 _COST_PER_MTOK = 0.4  # custo aprox. Qwen/OpenRouter ($/milhão de tokens) — medir/afinar (L)
 
@@ -57,6 +63,10 @@ class GithubPrOps(Protocol):
     async def get_pr_diff(self, repo: str, number: int) -> Result[str, Error]: ...
 
     async def comment_pr(self, repo: str, number: int, body: str) -> Result[None, Error]: ...
+
+    async def submit_review(
+        self, repo: str, number: int, body: str, comments: list[tuple[str, int, str]]
+    ) -> Result[None, Error]: ...
 
 
 async def run_pr_cycle(
@@ -252,18 +262,21 @@ async def run_pr_cycle(
         achados = (
             vr.introduzidos if (vr is not None and vr.disponivel and vr.introduzidos) else None
         )
-        verdict = await review_pr(pr, review_gw, reviewer=reviewer, verify_findings=achados)
-        value = (
-            verdict.value
-            if isinstance(verdict, Ok)
-            else ReviewVerdict(approved=False, issues=["falha ao revisar"])
+        # review ESTRUTURADO (Trilha D): findings tipados → inline enxuto (<details> p/ evidência).
+        strategy = os.environ.get("ROBOTO_REVIEW_STRATEGY", "single")
+        res = await revisar_pr(
+            pr, review_gw, reviewer=reviewer, verify_findings=achados, strategy=strategy
         )
-        if value.approved:
-            comment = "✅ Review aprovado."
-        else:
-            comment = "🔁 Review pediu correções:\n- " + "\n- ".join(value.issues)
-        await github.comment_pr(run.repo, pr.number, comment)
-        return value
+        findings = res.value if isinstance(res, Ok) else []
+        inline, body, aprovado = montar_review(findings)
+        if isinstance(await github.submit_review(run.repo, pr.number, body, inline), Err):
+            await github.comment_pr(run.repo, pr.number, body)  # linhas fora do diff → só o resumo
+        # feedback RICO p/ a correção: severidade + título + local + recomendação de cada finding
+        issues = [
+            f"[{f.severidade}] {f.titulo} ({f.arquivo}:{f.linha}) — {f.recomendacao}"
+            for f in findings
+        ]
+        return ReviewVerdict(approved=aprovado, issues=issues, summary=body[:200])
 
     return await correction_cycle(implement=implement, review=review, max_attempts=max_attempts)
 
@@ -410,10 +423,12 @@ async def process_correct_tick(
             title=f"PR #{pr_number}",
             diff=diff.value if isinstance(diff, Ok) else "",
         )
-        v = await review_pr(pr, gateway, reviewer=reviewer)
-        if isinstance(v, Ok):
-            return v.value
-        return ReviewVerdict(approved=False, issues=["review falhou"])
+        res = await revisar_pr(pr, gateway, reviewer=reviewer)
+        findings = res.value if isinstance(res, Ok) else []
+        issues = [f"[{f.severidade}] {f.titulo} — {f.recomendacao}" for f in findings]
+        from roboto.agents.review import aprovado_por_findings
+
+        return ReviewVerdict(approved=aprovado_por_findings(findings), issues=issues)
 
     try:
         head = await github.get_pr_head(run.repo, pr_number)
