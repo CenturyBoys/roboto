@@ -650,14 +650,33 @@ def console_routes(
         title, author = meta.value
         pr = PullRequest(number=number, author=author, title=title, diff=diff.value)
         strategy = os.environ.get("ROBOTO_REVIEW_STRATEGY", "single")
+        # VISIBILIDADE (trilha M/O): o review manual vira uma EXECUÇÃO — aparece em Execuções/
+        # Monitor, com feed do veredito, custo medido e PR linkado. Antes era síncrono e invisível.
+        when = datetime.now(UTC)
+        ev = GithubEvent(
+            tenant=tenant, repo=repo, issue_id=str(number), agent="review",
+            idempotency_key=f"review:{repo}:{number}:{when.isoformat()}",
+        )
+        run, _ = await store.insert_run_if_absent(ev, when)
+        await store.set_state(run.id, RunState.RUNNING, when)
+        await store.append_session_event(
+            tenant, run.id, "message", when, text=f"🔎 Revisando PR #{number} de {author}…"
+        )
+        from roboto.app.metering import MeteredGateway
+
+        review_gw = MeteredGateway(gateway, store, tenant=tenant, run_id=run.id, now=when)
         # #151: re-review não repete — passa os comentários anteriores do PR como contexto
         previo = await issues.get_pr_comments(repo, number)
         contexto = previo.value if isinstance(previo, Ok) else None
         res = await revisar_pr(
-            pr, gateway, reviewer="review", contexto_previo=contexto, strategy=strategy
+            pr, review_gw, reviewer="review", contexto_previo=contexto, strategy=strategy
         )
         if isinstance(res, Err):
-            return JSONResponse({"error": res.error.message}, status_code=502)
+            await store.append_session_event(
+                tenant, run.id, "message", when, text=f"⚠️ review falhou: {res.error.message}"
+            )
+            await store.set_state(run.id, RunState.FAILED, when)
+            return JSONResponse({"error": res.error.message, "run_id": run.id}, status_code=502)
         findings = res.value
         inline, body, aprovado = montar_review(findings)
         body += f"\n{BOT_MARKER}"
@@ -665,6 +684,15 @@ def console_routes(
         posted = await issues.submit_review(repo, number, body, inline)
         if isinstance(posted, Err):
             await issues.comment_pr(repo, number, body)
+        veredito = "aprovado ✅" if aprovado else "pediu correções 🔁 — " + "; ".join(
+            f.titulo for f in findings
+        )
+        await store.append_session_event(
+            tenant, run.id, "message", when, text=f"Veredito do PR #{number}: {veredito}"
+        )
+        url = f"https://github.com/{repo}/pull/{number}"
+        await store.set_execution_pr(run.id, number, url, diff.value, when)
+        await store.set_state(run.id, RunState.DONE, when)
         return JSONResponse(
             {
                 "approved": aprovado,
@@ -676,6 +704,7 @@ def console_routes(
                 ],
                 "number": number,
                 "author": author,
+                "run_id": run.id,
             }
         )
 
