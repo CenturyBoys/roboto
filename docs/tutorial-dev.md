@@ -10,6 +10,26 @@ Para quem **mexe no código** do Potter. Pré-requisito: ler o [`AGENTS.md`](htt
 - **Ports & adapters** — tudo que toca o mundo (GitHub, modelos, git, canal) é uma **porta** com
   adapter real + fake no teste. `Result[T, Error]` em vez de exceção no caminho feliz.
 
+```mermaid
+flowchart TB
+  subgraph nucleo["Núcleo agnóstico (daemon · Postgres)"]
+    ORQ["Orquestrador<br/>RunState · outbox · lock"]
+    AG["Agents<br/>refino · DoR · review"]
+    MOT["Motor de coding"]
+  end
+  subgraph ad["Adapters (portas)"]
+    GH["GitHub"]
+    LLM["OpenRouter<br/>cheap · judge · frontier"]
+    GIT["git"]
+    TG["Telegram"]
+  end
+  ORQ <--> GH
+  AG <--> LLM
+  MOT <--> GIT
+  ORQ <--> TG
+  GH -. "trocar por GitLab/Jira sem mudar o núcleo" .-> ad
+```
+
 ## 2. Mapa do código (`src/roboto/`)
 
 | Caminho | O quê |

@@ -34,3 +34,16 @@ classe: **economia de token** e sessões curtas em vez de contextos gigantes.
 Uma **issue** acionável (DoR) vira um **run** no orquestrador → o **motor** implementa → abre **PR** →
 **review (≠autor)** → se reprova, **corrige** → humano **mergeia** (gate). Tudo rastreável no
 **cockpit** e projetado como estado (`status:*`) na própria issue.
+
+```mermaid
+flowchart LR
+  I([Issue]) -->|refino lê o repo| R[Refino]
+  R -->|aplicar no corpo| D{DoR pronta?}
+  D -->|não| R
+  D -->|sim| M[Implementa]
+  M --> P[(PR em develop)]
+  P --> V{Review ≠ autor}
+  V -->|reprova| C[Corrige]
+  C --> V
+  V -->|aprova| H{{Merge humano}}
+```
