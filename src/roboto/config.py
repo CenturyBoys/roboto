@@ -63,6 +63,10 @@ class Config:
     # modelo do JUDGE (JUDGE_MODEL): review de PR + juiz semântico da issue. Raciocínio puro —
     # "revisor mais forte que o autor" (I/D28). Vazio = default (qwen). Vai pelo gateway OpenRouter.
     judge_model: str = ""
+    # overrides dos outros tiers do gateway (trilha I): CHEAP_MODEL (refino/chat barato) e
+    # FRONTIER_MODEL (geração forte). Vazio = baseline (qwen). Override cai pro baseline se falhar.
+    cheap_model: str = ""
+    frontier_model: str = ""
 
 
 _REQUIRED = (
@@ -101,6 +105,8 @@ SETTABLE_KEYS: tuple[str, ...] = (
     "COPILOT_MODE",
     "REFINE_MODEL",
     "JUDGE_MODEL",
+    "CHEAP_MODEL",
+    "FRONTIER_MODEL",
 )
 
 
@@ -190,5 +196,7 @@ def load_config(env: Mapping[str, str]) -> Result[Config, Error]:
             copilot_mode=env.get("COPILOT_MODE", "sdk"),
             refine_model=env.get("REFINE_MODEL", ""),
             judge_model=env.get("JUDGE_MODEL", ""),
+            cheap_model=env.get("CHEAP_MODEL", ""),
+            frontier_model=env.get("FRONTIER_MODEL", ""),
         )
     )

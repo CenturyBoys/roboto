@@ -9,15 +9,9 @@ from __future__ import annotations
 import httpx
 
 from roboto.llm.port import ChatMessage, Completion, Tier
+from roboto.llm.routing import DEFAULT_MODELS, build_routing
 from roboto.orchestrator.model import Error
 from roboto.result import Err, Ok, Result
-
-# Mix pinado por medição (D16): Qwen via OpenRouter. big=qwen3-coder, small=qwen2.5 (ver N3/PoC).
-_DEFAULT_MODELS: dict[Tier, str] = {
-    Tier.CHEAP: "qwen/qwen-2.5-72b-instruct",
-    Tier.JUDGE: "qwen/qwen-2.5-72b-instruct",
-    Tier.FRONTIER: "qwen/qwen3-coder",
-}
 
 
 class OpenRouterGateway:
@@ -26,52 +20,63 @@ class OpenRouterGateway:
         api_key: str,
         *,
         base_url: str = "https://openrouter.ai/api/v1",
-        models: dict[Tier, str] | None = None,
+        # roteamento tier → CADEIA de modelos (primário + fallback). Precede `models` (compat).
+        routing: dict[Tier, tuple[str, ...]] | None = None,
+        models: dict[Tier, str] | None = None,  # compat: 1 modelo por tier (vira cadeia de 1)
         client: httpx.AsyncClient | None = None,
         timeout: float = 60.0,
     ) -> None:
         self._key = api_key
         self._base = base_url.rstrip("/")
-        self._models = models or dict(_DEFAULT_MODELS)
+        if routing is not None:
+            self._routing = routing
+        elif models is not None:
+            self._routing = {t: (m,) for t, m in models.items()}
+        else:
+            self._routing = build_routing()
         self._client = client
         self._timeout = timeout
 
     async def complete(
         self, messages: list[ChatMessage], tier: Tier
     ) -> Result[Completion, Error]:
-        model = self._models[tier]
-        payload: dict[str, object] = {
-            "model": model,
-            "messages": [{"role": m.role, "content": m.content} for m in messages],
-        }
-        # Juiz DETERMINÍSTICO: sem temperatura o OpenRouter usa o default (amostragem) e o MESMO
-        # diff dá vereditos diferentes (visto no PoC: aprovado/reprovado/aprovado no mesmo PR).
-        # temp=0 fixa o veredito. Os tiers geradores (impl/chat) ficam no default — lá variar ajuda.
-        if tier is Tier.JUDGE:
-            payload["temperature"] = 0
+        chain = self._routing.get(tier) or (DEFAULT_MODELS[tier],)
         headers = {"Authorization": f"Bearer {self._key}"}
         owns = self._client is None
         client = (
             self._client if self._client is not None else httpx.AsyncClient(timeout=self._timeout)
         )
+        last: Exception | None = None
         try:
-            resp = await client.post(
-                f"{self._base}/chat/completions", json=payload, headers=headers
-            )
-            resp.raise_for_status()
-            data = resp.json()
-        except httpx.HTTPError as exc:
-            return Err(Error("model", f"openrouter: {exc}"))
+            for model in chain:  # tenta o primário; cai pro fallback do MESMO tier se der erro (I)
+                payload: dict[str, object] = {
+                    "model": model,
+                    "messages": [{"role": m.role, "content": m.content} for m in messages],
+                }
+                # Juiz DETERMINÍSTICO: sem temperatura o OpenRouter amostra e o MESMO diff dá
+                # vereditos diferentes (PoC). temp=0 fixa. Geradores (impl/chat) ficam no default.
+                if tier is Tier.JUDGE:
+                    payload["temperature"] = 0
+                try:
+                    resp = await client.post(
+                        f"{self._base}/chat/completions", json=payload, headers=headers
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+                except httpx.HTTPError as exc:
+                    last = exc  # tenta o próximo modelo da cadeia
+                    continue
+                text = data["choices"][0]["message"]["content"]
+                usage = data.get("usage", {})
+                return Ok(
+                    Completion(
+                        text=str(text),
+                        model=str(data.get("model", model)),
+                        tokens_in=int(usage.get("prompt_tokens", 0)),
+                        tokens_out=int(usage.get("completion_tokens", 0)),
+                    )
+                )
         finally:
             if owns:
                 await client.aclose()
-        text = data["choices"][0]["message"]["content"]
-        usage = data.get("usage", {})
-        return Ok(
-            Completion(
-                text=str(text),
-                model=str(data.get("model", model)),
-                tokens_in=int(usage.get("prompt_tokens", 0)),
-                tokens_out=int(usage.get("completion_tokens", 0)),
-            )
-        )
+        return Err(Error("model", f"openrouter: todos os modelos do tier {tier} falharam: {last}"))
