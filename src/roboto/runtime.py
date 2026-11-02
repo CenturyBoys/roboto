@@ -233,10 +233,24 @@ async def _run_daemon(config: Config, store: Store) -> None:
                 git_factory=lambda ws: SubprocessGit(ws), now=_now, base=config.base_branch,
             )
 
+        # gatilho por POLLING (#166): sem webhook, o daemon detecta PR estabilizado (debounce) e
+        # enfileira um `correct` (re-review → corrige/avisa). Debounce via env (default 30 min).
+        from roboto.app.pr_poll import process_pr_poll_tick
+
+        poll_repos = sorted(config.repos) or [config.default_repo]
+        poll_debounce = int(os.environ.get("ROBOTO_PR_POLL_DEBOUNCE", "1800"))
+
+        async def _run_pr_poll() -> None:
+            await process_pr_poll_tick(
+                adapters.github, store, tenant=config.tenant, repos=poll_repos,
+                now=_now, debounce_seconds=poll_debounce,
+            )
+
         tasks.append(run_periodic(_run_claude, 5.0, stop))
         tasks.append(run_periodic(_run_scope, 5.0, stop))
         tasks.append(run_periodic(_run_refine, 5.0, stop))
         tasks.append(run_periodic(_run_correct, 5.0, stop))
+        tasks.append(run_periodic(_run_pr_poll, 60.0, stop))
         tasks.append(run_periodic(_close_merged, 15.0, stop))
 
     await asyncio.gather(*tasks)

@@ -24,6 +24,7 @@ from roboto.orchestrator.model import (
     LlmCall,
     MemoryFact,
     OutboxItem,
+    PrState,
     Run,
     RunState,
     Session,
@@ -633,6 +634,37 @@ class PostgresStore:
                     SET cursor_val = $3, updated_at = $4
                 """,
                 tenant, channel, offset, now,
+            )
+
+    async def get_pr_state(self, tenant: str, repo: str, pr_number: int) -> PrState | None:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT last_seen_sha, last_activity_at, reviewed_sha FROM pr_review_state "
+                "WHERE tenant = $1 AND repo = $2 AND pr_number = $3",
+                tenant, repo, pr_number,
+            )
+        if row is None:
+            return None
+        return PrState(
+            last_seen_sha=row["last_seen_sha"],
+            last_activity_at=row["last_activity_at"],
+            reviewed_sha=row["reviewed_sha"],
+        )
+
+    async def set_pr_state(
+        self, tenant: str, repo: str, pr_number: int, state: PrState
+    ) -> None:
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO pr_review_state
+                    (tenant, repo, pr_number, last_seen_sha, last_activity_at, reviewed_sha)
+                VALUES ($1, $2, $3, $4, $5, $6)
+                ON CONFLICT (tenant, repo, pr_number) DO UPDATE SET
+                    last_seen_sha = $4, last_activity_at = $5, reviewed_sha = $6
+                """,
+                tenant, repo, pr_number,
+                state.last_seen_sha, state.last_activity_at, state.reviewed_sha,
             )
 
     async def get_app_config(self) -> dict[str, str]:

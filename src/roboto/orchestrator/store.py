@@ -21,6 +21,7 @@ from roboto.orchestrator.model import (
     LlmCall,
     MemoryFact,
     OutboxItem,
+    PrState,
     Run,
     RunState,
     Session,
@@ -142,6 +143,12 @@ class Store(Protocol):
         self, tenant: str, channel: str, offset: int, now: datetime
     ) -> None: ...
 
+    async def get_pr_state(self, tenant: str, repo: str, pr_number: int) -> PrState | None: ...
+
+    async def set_pr_state(
+        self, tenant: str, repo: str, pr_number: int, state: PrState
+    ) -> None: ...
+
     async def remember(
         self, tenant: str, text: str, *, kind: str, ref: str, now: datetime
     ) -> MemoryFact: ...
@@ -188,6 +195,7 @@ class InMemoryStore:
         self._interaction_by_msg: dict[tuple[str, str], int] = {}
         self._llm_calls: list[LlmCall] = []
         self._channel_cursor: dict[tuple[str, str], int] = {}
+        self._pr_state: dict[tuple[str, str, int], PrState] = {}
         self._facts: list[MemoryFact] = []
         self._app_config: dict[str, str] = {}
         self._session_events: list[SessionEvent] = []
@@ -531,6 +539,14 @@ class InMemoryStore:
         self, tenant: str, channel: str, offset: int, now: datetime
     ) -> None:
         self._channel_cursor[(tenant, channel)] = offset
+
+    async def get_pr_state(self, tenant: str, repo: str, pr_number: int) -> PrState | None:
+        return self._pr_state.get((tenant, repo, pr_number))
+
+    async def set_pr_state(
+        self, tenant: str, repo: str, pr_number: int, state: PrState
+    ) -> None:
+        self._pr_state[(tenant, repo, pr_number)] = state
 
     async def remember(
         self, tenant: str, text: str, *, kind: str, ref: str, now: datetime

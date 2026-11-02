@@ -310,6 +310,33 @@ class GithubAppClient:
             if owns:
                 await client.aclose()
 
+    async def list_open_prs(self, repo: str) -> Result[list[tuple[int, str]], Error]:
+        """(número, head_sha) dos PRs abertos — alimenta o gatilho por POLLING (Trilha B, #166)."""
+        owns = self._client is None
+        client = (
+            self._client if self._client is not None else httpx.AsyncClient(timeout=self._timeout)
+        )
+        try:
+            token = await self._installation_token(client)
+            resp = await client.get(
+                f"{self._api}/repos/{repo}/pulls",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                },
+                params={"state": "open", "per_page": "50"},
+            )
+            resp.raise_for_status()
+            out = [
+                (int(p["number"]), str((p.get("head") or {}).get("sha", ""))) for p in resp.json()
+            ]
+            return Ok(out)
+        except httpx.HTTPError as exc:
+            return Err(Error("github", f"list_open_prs {repo}: {exc}"))
+        finally:
+            if owns:
+                await client.aclose()
+
     async def pr_merged(self, repo: str, number: int) -> Result[bool, Error]:
         """True se o PR foi MERGEADO (detecta o merge humano sem webhook — fecha o run local)."""
         owns = self._client is None

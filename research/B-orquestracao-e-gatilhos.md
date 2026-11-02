@@ -1,6 +1,7 @@
 # Trilha B — Orquestração e gatilhos
 
 > Status: RASCUNHO PARA REVISÃO (executado 2026-10-18)
+> → **Como funciona hoje** (consolidado): [`docs/trilha-b-orquestracao.md`](../docs/trilha-b-orquestracao.md).
 
 > 🧩 Design do núcleo durável (ciclo de vida do run no banco, idempotência + lock, outbox): ver
 > [`DESIGN-nucleo.md`](DESIGN-nucleo.md).

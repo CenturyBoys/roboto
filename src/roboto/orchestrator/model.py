@@ -31,6 +31,15 @@ class GithubEvent:
 
 
 @dataclass(frozen=True)
+class PrState:
+    """Estado de polling de um PR (Trilha B, #166): debounce do gatilho por atividade."""
+
+    last_seen_sha: str
+    last_activity_at: datetime
+    reviewed_sha: str  # "" = nunca avaliado
+
+
+@dataclass(frozen=True)
 class Run:
     id: int
     tenant: str
