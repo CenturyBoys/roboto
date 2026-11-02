@@ -191,10 +191,26 @@ class PostgresStore:
             return _row_to_run(existing), False
 
     async def claim_next_queued(
-        self, tenant: str, now: datetime, lease_seconds: int, *, agent: str | None = None
+        self,
+        tenant: str,
+        now: datetime,
+        lease_seconds: int,
+        *,
+        agent: str | None = None,
+        wip_limit: int = 0,
     ) -> Run | None:
         lease_until = now + timedelta(seconds=lease_seconds)
         async with self._pool.acquire() as conn, conn.transaction():
+            # WIP limit / backpressure (J): cap global de runs ATIVOS por tenant. Atingiu → não pega
+            # novo (fica QUEUED até abrir vaga). 0 = sem limite. Evita pilha de review a jusante.
+            if wip_limit > 0:
+                active = await conn.fetchval(
+                    "SELECT COUNT(*) FROM run WHERE tenant = $1 "
+                    "AND state IN ('running', 'waiting', 'verifying')",
+                    tenant,
+                )
+                if int(active or 0) >= wip_limit:
+                    return None
             # concurrency-lock por (tenant, issue) (#165): advisory xact lock impede dois workers de
             # pegarem runs da MESMA issue em paralelo; o NOT EXISTS pula issues com irmão ativo
             # (running/waiting/verifying). Juntos serializam por entidade, sem travar outras.

@@ -70,6 +70,9 @@ class Config:
     # teto mensal de gasto de API em US$ (trilha L, D6: ~1 Max ≈ R$550 → ~US$100). 0 = sem teto.
     # alerta em 80%; surfado no cockpit (não bloqueante). ROBOTO_BUDGET_USD.
     budget_usd_month: float = 0.0
+    # WIP limit / backpressure (trilha J): máx. de runs ATIVOS por tenant; atingiu → novos ficam na
+    # fila até abrir vaga. 0 = sem limite. ROBOTO_WIP_LIMIT.
+    wip_limit: int = 0
 
 
 _REQUIRED = (
@@ -111,6 +114,7 @@ SETTABLE_KEYS: tuple[str, ...] = (
     "CHEAP_MODEL",
     "FRONTIER_MODEL",
     "ROBOTO_BUDGET_USD",
+    "ROBOTO_WIP_LIMIT",
 )
 
 
@@ -158,6 +162,10 @@ def load_config(env: Mapping[str, str]) -> Result[Config, Error]:
         budget_usd = float(budget_raw)
     except ValueError:
         return Err(Error("config", f"ROBOTO_BUDGET_USD inválido: {budget_raw!r}"))
+
+    wip_raw = env.get("ROBOTO_WIP_LIMIT", "0")
+    if not wip_raw.isdigit():
+        return Err(Error("config", f"ROBOTO_WIP_LIMIT inválido: {wip_raw!r}"))
 
     # auth do GitHub: modo PAT (GITHUB_API_TOKEN) OU GitHub App completo (D27/N3)
     has_app = bool(
@@ -209,5 +217,6 @@ def load_config(env: Mapping[str, str]) -> Result[Config, Error]:
             cheap_model=env.get("CHEAP_MODEL", ""),
             frontier_model=env.get("FRONTIER_MODEL", ""),
             budget_usd_month=budget_usd,
+            wip_limit=int(wip_raw),
         )
     )

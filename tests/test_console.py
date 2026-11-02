@@ -172,6 +172,7 @@ async def test_overview_counts_runs_by_state() -> None:
         ov = (await c.get("/overview", headers=_AUTH)).json()
     assert ov["total"] == 2
     assert ov["active"] == 1  # 1 running
+    assert ov["wip_limit"] == 0  # sem limite por default
     assert ov["failed"] == 1
     assert ov["by_state"]["running"] == 1 and ov["by_state"]["failed"] == 1
     assert ov["by_state"]["done"] == 0  # zero-fill p/ UI estável

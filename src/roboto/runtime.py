@@ -209,6 +209,7 @@ async def _run_daemon(config: Config, store: Store) -> None:
                 git_factory=lambda ws: SubprocessGit(ws),
                 now=_now,
                 base=config.base_branch,
+                wip_limit=config.wip_limit,  # backpressure (J)
             )
 
         async def _run_scope() -> None:

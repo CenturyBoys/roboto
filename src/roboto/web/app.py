@@ -65,6 +65,7 @@ def build_app(
         ttyd_base=config.ttyd_base or None, hub=hub,
         issues=issue_source, default_repo=config.default_repo, gateway=gateway,
         start_session=start_session, budget_usd=config.budget_usd_month,
+        wip_limit=config.wip_limit,
     )
     routes.append(Route("/webhook", webhook, methods=["POST"]))
     return Starlette(routes=routes)

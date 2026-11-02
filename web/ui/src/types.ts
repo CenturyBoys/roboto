@@ -86,6 +86,7 @@ export interface Overview {
   by_state: Record<string, number>
   total: number
   active: number
+  wip_limit: number
   queued: number
   waiting: number
   failed: number

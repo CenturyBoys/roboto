@@ -36,7 +36,13 @@ class Store(Protocol):
     async def insert_run_if_absent(self, ev: GithubEvent, now: datetime) -> tuple[Run, bool]: ...
 
     async def claim_next_queued(
-        self, tenant: str, now: datetime, lease_seconds: int, *, agent: str | None = None
+        self,
+        tenant: str,
+        now: datetime,
+        lease_seconds: int,
+        *,
+        agent: str | None = None,
+        wip_limit: int = 0,
     ) -> Run | None: ...
 
     async def set_state(
@@ -238,8 +244,23 @@ class InMemoryStore:
         return run, True
 
     async def claim_next_queued(
-        self, tenant: str, now: datetime, lease_seconds: int, *, agent: str | None = None
+        self,
+        tenant: str,
+        now: datetime,
+        lease_seconds: int,
+        *,
+        agent: str | None = None,
+        wip_limit: int = 0,
     ) -> Run | None:
+        # WIP limit / backpressure (J): cap global de runs ATIVOS por tenant. Atingiu o teto → não
+        # pega novo (fica QUEUED até abrir vaga). 0 = sem limite. Evita pilha de review a jusante.
+        if wip_limit > 0:
+            active = sum(
+                1 for r in self._runs.values()
+                if r.tenant == tenant and r.state in _ACTIVE_STATES
+            )
+            if active >= wip_limit:
+                return None
         # concurrency-lock por (tenant, issue): no máximo 1 run ATIVO por entidade (#165). Dois
         # eventos da mesma issue não rodam em paralelo — o 2º espera o 1º sair do estado ativo.
         busy = {

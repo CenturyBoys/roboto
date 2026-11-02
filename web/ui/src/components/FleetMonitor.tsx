@@ -34,7 +34,11 @@ export function FleetMonitor() {
     <div className="space-y-4" data-testid="fleet-monitor">
       {/* saúde num golpe: ativos / fila / falhas / dead-letters */}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:max-w-2xl">
-        <Stat label="Ativos" value={data.active} accent />
+        <Stat
+          label="Ativos"
+          value={data.wip_limit > 0 ? `${data.active}/${data.wip_limit}` : data.active}
+          accent
+        />
         <Stat label="Na fila" value={data.queued} />
         <Stat label="Falhas" value={data.failed} />
         <Stat label="Dead-letters" value={data.dead_letters} />
