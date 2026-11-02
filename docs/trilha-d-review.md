@@ -53,9 +53,14 @@ por polling (PR estabilizou, `@potter revisa`, `check_suite` falhou) — ver
 
 ## 6. Re-review com contexto (#151)
 
-O re-review recebe os **comentários/reviews anteriores** do PR (`get_pr_comments` → `contexto_previo`)
-e o prompt pede pra **não repetir** o que já foi apontado — foca no que mudou. Já ligado no botão
-Revisar PR.
+O re-review recebe os **comentários/reviews anteriores** do PR (`get_pr_comments` → `contexto_previo`).
+O prompt manda **verificar cada ponto contra o diff ATUAL**: resolvido → não repete; **não resolvido
+→ MANTÉM** (bloqueador aberto segue bloqueando). Já ligado no botão Revisar PR.
+
+> ⚠️ **Lição do ponta-a-ponta:** o framing original ("não repita o que já foi apontado") fazia o
+> re-review **aprovar** um PR com bloqueadores abertos só porque já tinham sido comentados — o fluxo
+> de correção então achava "nada a corrigir". Corrigido: "já apontado" nunca vira "ignore"; só aprova
+> se os pontos foram **de fato corrigidos**.
 
 **Gatilho em review dismissed (#151):** se alguém **remove** um review (ex.: tira o do fleet e sobe
 dado), o evento `pull_request_review:dismissed` **re-dispara o review** (`github/webhook`), com

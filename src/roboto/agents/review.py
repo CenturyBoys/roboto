@@ -296,8 +296,10 @@ async def review_pr_findings(
 ) -> Result[list[Finding], Error]:
     """Review ESTRUTURADO (estratégia 'single'): findings tipados. reviewer==autor bloqueia.
 
-    `contexto_previo` (#151): reviews/comentários anteriores do PR — entram pra o juiz NÃO repetir o
-    que já foi apontado (re-review foca no que mudou)."""
+    `contexto_previo` (#151): reviews/comentários anteriores do PR — o juiz verifica CADA ponto
+    contra o diff atual: resolvido → não repete; não resolvido → MANTÉM (bloqueador segue
+    bloqueando). Nunca aprova só porque algo 'já foi apontado' (bug pego no ponta-a-ponta: o
+    re-review aprovava um PR com bloqueadores abertos só por já terem sido comentados)."""
     if reviewer == pr.author:
         bloq = Finding(
             "revisão exige um par diferente (reviewer≠autor)", "bloqueador", "-", 0, "alta"
@@ -314,8 +316,10 @@ async def review_pr_findings(
     if contexto_previo:
         anteriores = "\n---\n".join(c.strip() for c in contexto_previo[:5])
         bloco_previo = (
-            "\n\n## Reviews ANTERIORES deste PR (NÃO repita o que já foi apontado; foque no que "
-            f"mudou / no que ainda não foi dito):\n{anteriores}\n"
+            "\n\n## Reviews ANTERIORES deste PR — verifique CADA ponto contra o diff ATUAL: se foi "
+            "RESOLVIDO no código, NÃO repita; se continua NÃO resolvido, MANTENHA como finding (um "
+            "bloqueador não resolvido SEGUE bloqueando). NÃO aprove só porque algo já foi apontado "
+            f"— só aprove se os pontos foram de fato corrigidos:\n{anteriores}\n"
         )
     content = (
         f"PR #{pr.number} (autor={pr.author}): {pr.title}\n\n{pr.diff}{bloco_verify}{bloco_previo}"
