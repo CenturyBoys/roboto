@@ -8,6 +8,7 @@ import {
   getProposal,
   getTerminal,
   retryExecution,
+  revertExecution,
 } from '@/lib/api'
 import type { ExecutionDetail, PrDiff, Terminal, ToolUsage } from '@/types'
 import { Button } from './ui/button'
@@ -97,6 +98,21 @@ export function ExecDetail({
     }
   }
 
+  // H (recuperação): reverte o PR desta execução (abre um PR de revert) e reabre a issue. Ação
+  // impactante -> confirma antes. Merge do revert continua humano.
+  async function doRevert() {
+    if (!window.confirm('Reverter este PR? Abre um PR de revert e reabre a issue (merge é humano).'))
+      return
+    setApplyMsg(null)
+    try {
+      const r = await revertExecution(id)
+      setApplyMsg(`revert enfileirado (execução #${r.run_id}) — revertendo o PR #${r.reverting_pr}…`)
+      onOpenRun(r.run_id)
+    } catch {
+      setApplyMsg('não deu p/ reverter — esta execução tem um PR aberto?')
+    }
+  }
+
   // Executar a issue daqui mesmo (refinar→aplicar→implementar numa tela só). Gate de DoR + guard de
   // impl ativo são no servidor; aqui só reporta. Abre a nova execução p/ acompanhar.
   async function doImplement(issueId: string) {
@@ -134,6 +150,9 @@ export function ExecDetail({
         </Button>
         <Button variant="outline" onClick={() => void act(cancelExecution)}>
           Cancelar
+        </Button>
+        <Button data-testid="exec-revert" variant="outline" onClick={() => void doRevert()}>
+          ↩️ Reverter PR
         </Button>
       </div>
       {applyMsg && <p className="text-xs text-accent">{applyMsg}</p>}

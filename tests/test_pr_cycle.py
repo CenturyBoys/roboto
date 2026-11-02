@@ -34,6 +34,8 @@ class _FakeGit:
         self.pushes: list[str] = []
         self.checked_out: list[str] = []
         self.diff_text = ""  # secret-scan (H): default sem segredo; teste de vazamento injeta aqui
+        self.reverts: list[tuple[str, str, str]] = []  # revert (H): (base, source, revert_branch)
+        self.revert_ok = True  # o teste de conflito seta False
 
     async def prepare_branch(self, name: str) -> None:
         self.branches.append(name)
@@ -53,6 +55,10 @@ class _FakeGit:
     async def diff(self, base: str) -> str:
         return self.diff_text
 
+    async def revert_range(self, base: str, source_branch: str, revert_branch: str) -> bool:
+        self.reverts.append((base, source_branch, revert_branch))
+        return self.revert_ok
+
 
 _READY_BODY = "## Contexto\nx\n## Escopo\ny\n## Critérios de aceite\n- [ ] z\n## DoD\n- [ ] ci"
 # Review ESTRUTURADO (Trilha D): reprova = 1 bloco FINDING bloqueador; aprova = "" (sem finding).
@@ -71,6 +77,7 @@ class _FakeGithub:
     ) -> None:
         self.opened = 0
         self.comments: list[str] = []
+        self.issue_states: list[tuple[int, str]] = []  # revert (H): (issue_number, state)
         self.reviews: list[str] = []  # corpos de submit_review (review estruturado, Trilha D)
         self._existing = existing_pr
         self._ready = ready_issue
@@ -99,6 +106,10 @@ class _FakeGithub:
 
     async def comment_pr(self, repo: str, number: int, body: str) -> Result[None, Error]:
         self.comments.append(body)
+        return Ok(None)
+
+    async def set_issue_state(self, repo: str, number: int, state: str) -> Result[None, Error]:
+        self.issue_states.append((number, state))
         return Ok(None)
 
     async def submit_review(

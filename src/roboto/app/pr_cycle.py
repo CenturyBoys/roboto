@@ -49,6 +49,8 @@ class GitOps(Protocol):
     async def log_since(self, base: str) -> str: ...
     # diff unificado da branch vs base — alimenta o secret-scan antes do push (H)
     async def diff(self, base: str) -> str: ...
+    # reverte os commits de source_branch numa revert_branch nova (recuperação git-first, H)
+    async def revert_range(self, base: str, source_branch: str, revert_branch: str) -> bool: ...
 
 
 class GithubPrOps(Protocol):
@@ -66,6 +68,11 @@ class GithubPrOps(Protocol):
     async def get_pr_diff(self, repo: str, number: int) -> Result[str, Error]: ...
 
     async def comment_pr(self, repo: str, number: int, body: str) -> Result[None, Error]: ...
+
+    # abre/fecha a issue — reverter um PR reabre a issue p/ o fleet refazer (recuperação, H)
+    async def set_issue_state(
+        self, repo: str, number: int, state: str
+    ) -> Result[None, Error]: ...
 
     async def submit_review(
         self, repo: str, number: int, body: str, comments: list[tuple[str, int, str]]

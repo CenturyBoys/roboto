@@ -177,6 +177,23 @@ async def test_execution_detail_includes_tool_usage() -> None:
         assert tu["efficiency"] == 0.75  # 3 semânticas / (3 + 1 Read)
 
 
+async def test_revert_endpoint_enqueues_and_links_pr() -> None:
+    store = InMemoryStore()
+    run_id = await _seed(store)
+    async with _client(store) as c:
+        # sem PR -> 409 (nada a reverter)
+        assert (await c.post(f"/executions/{run_id}/revert", headers=_AUTH)).status_code == 409
+    await store.set_execution_pr(run_id, 42, "https://gh/x/pull/42", "diff", _T0)
+    async with _client(store) as c:
+        assert (await c.post(f"/executions/{run_id}/revert")).status_code == 401  # exige token
+        r = (await c.post(f"/executions/{run_id}/revert", headers=_AUTH)).json()
+    assert r["reverting_pr"] == 42
+    revert_run = store._runs[r["run_id"]]  # type: ignore[attr-defined]
+    assert revert_run.agent == "revert"
+    linked = await store.get_execution_pr(r["run_id"])  # PR a reverter ligado ao run de revert
+    assert linked is not None and linked.number == 42
+
+
 async def test_pr_diff_endpoint() -> None:
     store = InMemoryStore()
     run_id = await _seed(store)

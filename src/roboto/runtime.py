@@ -238,6 +238,16 @@ async def _run_daemon(config: Config, store: Store) -> None:
                 git_factory=lambda ws: SubprocessGit(ws), now=_now, base=config.base_branch,
             )
 
+        async def _run_revert() -> None:
+            # H: recuperação git-first — reverte o PR da execução e reabre a issue (merge humano).
+            from roboto.app.revert import process_revert_tick
+
+            await process_revert_tick(
+                adapters.github, store,
+                tenant=config.tenant, workdir_root="/work",
+                git_factory=lambda ws: SubprocessGit(ws), now=_now, base=config.base_branch,
+            )
+
         # gatilho por POLLING (#166): sem webhook, o daemon detecta PR estabilizado (debounce) e
         # enfileira um `correct` (re-review → corrige/avisa). Debounce via env (default 30 min).
         from roboto.app.pr_poll import process_pr_poll_tick
@@ -274,6 +284,7 @@ async def _run_daemon(config: Config, store: Store) -> None:
         tasks.append(run_periodic(_run_scope, 5.0, stop))
         tasks.append(run_periodic(_run_refine, 5.0, stop))
         tasks.append(run_periodic(_run_correct, 5.0, stop))
+        tasks.append(run_periodic(_run_revert, 5.0, stop))
         tasks.append(run_periodic(_run_pr_poll, 60.0, stop))
         tasks.append(run_periodic(_run_comments, 30.0, stop))
         tasks.append(run_periodic(_run_labels, 20.0, stop))

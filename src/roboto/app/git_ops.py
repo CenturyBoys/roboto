@@ -68,3 +68,16 @@ class SubprocessGit:
     async def diff(self, base: str) -> str:
         """Diff unificado da branch vs a base — alimenta o secret-scan antes do push (H)."""
         return await self._git_out("diff", f"origin/{base}...HEAD")
+
+    async def revert_range(self, base: str, source_branch: str, revert_branch: str) -> bool:
+        """Cria `revert_branch` a partir de origin/base e REVERTE os commits de `source_branch`
+        (recuperação git-first, H). Retorna False se o revert falhar (ex.: conflito) — o chamador
+        trata e NÃO empurra nada quebrado."""
+        await self._git("fetch", "origin", base, source_branch)
+        if await self._git("checkout", "-B", revert_branch, f"origin/{base}") != 0:
+            return False
+        code = await self._git(
+            "-c", "user.email=fleet@roboto.dev", "-c", "user.name=roboto",
+            "revert", "--no-edit", f"origin/{base}..origin/{source_branch}",
+        )
+        return code == 0

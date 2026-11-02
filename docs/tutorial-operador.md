@@ -72,3 +72,10 @@ sem loop. Os comandos são lidos por **polling** (sem webhook).
 - Cada issue ganha uma label de estado: `status:in-progress` → `status:in-review` → `status:done`
   (ou `blocked`) — projetada automaticamente.
 - No cockpit, **Auto-refresh** mantém a lista viva; o **feed** mostra cada passo do motor ao vivo.
+
+## 8. Reverter (recuperação)
+
+Deu problema num PR já entregue? No detalhe da execução, **↩️ Reverter PR** desfaz a mudança de forma
+segura: o fleet abre um **PR de revert** (não mexe direto na base) e **reabre a issue** pra refazer.
+O **merge do revert continua seu** — como todo merge. Se o revert conflitar, ele avisa no feed e **não
+empurra nada**.
