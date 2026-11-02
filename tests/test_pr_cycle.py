@@ -240,6 +240,24 @@ async def test_process_pr_run_tick_fails_and_warns_on_secret_leak() -> None:
     assert any("secret-scan" in e.text for e in events)  # avisou no feed
 
 
+async def test_implement_prompt_injects_recalled_memory() -> None:
+    # second brain (G): o harness recalla um fato relevante e injeta no prompt de implement.
+    store = InMemoryStore()
+    await _run(store)
+    await store.remember(
+        "acme", "decisão: o título do recurso segue o padrão X", kind="decisao", ref="", now=_T0
+    )
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    await process_pr_run_tick(
+        engine, _SeqGateway([""]), _FakeGithub(), store,  # type: ignore[arg-type]
+        tenant="acme", workdir_root="/work", reviewer="review",
+        git_factory=lambda ws: _FakeGit(), now=lambda: _T0,
+    )
+    prompt = engine.started[0].prompt
+    assert "MEMÓRIA RELEVANTE" in prompt
+    assert "o título do recurso segue o padrão X" in prompt
+
+
 async def test_process_pr_run_tick_claims_and_sets_state() -> None:
     from roboto.orchestrator.model import RunState
 
