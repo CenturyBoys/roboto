@@ -187,6 +187,30 @@ class GithubAppClient:
             if owns:
                 await client.aclose()
 
+    async def get_pr_comments(self, repo: str, number: int) -> Result[list[str], Error]:
+        """Corpos dos comentários do PR — contexto p/ o re-review não repetir (#151)."""
+        owns = self._client is None
+        client = (
+            self._client if self._client is not None else httpx.AsyncClient(timeout=self._timeout)
+        )
+        try:
+            token = await self._installation_token(client)
+            resp = await client.get(
+                f"{self._api}/repos/{repo}/issues/{number}/comments",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                },
+                params={"per_page": "30"},
+            )
+            resp.raise_for_status()
+            return Ok([str(c.get("body", "")) for c in resp.json()])
+        except httpx.HTTPError as exc:
+            return Err(Error("github", f"get_pr_comments {repo}#{number}: {exc}"))
+        finally:
+            if owns:
+                await client.aclose()
+
     async def submit_review(
         self, repo: str, number: int, body: str, comments: list[tuple[str, int, str]]
     ) -> Result[None, Error]:

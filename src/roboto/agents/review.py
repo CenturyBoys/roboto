@@ -292,9 +292,12 @@ def aprovado_por_findings(findings: list[Finding]) -> bool:
 
 async def review_pr_findings(
     pr: PullRequest, gateway: ModelGateway, *, reviewer: str,
-    verify_findings: list[str] | None = None,
+    verify_findings: list[str] | None = None, contexto_previo: list[str] | None = None,
 ) -> Result[list[Finding], Error]:
-    """Review ESTRUTURADO (estratégia 'single'): findings tipados. reviewer==autor bloqueia."""
+    """Review ESTRUTURADO (estratégia 'single'): findings tipados. reviewer==autor bloqueia.
+
+    `contexto_previo` (#151): reviews/comentários anteriores do PR — entram pra o juiz NÃO repetir o
+    que já foi apontado (re-review foca no que mudou)."""
     if reviewer == pr.author:
         bloq = Finding(
             "revisão exige um par diferente (reviewer≠autor)", "bloqueador", "-", 0, "alta"
@@ -307,7 +310,16 @@ async def review_pr_findings(
             "\n\n## Verify (code-intel/tsgo) — POSSÍVEIS erros de tipo (avalie contra o diff; se "
             f"real, vire finding; se falso positivo, ignore):\n{itens}\n"
         )
-    content = f"PR #{pr.number} (autor={pr.author}): {pr.title}\n\n{pr.diff}{bloco_verify}"
+    bloco_previo = ""
+    if contexto_previo:
+        anteriores = "\n---\n".join(c.strip() for c in contexto_previo[:5])
+        bloco_previo = (
+            "\n\n## Reviews ANTERIORES deste PR (NÃO repita o que já foi apontado; foque no que "
+            f"mudou / no que ainda não foi dito):\n{anteriores}\n"
+        )
+    content = (
+        f"PR #{pr.number} (autor={pr.author}): {pr.title}\n\n{pr.diff}{bloco_verify}{bloco_previo}"
+    )
     messages = [
         ChatMessage(role="system", content=REVIEW_PR_STRUCT_SYSTEM),
         ChatMessage(role="user", content=content),
@@ -367,9 +379,13 @@ def montar_review(findings: list[Finding]) -> tuple[list[tuple[str, int, str]], 
 
 async def revisar_pr(
     pr: PullRequest, gateway: ModelGateway, *, reviewer: str,
-    verify_findings: list[str] | None = None, strategy: str = "single",
+    verify_findings: list[str] | None = None, contexto_previo: list[str] | None = None,
+    strategy: str = "single",
 ) -> Result[list[Finding], Error]:
     """Dispatcher de ESTRATÉGIA de review (plugável, ROBOTO_REVIEW_STRATEGY). 'single' = juiz único
     estruturado (hoje). 'multi' (multi-dimensão+verificação) = hook futuro; por ora, single."""
     _ = strategy  # 'multi' ainda não implementado; o dono liga quando existir
-    return await review_pr_findings(pr, gateway, reviewer=reviewer, verify_findings=verify_findings)
+    return await review_pr_findings(
+        pr, gateway, reviewer=reviewer,
+        verify_findings=verify_findings, contexto_previo=contexto_previo,
+    )
