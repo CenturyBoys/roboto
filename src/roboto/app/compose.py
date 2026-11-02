@@ -18,8 +18,8 @@ from roboto.app.effects import (
 from roboto.channels.telegram import TelegramChannel
 from roboto.config import Config
 from roboto.github.app import GithubAppClient
-from roboto.llm.openrouter import _DEFAULT_MODELS, OpenRouterGateway
-from roboto.llm.port import Tier
+from roboto.llm.openrouter import OpenRouterGateway
+from roboto.llm.routing import build_routing
 from roboto.llm.stt import WhisperTranscriber
 from roboto.orchestrator.runner import Publisher, RouterPublisher
 from roboto.orchestrator.store import Store
@@ -35,12 +35,12 @@ class Adapters:
 
 
 def build_adapters(config: Config, store: Store | None = None) -> Adapters:
-    # JUDGE_MODEL: review/juiz num modelo de raciocínio (deepseek-r1), sem tocar os outros tiers
-    judge_override = {Tier.JUDGE: config.judge_model} if config.judge_model else None
-    gateway = OpenRouterGateway(
-        config.models.openrouter_api_key,
-        models={**_DEFAULT_MODELS, **judge_override} if judge_override else None,
+    # roteamento tier→modelo por config (trilha I): cada override vem com fallback pro baseline.
+    # CHEAP_MODEL (refino/chat), JUDGE_MODEL (review/juiz), FRONTIER_MODEL (geração forte).
+    routing = build_routing(
+        cheap=config.cheap_model, judge=config.judge_model, frontier=config.frontier_model
     )
+    gateway = OpenRouterGateway(config.models.openrouter_api_key, routing=routing)
     transcriber = WhisperTranscriber(
         config.models.stt_api_key, base_url=config.models.stt_base_url
     )
