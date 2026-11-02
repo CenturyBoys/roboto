@@ -33,6 +33,7 @@ class _FakeGit:
         self.commits: list[str] = []
         self.pushes: list[str] = []
         self.checked_out: list[str] = []
+        self.diff_text = ""  # secret-scan (H): default sem segredo; teste de vazamento injeta aqui
 
     async def prepare_branch(self, name: str) -> None:
         self.branches.append(name)
@@ -48,6 +49,9 @@ class _FakeGit:
 
     async def log_since(self, base: str) -> str:
         return "- " + "\n- ".join(self.commits) if self.commits else ""
+
+    async def diff(self, base: str) -> str:
+        return self.diff_text
 
 
 _READY_BODY = "## Contexto\nx\n## Escopo\ny\n## Critérios de aceite\n- [ ] z\n## DoD\n- [ ] ci"
@@ -183,6 +187,46 @@ async def test_cycle_gives_up_at_max() -> None:
     assert result.approved is False
     assert result.attempts == 2
     assert len(result.issues) == 1 and "falta teste" in result.issues[0]  # feedback estruturado
+
+
+async def test_cycle_blocks_push_on_secret_leak() -> None:
+    # H: diff com segredo -> _guard_secrets levanta SecretLeakError ANTES do push; PR não abre.
+    import pytest
+
+    from roboto.app.secret_scan import SecretLeakError
+
+    store = InMemoryStore()
+    run = await _run(store)
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    git, github = _FakeGit(), _FakeGithub()
+    git.diff_text = 'diff --git a/c.py b/c.py\n+TOKEN = "ghp_' + "a" * 36 + '"\n'
+    with pytest.raises(SecretLeakError):
+        await run_pr_cycle(
+            engine=engine, gateway=_SeqGateway([""]), github=github, git=git,  # type: ignore[arg-type]
+            run=run, workdir="/work/acme/app", reviewer="review",
+        )
+    assert git.pushes == []  # não empurrou o segredo
+    assert github.opened == 0  # não abriu PR
+
+
+async def test_process_pr_run_tick_fails_and_warns_on_secret_leak() -> None:
+    from roboto.orchestrator.model import RunState
+
+    store = InMemoryStore()
+    run = await _run(store)  # type: ignore[assignment]
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    leaky = _FakeGit()
+    leaky.diff_text = "+key = AKIA" + "A" * 16 + "\n"
+    github = _FakeGithub()
+    await process_pr_run_tick(
+        engine, _SeqGateway([""]), github, store,  # type: ignore[arg-type]
+        tenant="acme", workdir_root="/work", reviewer="review",
+        git_factory=lambda ws: leaky, now=lambda: _T0,
+    )
+    assert store._runs[run.id].state is RunState.FAILED  # type: ignore[attr-defined]
+    assert github.opened == 0  # PR não aberto
+    events = await store.session_events(run.id, 0, 50)
+    assert any("secret-scan" in e.text for e in events)  # avisou no feed
 
 
 async def test_process_pr_run_tick_claims_and_sets_state() -> None:

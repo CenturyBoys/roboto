@@ -64,3 +64,7 @@ class SubprocessGit:
     async def show(self, ref: str, path: str) -> str:
         """Conteúdo do arquivo num ref (ex.: a base); "" se não existe lá (arquivo novo)."""
         return await self._git_out("show", f"{ref}:{path}")
+
+    async def diff(self, base: str) -> str:
+        """Diff unificado da branch vs a base — alimenta o secret-scan antes do push (H)."""
+        return await self._git_out("diff", f"origin/{base}...HEAD")
