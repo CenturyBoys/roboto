@@ -263,6 +263,7 @@ def console_routes(
     gateway: ModelGateway | None = None,
     start_session: Callable[[Run, str], Awaitable[bool]] | None = None,
     budget_usd: float = 0.0,  # teto mensal de gasto de API (trilha L); 0 = sem teto
+    wip_limit: int = 0,  # cap de runs ativos / backpressure (trilha J); 0 = sem limite
 ) -> list[BaseRoute]:
     def _unauthorized(request: Request) -> bool:
         return not token or request.headers.get("authorization") != f"Bearer {token}"
@@ -328,6 +329,7 @@ def console_routes(
                 "by_state": by_state,
                 "total": total,
                 "active": active,
+                "wip_limit": wip_limit,  # backpressure (J): 0 = sem limite
                 "queued": by_state[str(RunState.QUEUED)],
                 "waiting": by_state[str(RunState.WAITING)],
                 "failed": by_state[str(RunState.FAILED)],
@@ -863,11 +865,12 @@ def build_console(
     gateway: ModelGateway | None = None,
     start_session: Callable[[Run, str], Awaitable[bool]] | None = None,
     budget_usd: float = 0.0,
+    wip_limit: int = 0,
 ) -> Starlette:
     return Starlette(
         routes=console_routes(
             store, tenant=tenant, token=token, ttyd_base=ttyd_base, hub=hub,
             issues=issues, default_repo=default_repo, gateway=gateway,
-            start_session=start_session, budget_usd=budget_usd,
+            start_session=start_session, budget_usd=budget_usd, wip_limit=wip_limit,
         )
     )

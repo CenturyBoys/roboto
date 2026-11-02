@@ -359,6 +359,7 @@ async def process_pr_run_tick(
     now: Callable[[], datetime],
     base: str = "main",
     lease_seconds: int = 3600,  # ciclo é longo; lease generoso p/ o sweeper não reclamar no meio
+    wip_limit: int = 0,  # backpressure (J): cap de runs ativos por tenant; 0 = sem limite
 ) -> None:
     """Pega o próximo run da fila e roda o ciclo. Aprovado -> VERIFYING; desistiu -> FAILED.
 
@@ -366,7 +367,9 @@ async def process_pr_run_tick(
     -> reprocessa (branch força-push, PR reaproveitado via find_open_pr). Merge = gate humano (D7).
     """
     moment = now()
-    run = await store.claim_next_queued(tenant, moment, lease_seconds, agent="impl")
+    run = await store.claim_next_queued(
+        tenant, moment, lease_seconds, agent="impl", wip_limit=wip_limit
+    )
     if run is None:
         return
 

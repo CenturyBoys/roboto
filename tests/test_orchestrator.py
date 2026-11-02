@@ -108,6 +108,23 @@ async def test_concurrency_lock_serializa_por_issue() -> None:
     assert second is not None and second.id != first.id  # agora o 2º pode rodar
 
 
+async def test_wip_limit_backpressure() -> None:
+    # J: cap global de runs ATIVOS por tenant — atingiu o teto, novos esperam (issues distintas)
+    store = InMemoryStore()
+    for i in range(3):
+        ev = GithubEvent("acme", "acme/app", str(i), "impl", f"impl:acme/app:{i}")
+        await ingest(store, ev, T0)
+    a = await store.claim_next_queued("acme", T0, 60, wip_limit=2)
+    b = await store.claim_next_queued("acme", T0, 60, wip_limit=2)
+    assert a is not None and b is not None  # 2 vagas preenchidas
+    assert await store.claim_next_queued("acme", T0, 60, wip_limit=2) is None  # teto: 2>=2, espera
+    # sem limite (0) NÃO gateia — pega a 3ª issue mesmo com 2 ativos
+    assert await store.claim_next_queued("acme", T0, 60, wip_limit=0) is not None
+    # abriu vaga: com o teto 2 de novo, ainda há 2 ativos (b + a 3ª) → segue barrado
+    await store.set_state(b.id, RunState.DONE, T0)
+    assert await store.claim_next_queued("acme", T0, 60, wip_limit=2) is None  # nada mais na fila
+
+
 async def test_sweep_requeue_backoff_then_dead_letter() -> None:
     store, runner = InMemoryStore(), StubRunner()
     await ingest(store, _ev(), T0)
