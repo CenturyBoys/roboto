@@ -25,6 +25,7 @@ from roboto.agents.review import (
 from roboto.app.comment_poll import BOT_MARKER
 from roboto.app.correction import CycleResult, correction_cycle
 from roboto.app.engine_loop import guarded_events
+from roboto.app.jev_guard import assess as assess_risk
 from roboto.app.repo_profile import build_repo_profile, read_agents_conventions
 from roboto.app.secret_scan import SecretLeakError, scan_diff
 from roboto.app.task_class import TaskType, classificar_task
@@ -155,8 +156,28 @@ async def run_pr_cycle(
         verify_md = await _verify_section()
         if verify_md:
             parts.append(verify_md)
+        risk_md = await _risk_section()
+        if risk_md:
+            parts.append(risk_md)
         parts.append(f"_Gerado pelo fleet roboto (run {run.id}). Revisar antes do merge._")
         return "\n\n".join(parts)
+
+    async def _risk_section() -> str:
+        # risco determinístico (jev-guard, H) pelos arquivos tocados. Só surfa médio/alto — não
+        # polui PR trivial e NÃO bloqueia (o gate segue sendo o merge humano).
+        try:
+            files = await git.changed_files(base)  # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001 — best-effort
+            return ""
+        risk = assess_risk(files)
+        if risk.level == "baixo":
+            return ""
+        emoji = "🔴" if risk.level == "alto" else "🟡"
+        motivos = "".join(f"\n- {r}" for r in risk.reasons)
+        return (
+            f"## {emoji} Risco: {risk.level}{motivos}\n\n"
+            "_Risco determinístico (jev-guard) pelos arquivos tocados — olhe com atenção no merge._"
+        )
 
     verify_cache: dict[str, VerifyResult] = {}  # último resultado do verify (reusado no review)
 

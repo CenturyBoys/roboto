@@ -10,7 +10,7 @@ import {
   retryExecution,
   revertExecution,
 } from '@/lib/api'
-import type { ExecutionDetail, PrDiff, Terminal, ToolUsage } from '@/types'
+import type { ExecutionDetail, PrDiff, Risk, Terminal, ToolUsage } from '@/types'
 import { Button } from './ui/button'
 import { Card, CardLabel, CardTitle } from './ui/card'
 import { Chat } from './Chat'
@@ -176,6 +176,10 @@ export function ExecDetail({
           <dt className="text-muted">ferramentas</dt>
           <dd data-testid="exec-tool-usage" className="font-mono text-xs">
             <ToolUsageLine usage={data.tool_usage} />
+          </dd>
+          <dt className="text-muted">risco</dt>
+          <dd data-testid="exec-risk" className="text-xs">
+            <RiskBadge risk={data.risk} />
           </dd>
         </dl>
       </Card>
@@ -355,6 +359,25 @@ function Row({ k, v }: { k: string; v: string }) {
       <dt className="text-muted">{k}</dt>
       <dd className="font-mono text-xs">{v}</dd>
     </>
+  )
+}
+
+// Risco determinístico (jev-guard, H) pelos arquivos tocados. Chama atenção do humano no merge —
+// não bloqueia. Verde = baixo; âmbar = médio (mudança ampla); vermelho = alto (caminho sensível).
+function RiskBadge({ risk }: { risk: Risk }) {
+  if (!risk) return <span className="text-muted">—</span>
+  const color =
+    risk.level === 'alto' ? 'text-red-300' : risk.level === 'medio' ? 'text-accent' : 'text-green-300'
+  const dot = risk.level === 'alto' ? '🔴' : risk.level === 'medio' ? '🟡' : '🟢'
+  return (
+    <span>
+      <span className={`font-mono font-bold ${color}`}>
+        {dot} {risk.level}
+      </span>
+      {risk.reasons.length > 0 && (
+        <span className="text-muted"> · {risk.reasons.join(' · ')}</span>
+      )}
+    </span>
   )
 }
 

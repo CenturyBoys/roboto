@@ -4,8 +4,8 @@
 > [`research/H-qualidade-seguranca-recuperacao.md`](https://github.com/CenturyBoys/roboto/blob/main/research/H-qualidade-seguranca-recuperacao.md).
 > **Princípio unificador:** o output do modelo é uma **PROPOSTA, não um comando** — cada ação passa
 > por uma camada determinística de política/validação antes de executar.
-> **Status:** fundação no `main` (gates humanos, least-privilege, **secret-scan**, recuperação,
-> observabilidade). git-revert e evals ficam como follow-up.
+> **Status:** fundação no `main` (gates humanos, least-privilege, **secret-scan**, recuperação via
+> **revert**, **risk-tiering**, observabilidade). evals e escalada automática ficam como follow-up.
 
 ## 1. Gates humanos — ações irreversíveis não são automáticas
 
@@ -72,15 +72,32 @@ máquina), o run vai a `FAILED` e o motivo (redigido) aparece no feed pro humano
 - **Comportamento** por run: eficiência semântica (code-intel vs ler arquivo inteiro) — trilha F,
   `app/tool_usage`. *Não dá pra otimizar nem orçar token sem medir token.*
 
-## 6. Confiança e escalada
+## 6. Risk-tiering (jev-guard, novo)
+
+Antes do gate humano (merge), o fleet **classifica o risco** da mudança pelos **arquivos tocados** —
+determinístico, sem LLM (`app/jev_guard`). O nível é **surfado**, não bloqueia:
+
+| Nível | Quando | Sinal |
+|---|---|---|
+| 🔴 **alto** | toca caminho sensível: migrations, CI/CD, infra (IaC), deploy, auth/segurança, lockfile | `escalate=True` (candidato a gate) |
+| 🟡 **medio** | mudança ampla (> 8 arquivos) sem caminho sensível | — |
+| 🟢 **baixo** | o resto | — |
+
+- **Onde aparece:** seção de risco no **corpo do PR** (o revisor vê onde olhar) e **badge no cockpit**
+  (detalhe da execução, `data-testid=exec-risk`) — calculado do diff **já cacheado**, sem recomputar git.
+- **Conservador:** não adiciona atrito ao fluxo normal — só chama atenção. A **escalada automática**
+  (alto → esperar OK humano antes de abrir PR) fica como **toggle de follow-up**, pra evitar
+  *approval fatigue* enquanto a régua não está calibrada.
+
+## 7. Confiança e escalada
 
 A validação de prontidão (DoR, trilha A) escala **JUDGE → FRONTIER** quando a confiança é baixa
 (`agents/review.validar_issue_semantica`) — o mesmo fio de "proposta validada por camada
 determinística". O veredito do review é determinístico (`aprovado_por_findings`, trilha D).
 
-## 7. Follow-ups (backlog)
+## 8. Follow-ups (backlog)
 
 - **evals / golden set** de falhas reais + LLM-as-judge calibrado como **CI gate** anti-regressão.
-- **jev-guard**: allow/deny por confiança + risco pra ações de alto impacto.
+- **jev-guard — escalada automática**: alto risco → esperar OK humano (hoje só surfa o nível).
 - **Aprovação por ação** (tool-level) ligada ao SDK vivo, com *canonical rendering* anti-loopjacking.
 - **Secret-scan: heurística de entropia** além dos formatos canônicos (hoje: alta precisão).
