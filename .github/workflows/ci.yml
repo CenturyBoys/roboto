@@ -34,6 +34,8 @@ jobs:
       - run: ruff check src tests
       - run: mypy
       - run: pytest -q
+      # gate de evals (H): regressão nas decisões de segurança (DoR/task/risco/secret) barra o merge
+      - run: PYTHONPATH=src python scripts/evals_gate.py
 
   # Tier 1 do front (trilha O): tipos + testes + build do cockpit React.
   frontend:

@@ -5,7 +5,8 @@
 > **Princípio unificador:** o output do modelo é uma **PROPOSTA, não um comando** — cada ação passa
 > por uma camada determinística de política/validação antes de executar.
 > **Status:** fundação no `main` (gates humanos, least-privilege, **secret-scan**, recuperação via
-> **revert**, **risk-tiering**, observabilidade). evals e escalada automática ficam como follow-up.
+> **revert**, **risk-tiering**, **evals gate**, observabilidade). LLM-as-judge e escalada automática
+> ficam como follow-up.
 
 ## 1. Gates humanos — ações irreversíveis não são automáticas
 
@@ -89,15 +90,32 @@ determinístico, sem LLM (`app/jev_guard`). O nível é **surfado**, não bloque
   (alto → esperar OK humano antes de abrir PR) fica como **toggle de follow-up**, pra evitar
   *approval fatigue* enquanto a régua não está calibrada.
 
-## 7. Confiança e escalada
+## 7. Evals — gate anti-regressão (novo)
+
+Golden set **versionado** (`evals/golden/*.json`) de casos `input → expect` rodados como **gate de
+CI**: regressão numa das decisões **determinísticas** de segurança barra o merge. **Sem LLM no CI**
+(sem custo/flakiness) — os evals de LLM-as-judge (qualidade de refino/review) ficam como follow-up
+**agendado**, não contínuo.
+
+| Peça | O que faz | Onde |
+|---|---|---|
+| golden set | casos curados (crescem com **falhas reais**) | `evals/golden/*.json` |
+| runner | roda os graders e conta falhas | `app/evals.run_evals` |
+| graders | DoR, classificação de task, risk-tiering, secret-scan | `app/evals` (dispatch) |
+| gate CI | falha o build em regressão | `scripts/evals_gate.py` no job `tier1` |
+
+Cobre os graders que **são** a camada de segurança (determinismo primeiro). Cada caso que escapou em
+produção vira um caso no golden — o gate impede que volte.
+
+## 8. Confiança e escalada
 
 A validação de prontidão (DoR, trilha A) escala **JUDGE → FRONTIER** quando a confiança é baixa
 (`agents/review.validar_issue_semantica`) — o mesmo fio de "proposta validada por camada
 determinística". O veredito do review é determinístico (`aprovado_por_findings`, trilha D).
 
-## 8. Follow-ups (backlog)
+## 9. Follow-ups (backlog)
 
-- **evals / golden set** de falhas reais + LLM-as-judge calibrado como **CI gate** anti-regressão.
+- **evals — LLM-as-judge** (dimensões subjetivas: qualidade de refino/review), em run **agendado**.
 - **jev-guard — escalada automática**: alto risco → esperar OK humano (hoje só surfa o nível).
 - **Aprovação por ação** (tool-level) ligada ao SDK vivo, com *canonical rendering* anti-loopjacking.
 - **Secret-scan: heurística de entropia** além dos formatos canônicos (hoje: alta precisão).
