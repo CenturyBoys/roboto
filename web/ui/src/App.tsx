@@ -7,16 +7,18 @@ import { ToastProvider } from '@/components/ui/toast'
 import { ExecList } from '@/components/ExecList'
 import { ExecDetail } from '@/components/ExecDetail'
 import { Costs } from '@/components/Costs'
+import { FleetMonitor } from '@/components/FleetMonitor'
 import { Interactions } from '@/components/Interactions'
 import { IssuesList } from '@/components/IssuesList'
 import { IssueRefine } from '@/components/IssueRefine'
 import { ReviewPr } from '@/components/ReviewPr'
 import { Setup } from '@/components/Setup'
 
-type View = 'execs' | 'issues' | 'interactions' | 'costs' | 'reviewpr'
+type View = 'monitor' | 'execs' | 'issues' | 'interactions' | 'costs' | 'reviewpr'
 type Mode = 'loading' | 'setup' | 'running'
 
 const NAV: [View, string][] = [
+  ['monitor', 'Monitor'],
   ['execs', 'Execuções'],
   ['issues', 'Issues'],
   ['interactions', 'Interações'],
@@ -168,6 +170,7 @@ export default function App() {
                   }}
                 />
               )}
+              {view === 'monitor' && <FleetMonitor />}
               {view === 'interactions' && <Interactions />}
               {view === 'costs' && <Costs />}
               {view === 'reviewpr' && <ReviewPr />}

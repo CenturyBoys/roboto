@@ -27,11 +27,12 @@ Sobe: Postgres + daemon (cockpit + motor Claude Code via ccr→OpenRouter) + clo
 
 ![Cockpit — aba Execuções (cards-resumo destacados)](assets/screens/execucoes.png){ loading=lazy }
 
-*A aba **Execuções** — torre de controle do fleet (screenshot gerado automaticamente; ver §8).*
+*A aba **Execuções** — torre de controle do fleet (screenshot gerado automaticamente da UI real).*
 
 | Aba | O que faz |
 |---|---|
-| **Execuções** | torre de controle: estado de cada run (cards-resumo + filtros). Clique p/ o detalhe (feed ao vivo, diff do PR, custos, chat). |
+| **Monitor** | saúde da frota num golpe: ativos / fila / falhas / dead-letters, orçamento do mês e runs por estado (auto-refresh). |
+| **Execuções** | torre de controle: estado de cada run (cards-resumo + filtros). Clique p/ o detalhe (feed ao vivo, diff do PR, custos, risco, chat). |
 | **Issues** | lista as issues do repo-alvo; abre o detalhe pra refinar/implementar. |
 | **Interações** | perguntas do motor que precisam de você (HITL). |
 | **Custos** | tokens e $ por execução/modelo. |
