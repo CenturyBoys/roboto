@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from typing import Any, Protocol
 
 from roboto.orchestrator.model import (
+    DeadLetter,
     Engine,
     ExecutionPr,
     GithubEvent,
@@ -20,11 +21,15 @@ from roboto.orchestrator.model import (
     LlmCall,
     MemoryFact,
     OutboxItem,
+    PrState,
     Run,
     RunState,
     Session,
     SessionEvent,
 )
+
+# estados em que uma issue está "sendo trabalhada" — base do concurrency-lock por entidade (#165).
+_ACTIVE_STATES = frozenset({RunState.RUNNING, RunState.WAITING, RunState.VERIFYING})
 
 
 class Store(Protocol):
@@ -52,7 +57,23 @@ class Store(Protocol):
 
     async def mark_sent(self, effect_id: int, now: datetime) -> None: ...
 
+    async def defer_effect(
+        self, effect_id: int, attempt: int, next_attempt_at: datetime, now: datetime
+    ) -> None: ...
+
+    async def dead_letter_effect(self, effect_id: int, error: str, now: datetime) -> None: ...
+
     async def find_abandoned(self, now: datetime) -> list[Run]: ...
+
+    async def dead_letter_run(self, run_id: int, error: str, now: datetime) -> None: ...
+
+    async def requeue_run_with_backoff(
+        self, run_id: int, attempt: int, next_attempt_at: datetime, now: datetime
+    ) -> None: ...
+
+    async def list_dead_letter(self, tenant: str) -> list[DeadLetter]: ...
+
+    async def replay_dead_letter(self, dead_letter_id: int, now: datetime) -> bool: ...
 
     async def create_session(
         self, tenant: str, execution_id: int, engine: Engine, now: datetime
@@ -122,6 +143,12 @@ class Store(Protocol):
         self, tenant: str, channel: str, offset: int, now: datetime
     ) -> None: ...
 
+    async def get_pr_state(self, tenant: str, repo: str, pr_number: int) -> PrState | None: ...
+
+    async def set_pr_state(
+        self, tenant: str, repo: str, pr_number: int, state: PrState
+    ) -> None: ...
+
     async def remember(
         self, tenant: str, text: str, *, kind: str, ref: str, now: datetime
     ) -> MemoryFact: ...
@@ -168,10 +195,13 @@ class InMemoryStore:
         self._interaction_by_msg: dict[tuple[str, str], int] = {}
         self._llm_calls: list[LlmCall] = []
         self._channel_cursor: dict[tuple[str, str], int] = {}
+        self._pr_state: dict[tuple[str, str, int], PrState] = {}
         self._facts: list[MemoryFact] = []
         self._app_config: dict[str, str] = {}
         self._session_events: list[SessionEvent] = []
         self._execution_prs: dict[int, ExecutionPr] = {}
+        self._dead_letters: dict[int, DeadLetter] = {}
+        self._dl_seq = 0
         self._fact_seq = 0
         self._run_seq = 0
         self._effect_seq = 0
@@ -204,12 +234,19 @@ class InMemoryStore:
     async def claim_next_queued(
         self, tenant: str, now: datetime, lease_seconds: int, *, agent: str | None = None
     ) -> Run | None:
+        # concurrency-lock por (tenant, issue): no máximo 1 run ATIVO por entidade (#165). Dois
+        # eventos da mesma issue não rodam em paralelo — o 2º espera o 1º sair do estado ativo.
+        busy = {
+            (r.tenant, r.issue_id) for r in self._runs.values() if r.state in _ACTIVE_STATES
+        }
         for run_id in sorted(self._runs):
             run = self._runs[run_id]
             if (
                 run.tenant == tenant
                 and run.state == RunState.QUEUED
                 and (agent is None or run.agent == agent)
+                and (run.next_attempt_at is None or run.next_attempt_at <= now)  # backoff
+                and (run.tenant, run.issue_id) not in busy  # concurrency-lock por entidade
             ):
                 # lock + reconferir: transição atômica queued -> running
                 claimed = replace(
@@ -271,12 +308,67 @@ class InMemoryStore:
         item = self._effects[effect_id]
         self._effects[effect_id] = replace(item, status="sent", sent_at=now)
 
+    async def defer_effect(
+        self, effect_id: int, attempt: int, next_attempt_at: datetime, now: datetime
+    ) -> None:
+        item = self._effects[effect_id]
+        self._effects[effect_id] = replace(item, attempt=attempt, next_attempt_at=next_attempt_at)
+
+    async def dead_letter_effect(self, effect_id: int, error: str, now: datetime) -> None:
+        item = self._effects[effect_id]
+        self._effects[effect_id] = replace(item, status="dead")
+        self._dl_seq += 1
+        self._dead_letters[self._dl_seq] = DeadLetter(
+            id=self._dl_seq, tenant=item.tenant, source="effect", ref_id=item.id, kind=item.kind,
+            payload=item.payload, error=error, attempts=item.attempt + 1, created_at=now,
+        )
+
     async def find_abandoned(self, now: datetime) -> list[Run]:
         return [
             r
             for r in self._runs.values()
             if r.state == RunState.RUNNING and r.lease_until is not None and r.lease_until < now
         ]
+
+    async def dead_letter_run(self, run_id: int, error: str, now: datetime) -> None:
+        run = self._runs[run_id]
+        self._runs[run_id] = replace(run, state=RunState.FAILED, lease_until=None, updated_at=now)
+        self._dl_seq += 1
+        self._dead_letters[self._dl_seq] = DeadLetter(
+            id=self._dl_seq, tenant=run.tenant, source="run", ref_id=run.id, kind=run.agent,
+            payload={"repo": run.repo, "issue_id": run.issue_id}, error=error,
+            attempts=run.attempt, created_at=now,
+        )
+
+    async def requeue_run_with_backoff(
+        self, run_id: int, attempt: int, next_attempt_at: datetime, now: datetime
+    ) -> None:
+        run = self._runs[run_id]
+        self._runs[run_id] = replace(
+            run, state=RunState.QUEUED, attempt=attempt, lease_until=None,
+            next_attempt_at=next_attempt_at, updated_at=now,
+        )
+
+    async def list_dead_letter(self, tenant: str) -> list[DeadLetter]:
+        return [d for d in self._dead_letters.values() if d.tenant == tenant]
+
+    async def replay_dead_letter(self, dead_letter_id: int, now: datetime) -> bool:
+        dl = self._dead_letters.get(dead_letter_id)
+        if dl is None:
+            return False
+        if dl.source == "effect":
+            item = self._effects[dl.ref_id]
+            self._effects[dl.ref_id] = replace(
+                item, status="pending", attempt=0, next_attempt_at=None, sent_at=None
+            )
+        else:  # run
+            run = self._runs[dl.ref_id]
+            self._runs[dl.ref_id] = replace(
+                run, state=RunState.QUEUED, attempt=0, lease_until=None,
+                next_attempt_at=None, updated_at=now,
+            )
+        del self._dead_letters[dead_letter_id]
+        return True
 
     async def create_session(
         self, tenant: str, execution_id: int, engine: Engine, now: datetime
@@ -447,6 +539,14 @@ class InMemoryStore:
         self, tenant: str, channel: str, offset: int, now: datetime
     ) -> None:
         self._channel_cursor[(tenant, channel)] = offset
+
+    async def get_pr_state(self, tenant: str, repo: str, pr_number: int) -> PrState | None:
+        return self._pr_state.get((tenant, repo, pr_number))
+
+    async def set_pr_state(
+        self, tenant: str, repo: str, pr_number: int, state: PrState
+    ) -> None:
+        self._pr_state[(tenant, repo, pr_number)] = state
 
     async def remember(
         self, tenant: str, text: str, *, kind: str, ref: str, now: datetime

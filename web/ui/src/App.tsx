@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { getHealth, getToken, setToken } from '@/lib/api'
 import { useInstallPrompt } from '@/lib/use-install-prompt'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { ToastProvider } from '@/components/ui/toast'
 import { ExecList } from '@/components/ExecList'
 import { ExecDetail } from '@/components/ExecDetail'
 import { Costs } from '@/components/Costs'
@@ -14,6 +16,14 @@ import { Setup } from '@/components/Setup'
 type View = 'execs' | 'issues' | 'interactions' | 'costs' | 'reviewpr'
 type Mode = 'loading' | 'setup' | 'running'
 
+const NAV: [View, string][] = [
+  ['execs', 'Execuções'],
+  ['issues', 'Issues'],
+  ['interactions', 'Interações'],
+  ['costs', 'Custos'],
+  ['reviewpr', 'Revisar PR'],
+]
+
 export default function App() {
   const [token, setTok] = useState(getToken())
   const [saved, setSaved] = useState(false)
@@ -22,6 +32,7 @@ export default function App() {
   const [selectedIssue, setSelectedIssue] = useState<number | null>(null)
   const [auto, setAuto] = useState(false)
   const [mode, setMode] = useState<Mode>('loading')
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [canInstall, install] = useInstallPrompt()
 
   // /healthz diz se o daemon está em modo setup (falta config) ou normal. Falha = assume normal.
@@ -41,104 +52,126 @@ export default function App() {
     setAuto(false)
     setView(v)
   }
+  const isActive = (v: View) => (v === 'execs' ? view === 'execs' && selected === null : view === v)
 
   return (
-    <div className="min-h-full">
-      <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-border bg-background px-4 py-4 sm:px-6">
-        <span className="text-2xl" style={{ filter: 'drop-shadow(0 0 6px rgba(255,210,30,.5))' }}>
-          ⚡
-        </span>
-        <div className="text-xl font-extrabold tracking-wide">
-          Potter <span className="text-sm font-normal text-muted">· console</span>
-        </div>
-      </header>
+    <ToastProvider>
+      <div className="min-h-full">
+        <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-border bg-background px-4 py-4 sm:px-6">
+          <span className="text-2xl" style={{ filter: 'drop-shadow(0 0 6px rgba(255,210,30,.5))' }}>
+            ⚡
+          </span>
+          <div className="text-xl font-extrabold tracking-wide">
+            Potter <span className="text-sm font-normal text-muted">· console</span>
+          </div>
 
-      <main className="mx-auto max-w-5xl px-4 py-5 sm:px-6">
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          <input
-            value={token}
-            onChange={(e) => {
-              setTok(e.target.value)
-              setSaved(false)
-            }}
-            placeholder="CONSOLE_TOKEN"
-            className="w-full rounded-lg border border-border bg-surface px-2.5 py-2 text-sm outline-none focus:border-accent sm:w-60"
-          />
-          <Button variant="outline" onClick={save}>
-            salvar token
-          </Button>
-          {saved && <span className="text-sm text-muted">ok ✓</span>}
-          {canInstall && <Button onClick={install}>Instalar app</Button>}
-        </div>
-
-        {mode === 'loading' && <p className="text-muted">carregando…</p>}
-
-        {mode === 'setup' && <Setup token={token} onReady={() => window.location.reload()} />}
-
-        {mode === 'running' && (
-          <>
-            <div className="mb-4 flex flex-wrap items-center gap-2">
-              <Button
-                variant={view === 'execs' && selected === null ? 'default' : 'outline'}
-                onClick={() => go('execs')}
-              >
-                Execuções
-              </Button>
-              <Button variant={view === 'issues' ? 'default' : 'outline'} onClick={() => go('issues')}>
-                Issues
-              </Button>
-              <Button
-                variant={view === 'interactions' ? 'default' : 'outline'}
-                onClick={() => go('interactions')}
-              >
-                Interações pendentes
-              </Button>
-              <Button variant={view === 'costs' ? 'default' : 'outline'} onClick={() => go('costs')}>
-                Custos
-              </Button>
-              <Button
-                variant={view === 'reviewpr' ? 'default' : 'outline'}
-                onClick={() => go('reviewpr')}
-              >
-                Revisar PR
-              </Button>
-              <Button variant={auto ? 'default' : 'outline'} onClick={() => setAuto((a) => !a)}>
-                Auto-refresh: {auto ? 'on' : 'off'}
-              </Button>
-            </div>
-
-            {view === 'execs' && selected === null && (
-              <ExecList
-                auto={auto}
-                onSelect={(id) => {
-                  setAuto(false)
-                  setSelected(id)
-                }}
-              />
+          {/* Config (e token = segredo) sai da barra principal e vira um menu (regra 10). */}
+          <div className="relative ml-auto">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="configurações"
+              onClick={() => setSettingsOpen((o) => !o)}
+            >
+              ⚙
+            </Button>
+            {settingsOpen && (
+              <>
+                <div className="fixed inset-0 z-20" onClick={() => setSettingsOpen(false)} />
+                <div className="absolute right-0 top-11 z-30 w-72 rounded-xl border border-border bg-surface p-3 shadow-xl">
+                  <label className="text-xs text-muted">Token do console</label>
+                  <input
+                    value={token}
+                    onChange={(e) => {
+                      setTok(e.target.value)
+                      setSaved(false)
+                    }}
+                    type="password"
+                    placeholder="CONSOLE_TOKEN"
+                    className="mt-1 w-full rounded-lg border border-border bg-background px-2.5 py-2 text-sm outline-none focus:border-accent"
+                  />
+                  <div className="mt-2 flex items-center gap-2">
+                    <Button variant="default" size="sm" onClick={save}>
+                      salvar
+                    </Button>
+                    {saved && <span className="text-xs text-green-300">ok ✓</span>}
+                    {canInstall && (
+                      <Button variant="outline" size="sm" onClick={install}>
+                        Instalar app
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </>
             )}
-            {view === 'execs' && selected !== null && (
-              <ExecDetail id={selected} onBack={() => setSelected(null)} onOpenRun={setSelected} />
-            )}
-            {view === 'issues' && selectedIssue === null && (
-              <IssuesList onSelect={setSelectedIssue} />
-            )}
-            {view === 'issues' && selectedIssue !== null && (
-              <IssueRefine
-                number={selectedIssue}
-                onBack={() => setSelectedIssue(null)}
-                onOpenRun={(runId) => {
-                  setSelectedIssue(null)
-                  setView('execs')
-                  setSelected(runId)
-                }}
-              />
-            )}
-            {view === 'interactions' && <Interactions />}
-            {view === 'costs' && <Costs />}
-            {view === 'reviewpr' && <ReviewPr />}
-          </>
-        )}
-      </main>
-    </div>
+          </div>
+        </header>
+
+        <main className="mx-auto max-w-5xl px-4 py-5 sm:px-6">
+          {mode === 'loading' && <p className="text-muted">carregando…</p>}
+
+          {mode === 'setup' && <Setup token={token} onReady={() => window.location.reload()} />}
+
+          {mode === 'running' && (
+            <>
+              <div className="mb-5 flex flex-wrap items-center gap-1">
+                {NAV.map(([v, label]) => (
+                  <Button
+                    key={v}
+                    variant={isActive(v) ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => go(v)}
+                  >
+                    {label}
+                  </Button>
+                ))}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="ml-auto text-muted"
+                  onClick={() => setAuto((a) => !a)}
+                  title="recarrega a lista a cada 4s"
+                >
+                  <span
+                    className={cn('inline-block h-2 w-2 rounded-full', auto ? 'bg-green-400' : 'bg-border')}
+                  />
+                  Auto-refresh {auto ? 'on' : 'off'}
+                </Button>
+              </div>
+
+              {view === 'execs' && selected === null && (
+                <ExecList
+                  auto={auto}
+                  onSelect={(id) => {
+                    setAuto(false)
+                    setSelected(id)
+                  }}
+                />
+              )}
+              {view === 'execs' && selected !== null && (
+                <ExecDetail id={selected} onBack={() => setSelected(null)} onOpenRun={setSelected} />
+              )}
+              {view === 'issues' && selectedIssue === null && (
+                <IssuesList onSelect={setSelectedIssue} />
+              )}
+              {view === 'issues' && selectedIssue !== null && (
+                <IssueRefine
+                  number={selectedIssue}
+                  onBack={() => setSelectedIssue(null)}
+                  onOpenRun={(runId) => {
+                    setSelectedIssue(null)
+                    setView('execs')
+                    setSelected(runId)
+                  }}
+                />
+              )}
+              {view === 'interactions' && <Interactions />}
+              {view === 'costs' && <Costs />}
+              {view === 'reviewpr' && <ReviewPr />}
+            </>
+          )}
+        </main>
+      </div>
+    </ToastProvider>
   )
 }

@@ -12,6 +12,7 @@ import json
 import subprocess
 import time
 from dataclasses import dataclass, field
+from typing import Any
 
 # só arquivos que o tsgo analisa; o resto do diff é ignorado pelo verify.
 _EXT_TS = (".ts", ".tsx", ".mts", ".cts")
@@ -32,7 +33,7 @@ def arquivos_ts(paths: list[str]) -> list[str]:
     return [p for p in paths if p.endswith(_EXT_TS)]
 
 
-def _introduzidos_de(resultado: dict) -> list[str]:
+def _introduzidos_de(resultado: dict[str, Any]) -> list[str]:
     """Extrai os erros introduzidos de um resultado de simulate_edit (new_content=base)."""
     return [str(e) for e in resultado.get("errors_resolved", []) if e]
 
@@ -62,12 +63,12 @@ class _McpClient:
         )
         self._id = 0
 
-    def _send(self, obj: dict) -> None:
+    def _send(self, obj: dict[str, Any]) -> None:
         assert self._p.stdin is not None
         self._p.stdin.write(json.dumps(obj) + "\n")
         self._p.stdin.flush()
 
-    def _read(self, id_alvo: int, timeout: float) -> dict | None:
+    def _read(self, id_alvo: int, timeout: float) -> dict[str, Any] | None:
         assert self._p.stdout is not None
         fim = time.monotonic() + timeout
         while time.monotonic() < fim:
@@ -78,7 +79,7 @@ class _McpClient:
             if not linha.startswith("{"):
                 continue
             try:
-                msg = json.loads(linha)
+                msg: dict[str, Any] = json.loads(linha)
             except ValueError:
                 continue
             if msg.get("id") == id_alvo:
@@ -97,7 +98,7 @@ class _McpClient:
         self._send({"jsonrpc": "2.0", "method": "notifications/initialized"})
         return True
 
-    def doctor(self, project: str, timeout: float) -> dict:
+    def doctor(self, project: str, timeout: float) -> dict[str, Any]:
         self._id += 1
         self._send({
             "jsonrpc": "2.0", "id": self._id, "method": "tools/call",
@@ -107,11 +108,14 @@ class _McpClient:
         blocos = msg.get("result", {}).get("content", [])
         texto = " ".join(b.get("text", "") for b in blocos if isinstance(b, dict))
         try:
-            return json.loads(texto)
+            parsed: dict[str, Any] = json.loads(texto)
+            return parsed
         except ValueError:
             return {}
 
-    def simulate_edit(self, project: str, file: str, new_content: str, timeout: float) -> dict:
+    def simulate_edit(
+        self, project: str, file: str, new_content: str, timeout: float
+    ) -> dict[str, Any]:
         self._id += 1
         self._send({
             "jsonrpc": "2.0", "id": self._id, "method": "tools/call",
@@ -122,7 +126,8 @@ class _McpClient:
         blocos = msg.get("result", {}).get("content", [])
         texto = " ".join(b.get("text", "") for b in blocos if isinstance(b, dict))
         try:
-            return json.loads(texto)
+            parsed: dict[str, Any] = json.loads(texto)
+            return parsed
         except ValueError:
             return {}
 
@@ -155,7 +160,7 @@ def verificar(
         # com default e dá falso positivo em globals/aliases (@types/node etc.). Aí NÃO anotamos.
         doc = cli.doctor(project, timeout=30.0)
         relatorio = doc.get("report", []) if isinstance(doc, dict) else []
-        ts = next((r for r in relatorio if r.get("lang") == "typescript"), {})
+        ts: dict[str, Any] = next((r for r in relatorio if r.get("lang") == "typescript"), {})
         if ts and ts.get("workspace_config", {}).get("ok") is False:
             motivo = ts.get("workspace_config", {}).get("issue", "tsconfig não resolvido")
             return VerifyResult(False, detalhe=f"não confiável ({motivo}); CI é o juiz")

@@ -3,6 +3,7 @@ import { dispatchEngineRefine, dispatchImplement, getIssue, refineIssue } from '
 import type { IssueDetail } from '@/types'
 import { Button } from './ui/button'
 import { Card, CardLabel, CardTitle } from './ui/card'
+import { useToast } from './ui/toast'
 
 type Bubble = { role: 'você' | 'refiner'; text: string }
 
@@ -22,7 +23,9 @@ export function IssueRefine({
   const [bubbles, setBubbles] = useState<Bubble[]>([])
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
+  const [action, setAction] = useState<null | 'refine' | 'impl'>(null)
   const transcript = useRef<[string, string][]>([])
+  const toast = useToast()
 
   // só carrega o detalhe da issue — NÃO dispara o chat cego (era isso que incomodava)
   useEffect(() => {
@@ -32,21 +35,31 @@ export function IssueRefine({
   }, [number])
 
   async function runWithEngine() {
+    if (action) return
+    setAction('refine')
     try {
       const { run_id } = await dispatchEngineRefine(number)
+      toast(`Refino disparado — execução #${run_id} ⚡`, 'success')
       onOpenRun(run_id)
     } catch {
-      setError('erro ao disparar o motor (engine ligado no stack do PoC?)')
+      toast('Erro ao disparar o motor (engine ligado no stack do PoC?)', 'error')
+    } finally {
+      setAction(null)
     }
   }
 
   // Executar PELO cockpit: enfileira a implementação (coda + abre PR). Só habilita com DoR pronta.
   async function runImplement() {
+    if (action) return
+    setAction('impl')
     try {
       const { run_id } = await dispatchImplement(number)
+      toast(`Implementação disparada — execução #${run_id} ▶`, 'success')
       onOpenRun(run_id)
     } catch {
-      setError('não deu p/ executar — a issue está pronta (DoR)? aplique o refino antes.')
+      toast('Não deu p/ executar — a issue está pronta (DoR)? Aplique o refino antes.', 'error')
+    } finally {
+      setAction(null)
     }
   }
 
@@ -95,16 +108,16 @@ export function IssueRefine({
           </>
         )}
         <div className="mt-3 flex flex-wrap gap-2">
-          <Button variant="default" onClick={() => void runWithEngine()}>
-            Refinar com o motor (lê o repo) ⚡
+          <Button variant="default" disabled={action !== null} onClick={() => void runWithEngine()}>
+            {action === 'refine' ? 'disparando…' : 'Refinar com o motor (lê o repo) ⚡'}
           </Button>
           <Button
             variant="outline"
-            disabled={!detail?.dor.ready}
+            disabled={!detail?.dor.ready || action !== null}
             title={detail?.dor.ready ? 'enfileira a implementação (coda + abre PR)' : 'issue precisa estar pronta (DoR)'}
             onClick={() => void runImplement()}
           >
-            ▶ Implementar (coda + PR)
+            {action === 'impl' ? 'disparando…' : '▶ Implementar (coda + PR)'}
           </Button>
         </div>
         <p className="mt-1 text-xs text-muted">

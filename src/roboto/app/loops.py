@@ -11,12 +11,15 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 
-from roboto.app.engine_loop import drive_turn
+from roboto.agents.refiner import IssueDraft
+from roboto.agents.review import check_issue_readiness
+from roboto.app.engine_loop import TurnOutcome, drive_turn
 from roboto.app.inbound import IssueLister, dispatch_inbound
 from roboto.channels.model import OutboundMessage
 from roboto.channels.port import Channel
 from roboto.engines.port import CodingEngine
 from roboto.llm.port import ModelGateway, Transcriber
+from roboto.orchestrator.model import RunState
 from roboto.orchestrator.store import Store
 from roboto.result import Err, Ok
 
@@ -24,6 +27,48 @@ from roboto.result import Err, Ok
 # fora deles, mas o "📝 Aplicar na issue" extrai só o que está ENTRE eles (sem preâmbulo).
 ISSUE_BODY_START = "===ISSUE-INICIO==="
 ISSUE_BODY_END = "===ISSUE-FIM==="
+
+# limite de tentativas do self-check de DoR no refino (1 proposta + 1 correção) — teto a tokens
+_REFINE_MAX_ATTEMPTS = 2
+
+
+def _marked_body(msgs: list[str]) -> str:
+    """Corpo entre os marcadores da última mensagem que os tiver (vazio se não houver).
+
+    Mesma âncora do `console._extract_proposal` (miolo `ISSUE-INICIO`/`ISSUE-FIM`, imune à quebra
+    dos `===`). Usado pelo self-check de DoR: valida o que o humano veria no "📝 Aplicar".
+    """
+    start = ISSUE_BODY_START.strip("=")
+    end = ISSUE_BODY_END.strip("=")
+    for text in reversed(msgs):
+        if start in text:
+            inner = text.split(start, 1)[1].split(end, 1)[0]
+            cleaned = inner.strip().strip("=").strip()
+            if cleaned:
+                return cleaned
+    return ""
+
+
+def _refine_prompt(repo: str, issue_id: str, contexto: str, correction: str = "") -> str:
+    base = (
+        f"Refine a issue #{issue_id} do repo {repo}.{contexto}\n\n"
+        "Seu trabalho é ESCREVER a issue refinada — NÃO executar a tarefa dela. Mesmo que a issue "
+        "fale em 'discovery'/'mapear'/'levantar', você NÃO faz o levantamento agora: você descreve "
+        "COMO fazê-lo (escopo + critérios). "
+        "LIMITE DURO: no máximo ~10 consultas de leitura só pra fundamentar; prefira code-intel "
+        "(workspace_symbols/find_references) a Read de arquivo inteiro. NÃO varra o repo. "
+        "Atingindo ~10 consultas (ou antes), PARE e EMITA a proposta — terminar com a issue é "
+        "OBRIGATÓRIO, mesmo que você não tenha explorado tudo. "
+        "NÃO edite arquivos nem abra PR. A proposta DEVE ter as QUATRO seções, nesta ordem e com "
+        "estes títulos exatos: `## Contexto`, `## Escopo`, `## Critérios de aceite` (itens "
+        "'- [ ]') e `## DoD` (itens '- [ ]'). NUNCA omita o DoD; se faltar info, preencha com o "
+        "razoável — mas as quatro seções SEMPRE aparecem.\n\n"
+        f"IMPORTANTE: emita o CORPO FINAL da issue — e NADA MAIS — entre as linhas "
+        f"`{ISSUE_BODY_START}` e `{ISSUE_BODY_END}`, cada marcador sozinho em sua própria linha. "
+        "Dentro dos marcadores vá direto ao markdown da issue (sem 'vou propor', sem comentários, "
+        "sem cercas de código). Qualquer explicação sua deve ficar FORA dos marcadores."
+    )
+    return base + correction
 
 
 async def run_periodic(
@@ -77,31 +122,52 @@ async def process_refine_tick(
     run = await store.claim_next_queued(tenant, moment, lease_seconds, agent="refine")
     if run is None:
         return
+    title = f"#{run.issue_id}"
     contexto = ""
     if run.issue_id.isdigit():
         got = await github.get_issue(run.repo, int(run.issue_id))
         if isinstance(got, Ok):
-            title, body = got.value
-            contexto = f"\n\nIssue atual — título: {title}\nCorpo atual:\n{body}"
-    prompt = (
-        f"Refine a issue #{run.issue_id} do repo {run.repo}.{contexto}\n\n"
-        "Seu trabalho é ESCREVER a issue refinada — NÃO executar a tarefa dela. Mesmo que a issue "
-        "fale em 'discovery'/'mapear'/'levantar', você NÃO faz o levantamento agora: você descreve "
-        "COMO fazê-lo (escopo + critérios). "
-        "LIMITE DURO: no máximo ~10 consultas de leitura só pra fundamentar; prefira code-intel "
-        "(workspace_symbols/find_references) a Read de arquivo inteiro. NÃO varra o repo. "
-        "Atingindo ~10 consultas (ou antes), PARE e EMITA a proposta — terminar com a issue é "
-        "OBRIGATÓRIO, mesmo que você não tenha explorado tudo. "
-        "NÃO edite arquivos nem abra PR. A proposta DEVE ter as QUATRO seções, nesta ordem e com "
-        "estes títulos exatos: `## Contexto`, `## Escopo`, `## Critérios de aceite` (itens "
-        "'- [ ]') e `## DoD` (itens '- [ ]'). NUNCA omita o DoD; se faltar info, preencha com o "
-        "razoável — mas as quatro seções SEMPRE aparecem.\n\n"
-        f"IMPORTANTE: emita o CORPO FINAL da issue — e NADA MAIS — entre as linhas "
-        f"`{ISSUE_BODY_START}` e `{ISSUE_BODY_END}`, cada marcador sozinho em sua própria linha. "
-        "Dentro dos marcadores vá direto ao markdown da issue (sem 'vou propor', sem comentários, "
-        "sem cercas de código). Qualquer explicação sua deve ficar FORA dos marcadores."
-    )
-    await drive_turn(engine, store, run=run, chat_id=chat_id, now=moment, prompt=prompt)
+            title, corpo = got.value
+            contexto = f"\n\nIssue atual — título: {title}\nCorpo atual:\n{corpo}"
+
+    # (b) DoR shift-left no refino: o motor VALIDA o próprio rascunho antes de propor e, se
+    # reprovar, recebe o motivo (missing) e corrige — sem round-trip humano (determinismo primeiro).
+    # O corte é o MESMO gate estrutural do `implement` (`check_issue_readiness`): a proposta não
+    # chega ao humano falhando no DoR por um motivo que o código já sabe apontar.
+    correction = ""
+    verdict = None
+    for _ in range(_REFINE_MAX_ATTEMPTS):
+        prompt = _refine_prompt(run.repo, run.issue_id, contexto, correction)
+        res = await drive_turn(engine, store, run=run, chat_id=chat_id, now=now(), prompt=prompt)
+        if isinstance(res, Err):
+            return  # motor falhou: drive_turn já marcou FAILED
+        if res.value is TurnOutcome.WAITING:
+            return  # pausou esperando humano: deixa como está (não finaliza)
+        events = await store.session_events(run.id, 0, 500)
+        msgs = [e.text for e in events if e.kind == "message" and e.text.strip()]
+        body = _marked_body(msgs)
+        if not body:
+            break  # sem marcadores: não dá p/ validar DoR — segue p/ terminal
+        verdict = check_issue_readiness(IssueDraft(title=title, body=body))
+        if verdict.ready:
+            break
+        correction = (
+            "\n\nATENÇÃO: a proposta anterior REPROVOU no gate de prontidão (DoR). Faltou: "
+            f"{'; '.join(verdict.missing)}. Corrija reescrevendo o CORPO COMPLETO entre os "
+            "marcadores. Os itens verificáveis '- [ ]' precisam estar SOB '## Critérios de aceite' "
+            "(vale dentro de subtítulos '### ...').\n\nCorpo anterior:\n" + body
+        )
+
+    # refino é TERMINAL após propor (não há PR a verificar): vai a DONE para NÃO segurar o lock
+    # (tenant, issue) em 'verifying'/'running' — senão trava a implementação na mesma issue (#165).
+    await store.set_state(run.id, RunState.DONE, now())
+    if verdict is not None and verdict.ready:
+        nota = "✅ DoR: proposta pronta para aplicar."
+    elif verdict is not None:
+        nota = f"⚠️ DoR ainda incompleto após correção: {'; '.join(verdict.missing)}"
+    else:
+        nota = "Proposta emitida (sem marcadores para validar o DoR)."
+    await store.append_session_event(run.tenant, run.id, "message", now(), text=nota)
 
 
 async def poll_tick(

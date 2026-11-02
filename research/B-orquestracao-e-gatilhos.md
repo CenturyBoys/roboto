@@ -1,6 +1,7 @@
 # Trilha B — Orquestração e gatilhos
 
 > Status: RASCUNHO PARA REVISÃO (executado 2026-10-18)
+> → **Como funciona hoje** (consolidado): [`docs/trilha-b-orquestracao.md`](../docs/trilha-b-orquestracao.md).
 
 > 🧩 Design do núcleo durável (ciclo de vida do run no banco, idempotência + lock, outbox): ver
 > [`DESIGN-nucleo.md`](DESIGN-nucleo.md).
@@ -9,6 +10,23 @@
 
 Como disparar os agentes do fleet de forma **idempotente, sem loops e barata**, usando eventos do
 GitHub como substrato? Onde roda o compute (GitHub Actions vs. webhook server vs. runner na VPS)?
+
+## Estado da arte
+
+Padrão consolidado em 2026 para disparar agentes por eventos do GitHub de forma confiável:
+- **Dois modos** (Claude Code GitHub Action): *interativo* (`@claude` num comentário) e *automação*
+  headless em todo evento (PR/push/CI).
+- **Entrega at-least-once** (webhook/fila reentregam) → efeitos **idempotentes** com *idempotency key*
+  persistida **antes** de processar.
+- **Fila durável + worker** com *visibility timeout*/lease, **dead-letter + replay** e **retry com
+  backoff exponencial**.
+- **Concurrency group por entidade** (issue/PR) para serializar; **máquina de estados persistida**.
+- **Anti-loop**: filtrar eventos originados pelo bot (por `sender`), distinguindo loop *desejado*
+  (bounded por contador) de loop infinito; **gate de confiança** por autor/label (prompt-injection
+  em repo público).
+- **Padrão outbox** (gravar→commit→publicar com dedup key) para efeitos exactly-once na prática.
+
+(fontes no fim.)
 
 ## Taxonomia de gatilho → eventos do GitHub
 
@@ -45,6 +63,13 @@ Começar com **GitHub Actions disparando um self-hosted runner no nosso containe
 ganha o wiring de eventos nativo + o runtime controlado que já queremos. Webhook server fica como
 evolução se estourarmos os limites do Actions (tarefas muito longas / orquestração complexa).
 
+> **Decisão superveniente (implementação).** O fleet foi construído na **opção 2 (webhook server →
+> fila Postgres → worker)**, não na recomendação acima (Actions + runner JIT). Motivo: tarefas longas
+> e orquestração **com estado** (máquina de estados, outbox, lease/sweeper) pediam controle total do
+> runtime desde o início — exatamente a "evolução" prevista neste parágrafo, antecipada. O design real
+> está em [`DESIGN-nucleo.md`](DESIGN-nucleo.md) e [`docs/design/orquestrador.md`](../docs/design/orquestrador.md).
+> Actions + runner JIT volta a ser opção se/quando quisermos o wiring de eventos nativo do GitHub.
+
 > **Modelo de runner**: usar **ephemeral/JIT runners** (registram just-in-time por job e se
 > desregistram) — é o que casa o Actions com o container 1-por-task da Trilha K. Alternativa: runner
 > persistente que **spawna** containers efêmeros (dois níveis). O "efêmero por task" exige um desses
@@ -76,6 +101,18 @@ Ação do bot **não pode** re-disparar o bot:
 - **Agentes ambiente** (Trilha 0): `schedule` + feed; ou daemon longo na VPS.
 - **Gate de prontidão / loop de comentário** (Trilha A): `issue_comment` reprocessa.
 - **Runtime** (Trilha K): onde o runner/daemon vive.
+
+## Impacto em token
+
+- Gatilho **determinístico** (roteamento evento→agente sem LLM) → zero token para decidir *se* e
+  *quem* disparar.
+- **Idempotência + dedup** evitam reprocessar o mesmo evento → não paga token em trabalho repetido
+  (reentrega de webhook, restart, `synchronize` duplicado).
+- **Loop breaker + anti-loop** limitam iterações → teto de token por issue/PR (sem loop infinito caro).
+- **Estado na fila/banco** (não na sessão) → o worker carrega só a issue densa = sessão curta
+  (cross-link Trilha A/G).
+- **Concurrency por entidade** → serializa em vez de rodar N sessões concorrentes na mesma issue
+  (menos token desperdiçado em corrida).
 
 ## Perguntas em aberto
 - [ ] Machine-user dedicado (identidade do bot) — qual, com que escopo mínimo?

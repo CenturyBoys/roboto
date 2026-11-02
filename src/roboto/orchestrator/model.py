@@ -31,6 +31,15 @@ class GithubEvent:
 
 
 @dataclass(frozen=True)
+class PrState:
+    """Estado de polling de um PR (Trilha B, #166): debounce do gatilho por atividade."""
+
+    last_seen_sha: str
+    last_activity_at: datetime
+    reviewed_sha: str  # "" = nunca avaliado
+
+
+@dataclass(frozen=True)
 class Run:
     id: int
     tenant: str
@@ -44,6 +53,7 @@ class Run:
     updated_at: datetime
     lease_until: datetime | None = None
     origin_chat_id: str | None = None  # origem p/ ecoar status/pergunta no Telegram (D30)
+    next_attempt_at: datetime | None = None  # backoff: só re-elegível a claim quando now >= este
 
 
 @dataclass(frozen=True)
@@ -66,9 +76,26 @@ class OutboxItem:
     kind: str
     payload: dict[str, Any]
     dedup_key: str
-    status: str
+    status: str  # pending | sent | dead
     created_at: datetime
     sent_at: datetime | None = None
+    attempt: int = 0  # tentativas de envio já feitas (backoff cresce com ele)
+    next_attempt_at: datetime | None = None  # só é elegível a envio quando now >= este instante
+
+
+@dataclass(frozen=True)
+class DeadLetter:
+    """Item que esgotou as tentativas (Trilha B): guarda contexto p/ diagnóstico e replay manual."""
+
+    id: int
+    tenant: str
+    source: str  # "effect" | "run"
+    ref_id: int  # id do outbox/run original
+    kind: str  # kind do efeito, ou agent do run
+    payload: dict[str, Any]
+    error: str
+    attempts: int
+    created_at: datetime
 
 
 class Engine(StrEnum):

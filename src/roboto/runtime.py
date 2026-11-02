@@ -143,7 +143,7 @@ async def _run_daemon(config: Config, store: Store) -> None:
         tasks.append(run_periodic(_run_stub, 5.0, stop))
     elif config.engine == "claude_code":
         from roboto.app.git_ops import SubprocessGit
-        from roboto.app.pr_cycle import process_pr_run_tick
+        from roboto.app.pr_cycle import process_correct_tick, process_pr_run_tick
         from roboto.app.scope import process_scope_tick
         from roboto.engines.claude_code import ClaudeCodeEngine
 
@@ -225,9 +225,44 @@ async def _run_daemon(config: Config, store: Store) -> None:
                 if isinstance(merged, Ok) and merged.value:
                     await store.set_state(r.id, RunState.DONE, _now())
 
+        async def _run_correct() -> None:
+            # B: corrige um PR já aberto conforme o review (no branch do PR). reviewer≠autor.
+            await process_correct_tick(
+                claude, adapters.gateway, adapters.github, store,
+                tenant=config.tenant, workdir_root="/work", reviewer="review",
+                git_factory=lambda ws: SubprocessGit(ws), now=_now, base=config.base_branch,
+            )
+
+        # gatilho por POLLING (#166): sem webhook, o daemon detecta PR estabilizado (debounce) e
+        # enfileira um `correct` (re-review → corrige/avisa). Debounce via env (default 30 min).
+        from roboto.app.pr_poll import process_pr_poll_tick
+
+        poll_repos = sorted(config.repos) or [config.default_repo]
+        poll_debounce = int(os.environ.get("ROBOTO_PR_POLL_DEBOUNCE", "1800"))
+
+        async def _run_pr_poll() -> None:
+            await process_pr_poll_tick(
+                adapters.github, store, tenant=config.tenant, repos=poll_repos,
+                now=_now, debounce_seconds=poll_debounce,
+            )
+
+        # projeção do estado da issue -> label `estado:*` no GitHub (#161). Estado canônico = run
+        # mais recente da issue; GitHub é adapter. `_label_seen` deduplica por processo.
+        from roboto.app.issue_state import project_issue_labels_tick
+
+        _label_seen: dict[tuple[str, str], str] = {}
+
+        async def _run_labels() -> None:
+            await project_issue_labels_tick(
+                adapters.github, store, tenant=config.tenant, now=_now, seen=_label_seen
+            )
+
         tasks.append(run_periodic(_run_claude, 5.0, stop))
         tasks.append(run_periodic(_run_scope, 5.0, stop))
         tasks.append(run_periodic(_run_refine, 5.0, stop))
+        tasks.append(run_periodic(_run_correct, 5.0, stop))
+        tasks.append(run_periodic(_run_pr_poll, 60.0, stop))
+        tasks.append(run_periodic(_run_labels, 20.0, stop))
         tasks.append(run_periodic(_close_merged, 15.0, stop))
 
     await asyncio.gather(*tasks)

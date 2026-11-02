@@ -40,10 +40,15 @@ class OpenRouterGateway:
         self, messages: list[ChatMessage], tier: Tier
     ) -> Result[Completion, Error]:
         model = self._models[tier]
-        payload = {
+        payload: dict[str, object] = {
             "model": model,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
         }
+        # Juiz DETERMINÍSTICO: sem temperatura o OpenRouter usa o default (amostragem) e o MESMO
+        # diff dá vereditos diferentes (visto no PoC: aprovado/reprovado/aprovado no mesmo PR).
+        # temp=0 fixa o veredito. Os tiers geradores (impl/chat) ficam no default — lá variar ajuda.
+        if tier is Tier.JUDGE:
+            payload["temperature"] = 0
         headers = {"Authorization": f"Bearer {self._key}"}
         owns = self._client is None
         client = (

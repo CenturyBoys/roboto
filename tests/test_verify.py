@@ -22,7 +22,7 @@ def test_secao_ok_quando_sem_erros() -> None:
 
 def test_secao_lista_erros_introduzidos() -> None:
     md = secao_verify(VerifyResult(True, ["x.ts:3 Type 'string'...", "y.ts:9 oops"]))
-    assert "2 novo(s) erro" in md
+    assert "2 possível(is) erro" in md  # texto suavizado (a871aa8): "possível", não categórico
     assert "x.ts:3" in md
 
 

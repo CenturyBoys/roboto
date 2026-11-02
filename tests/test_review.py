@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from roboto.agents.refiner import IssueDraft
 from roboto.agents.review import (
+    IssueReadiness,
     PullRequest,
     check_issue_readiness,
     review_issue_semantics,
     review_pr,
+    validar_issue_semantica,
 )
 from roboto.llm.port import ChatMessage, Completion, Tier
 from roboto.llm.stub import StubModelGateway
@@ -24,6 +26,27 @@ def test_complete_issue_is_ready() -> None:
     verdict = check_issue_readiness(IssueDraft(title="feat: x", body=_READY_BODY))
     assert verdict.ready is True
     assert verdict.missing == []
+
+
+def test_checkbox_under_subsection_is_ready() -> None:
+    # '- [ ]' sob um subtítulo '### Teste 1' DENTRO de 'Critérios de aceite' conta (a seção vai
+    # até o próximo heading de nível igual/superior, não quebra no primeiro '###').
+    body = (
+        "## Contexto\nx\n## Escopo\ny\n## Critérios de aceite\n"
+        "### Teste 1 — brute force\n- [ ] bloqueia após N tentativas\n"
+        "## DoD\n- [ ] ci"
+    )
+    verdict = check_issue_readiness(IssueDraft(title="feat: x", body=body))
+    assert verdict.ready is True
+    assert verdict.missing == []
+
+
+def test_checkbox_only_in_dod_is_not_ready() -> None:
+    # '- [ ]' só no DoD, nenhum sob 'Critérios de aceite' -> não testável -> not ready (#160)
+    body = "## Contexto\nx\n## Escopo\ny\n## Critérios de aceite\nfaz z\n## DoD\n- [ ] ci"
+    verdict = check_issue_readiness(IssueDraft(title="feat: x", body=body))
+    assert verdict.ready is False
+    assert any("Critérios de aceite" in m for m in verdict.missing)
 
 
 def test_missing_sections_listed() -> None:
@@ -114,3 +137,47 @@ async def test_pr_review_injeta_achados_do_verify_no_prompt() -> None:
     prompt_user = "\n".join(m.content for m in gw.seen if m.role == "user")
     assert "env.ts:226" in prompt_user  # o achado determinístico entrou no prompt
     assert "POSSÍVEIS" in prompt_user  # como possível (avaliar), não fato absoluto
+
+
+class _SeqGateway:
+    """Devolve respostas em sequência (1 por chamada) — p/ testar a ESCALADA (#160)."""
+
+    def __init__(self, replies: list[str]) -> None:
+        self._replies = replies
+        self.calls = 0
+
+    async def complete(
+        self, messages: list[ChatMessage], tier: Tier
+    ) -> Result[Completion, Error]:
+        self.calls += 1
+        return Ok(Completion(text=self._replies.pop(0), model="seq", tokens_in=0, tokens_out=0))
+
+
+async def test_validar_issue_estruturado_alta() -> None:
+    gw = StubModelGateway(reply="BEM_DEFINIDA: sim\nCONFIANCA: alta\nLACUNAS:")
+    r = await validar_issue_semantica(IssueDraft(title="x", body="y"), gw)
+    assert isinstance(r, Ok)
+    assert r.value == IssueReadiness(bem_definida=True, confianca="alta", lacunas=[])
+
+
+async def test_validar_issue_lacunas() -> None:
+    gw = StubModelGateway(
+        reply="BEM_DEFINIDA: nao\nCONFIANCA: media\nLACUNAS:\n- critério vago\n- sem escopo"
+    )
+    r = await validar_issue_semantica(IssueDraft(title="x", body="y"), gw)
+    assert isinstance(r, Ok)
+    assert r.value.bem_definida is False
+    assert r.value.confianca == "media"
+    assert r.value.lacunas == ["critério vago", "sem escopo"]
+
+
+async def test_validar_issue_escala_em_baixa() -> None:
+    # 1ª (JUDGE) confiança baixa -> escala p/ FRONTIER, que decide alta (usa o veredito forte)
+    gw = _SeqGateway(
+        ["BEM_DEFINIDA: nao\nCONFIANCA: baixa\nLACUNAS:\n- ambíguo",
+         "BEM_DEFINIDA: sim\nCONFIANCA: alta\nLACUNAS:"]
+    )
+    r = await validar_issue_semantica(IssueDraft(title="x", body="y"), gw)  # type: ignore[arg-type]
+    assert isinstance(r, Ok)
+    assert gw.calls == 2  # escalou
+    assert r.value.bem_definida is True and r.value.confianca == "alta"

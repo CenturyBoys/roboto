@@ -25,6 +25,7 @@ from roboto.agents.refiner import IssueDraft, converse
 from roboto.agents.review import PullRequest, check_issue_readiness, review_pr
 from roboto.app.loops import ISSUE_BODY_END, ISSUE_BODY_START
 from roboto.app.session_hub import SessionHub
+from roboto.app.task_class import TaskType, classificar_task
 from roboto.app.tmux_copilot import session_name
 from roboto.llm.port import ModelGateway
 from roboto.orchestrator.model import (
@@ -575,6 +576,14 @@ def console_routes(
         if isinstance(got, Err):
             return JSONResponse({"error": got.error.message}, status_code=502)
         title, body = got.value
+        # gate anti-codar-definição (#158): não implementa task de DEFINIÇÃO CONFIANTE (done = spec)
+        tclass = classificar_task(title, body)
+        if tclass.task_type is TaskType.DEFINICAO and tclass.confianca == "alta":
+            return JSONResponse(
+                {"error": "task de definição não é implementada (done = spec aprovada)",
+                 "sinais": tclass.sinais},
+                status_code=409,
+            )
         verdict = check_issue_readiness(IssueDraft(title=title, body=body))
         if not verdict.ready:
             return JSONResponse(
@@ -602,6 +611,39 @@ def console_routes(
             issue_id=str(number),
             agent="impl",
             idempotency_key=f"impl:{repo}:{number}:{when.isoformat()}",
+        )
+        run, _ = await store.insert_run_if_absent(ev, when)
+        return JSONResponse({"run_id": run.id})
+
+    async def correct_pr_action(request: Request) -> JSONResponse:
+        # B: corrigir um PR JÁ ABERTO conforme o review. Enfileira um run `agent='correct'` que o
+        # `process_correct_tick` pega (checkout da branch do PR → review → corrige → force-push →
+        # re-review). `issue_id` carrega o NÚMERO do PR.
+        if _unauthorized(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        repo = request.query_params.get("repo") or default_repo
+        number = int(request.path_params["number"])
+        if not repo:
+            return JSONResponse({"error": "repo não configurado"}, status_code=409)
+        active_states = {RunState.QUEUED, RunState.RUNNING, RunState.VERIFYING}
+        for r in await store.list_runs(tenant, 100):
+            if (
+                r.agent == "correct"
+                and r.repo == repo
+                and r.issue_id == str(number)
+                and r.state in active_states
+            ):
+                return JSONResponse(
+                    {"error": "já existe correção ativa para este PR", "run_id": r.id},
+                    status_code=409,
+                )
+        when = datetime.now(UTC)
+        ev = GithubEvent(
+            tenant=tenant,
+            repo=repo,
+            issue_id=str(number),
+            agent="correct",
+            idempotency_key=f"correct:{repo}:{number}:{when.isoformat()}",
         )
         run, _ = await store.insert_run_if_absent(ev, when)
         return JSONResponse({"run_id": run.id})
@@ -640,9 +682,31 @@ def console_routes(
         await issues.comment_pr(run.repo, number, "📝 Issue refinada pelo fleet (via cockpit).")
         return JSONResponse({"ok": True, "number": number})
 
+    async def dead_letter_list(request: Request) -> JSONResponse:
+        if _unauthorized(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        items = await store.list_dead_letter(tenant)
+        return JSONResponse({
+            "dead_letter": [
+                {"id": d.id, "source": d.source, "ref_id": d.ref_id, "kind": d.kind,
+                 "error": d.error, "attempts": d.attempts, "created_at": d.created_at.isoformat()}
+                for d in items
+            ]
+        })
+
+    async def dead_letter_replay(request: Request) -> JSONResponse:
+        if _unauthorized(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        ok = await store.replay_dead_letter(int(request.path_params["dl_id"]), datetime.now(UTC))
+        if not ok:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        return JSONResponse({"ok": True})
+
     return [
         *shell_routes(),
         Route("/healthz", healthz),
+        Route("/dead-letter", dead_letter_list),
+        Route("/dead-letter/{dl_id:int}/replay", dead_letter_replay, methods=["POST"]),
         Route("/executions", list_executions),
         Route("/executions/{run_id:int}", execution_detail),
         Route("/executions/{run_id:int}/cancel", cancel, methods=["POST"]),
@@ -659,6 +723,7 @@ def console_routes(
         Route("/issues/{number:int}/refine-engine", refine_with_engine, methods=["POST"]),
         Route("/issues/{number:int}/implement", implement_with_engine, methods=["POST"]),
         Route("/prs/{number:int}/review", review_pr_action, methods=["POST"]),
+        Route("/prs/{number:int}/correct", correct_pr_action, methods=["POST"]),
         Route("/executions/{run_id:int}/proposal", proposal),
         Route("/executions/{run_id:int}/apply", apply_proposal, methods=["POST"]),
         Route("/interactions", pending_interactions),

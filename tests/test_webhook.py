@@ -148,6 +148,30 @@ def test_opt_in_pr_label() -> None:
     assert _ev(sem, event="pull_request", trigger_label="roboto") is None
 
 
+def test_anti_loop_ignora_evento_do_proprio_bot() -> None:
+    issue_do_bot = {
+        "action": "opened",
+        "repository": {"full_name": "acme/app"},
+        "issue": {"number": 7, "assignees": [{"login": "roboto-bot"}]},
+        "sender": {"login": "roboto-bot"},
+    }
+    assert _ev(issue_do_bot, bot_login="roboto-bot") is None  # bot não re-dispara o bot
+
+
+def test_anti_loop_permite_synchronize_do_bot() -> None:
+    # push do bot (correção) em PR do fleet -> synchronize DEVE re-disparar o review (loop desejado)
+    pr_sync = {
+        "action": "synchronize",
+        "repository": {"full_name": "acme/app"},
+        "pull_request": {
+            "number": 9, "head": {"sha": "abc"}, "assignees": [{"login": "roboto-bot"}],
+        },
+        "sender": {"login": "roboto-bot"},
+    }
+    ev = _ev(pr_sync, event="pull_request", bot_login="roboto-bot")
+    assert ev is not None and ev.agent == "review"
+
+
 async def test_handle_webhook_repo_outside_scope_is_ignored() -> None:
     store = InMemoryStore()
     body = json.dumps(

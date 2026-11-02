@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { reviewPr } from '@/lib/api'
+import { correctPr, reviewPr } from '@/lib/api'
 import { Button } from './ui/button'
 import { Card, CardLabel, CardTitle } from './ui/card'
+import { useToast } from './ui/toast'
 
 // Revisar QUALQUER PR aberto (do time/bot, não só os do fleet) com o revisor deepseek (JUDGE).
 // Posta o parecer como comentário no PR e mostra aqui. reviewer≠autor (D28).
@@ -12,6 +13,23 @@ export function ReviewPr() {
     null,
   )
   const [error, setError] = useState<string | null>(null)
+  const [fixing, setFixing] = useState(false)
+  const toast = useToast()
+
+  // B: dispara a correção do PR conforme o review (o coder corrige no branch do PR + re-revisa).
+  async function fixIt() {
+    const n = Number(num)
+    if (!n || fixing) return
+    setFixing(true)
+    try {
+      const { run_id } = await correctPr(n)
+      toast(`Correção disparada — execução #${run_id} (veja em Execuções)`, 'success')
+    } catch {
+      toast('Não consegui disparar a correção do PR.', 'error')
+    } finally {
+      setFixing(false)
+    }
+  }
 
   async function run() {
     const n = Number(num)
@@ -22,8 +40,13 @@ export function ReviewPr() {
     try {
       const r = await reviewPr(n)
       setResult({ approved: r.approved, issues: r.issues, author: r.author })
+      toast(
+        r.approved ? `PR #${n}: aprovado ✅` : `PR #${n}: pediu correções 🔁 (comentado no PR)`,
+        r.approved ? 'success' : 'default',
+      )
     } catch {
       setError('não deu p/ revisar — PR existe? (nº/repo). O parecer também vai como comentário no PR.')
+      toast('Não consegui revisar o PR — confira o número.', 'error')
     } finally {
       setBusy(false)
     }
@@ -61,11 +84,16 @@ export function ReviewPr() {
             )}
           </CardLabel>
           {!result.approved && (
-            <ul className="list-disc space-y-1 pl-5 text-sm">
-              {result.issues.map((it, i) => (
-                <li key={i}>{it}</li>
-              ))}
-            </ul>
+            <>
+              <ul className="list-disc space-y-1 pl-5 text-sm">
+                {result.issues.map((it, i) => (
+                  <li key={i}>{it}</li>
+                ))}
+              </ul>
+              <Button variant="default" disabled={fixing} onClick={() => void fixIt()}>
+                {fixing ? 'disparando…' : '🔧 Corrigir conforme o review'}
+              </Button>
+            </>
           )}
           <p className="text-xs text-muted">(o parecer também foi postado como comentário no PR)</p>
         </div>

@@ -1,6 +1,7 @@
 # Trilha A — Contratos de trabalho (épico / issue / DoR / DoD / estados)
 
 > Status: RASCUNHO PARA REVISÃO (executado 2026-10-18)
+> → **Como funciona hoje** (consolidado): [`docs/trilha-a-contratos.md`](../docs/trilha-a-contratos.md).
 >
 > ✅ **Decidido** (ver `DECISOES-A-FECHAR.md`): issue types + sub-issues nativos; **Projects fora** no
 > MVP (estado via labels) (D12); usar **ideias do Spec Kit** sem acoplar à ferramenta (D13).
@@ -154,6 +155,46 @@ a gente compõe:
 > Ambig-SWE (arXiv 2502.13069) existem e conferem; Ambig-SWE reporta até **+74%** com interação.
 > Os demais arXiv citados (2605.25284, 2603.26233, 2606.03135, 2607.25152) **não foram verificados
 > individualmente** — tratados como indicativos até conferência.
+
+## Opções
+
+Alternativas confrontadas (as decisões consolidadas estão em **Recomendação**):
+
+- **Hierarquia épico/issue/task** — (a) *issue types + sub-issues nativos* do GitHub vs. (b)
+  *labels/convenção* (`epic:`, `parent:`). Nativo = hierarquia de 1ª classe + board; labels = frágil
+  e manual.
+- **Estado da issue** — (a) *Projects status field* vs. (b) *labels de estado* vs. (c) *estado no
+  banco* (`RunState`). Projects = visual rico, custo de setup; labels = simples e versionável no
+  evento; banco = fonte durável do orquestrador, porém invisível no GitHub.
+- **Spec como artefato** — (a) acoplar ao *GitHub Spec Kit* vs. (b) usar as *ideias* do SDD sem a
+  ferramenta. Pronto-mas-acoplado vs. leve.
+- **Template de issue** — (a) `.github/ISSUE_TEMPLATE` *versionado* vs. (b) template *embutido* nos
+  prompts dos agentes. Versionado = DoR como artefato auditável; embutido = menos arquivos, mas
+  invisível a quem abre issue na mão.
+- **Validador de prontidão** — (a) só checklist determinístico vs. (b) checklist + juiz barato vs.
+  (c) checklist + juiz + *escala a frontier* por confiança. Mais camadas = mais robusto e mais caro.
+
+## Recomendação
+
+Consolidação das decisões (ver `DECISOES-A-FECHAR.md` para D12/D13):
+
+- **Hierarquia:** issue types + sub-issues **nativos** (D12).
+- **Estado:** **labels** no MVP; **Projects fora** por ora (D12). A máquina de estados *executável*
+  vive hoje no `RunState` do orquestrador (Trilha B) — a Trilha A entrega o **contrato** (DoR/DoD +
+  formato), não a materialização completa dos estados da issue no GitHub. Mapear `RunState` ↔ labels
+  de estado é execução cross-trilha (A+B), rastreada em issue própria.
+- **Spec:** usar as **ideias do Spec Kit** (Specify/Clarify/Analyze) sem acoplar à ferramenta (D13).
+- **Template:** adotar `.github/ISSUE_TEMPLATE` versionado (DoR como artefato) — hoje o template só
+  existe embutido nos prompts; promover a artefato é execução.
+- **Validador:** meta é o de **3 camadas** (checklist → juiz estruturado `{tipo, bem_definida,
+  confiança, lacunas[]}` → frontier por confiança). Implementado hoje: camadas 1–2
+  (`check_issue_readiness` + `review_issue_semantics`); a saída estruturada e a escalada são execução.
+- **Tipagem de task** (`definição/desenvolvimento/spike`) + gate anti-codar-definição: decisão de
+  **adotar**, ainda sem contraparte no código → vira issue de execução.
+
+> **Escopo da trilha:** A fixa o **contrato** (o que é épico/issue/DoR/DoD, formato, gates e tipagem).
+> A **execução** (estados no GitHub, template versionado, validador em 3 camadas, tipagem no código)
+> é rastreada em issues próprias (ver o comentário de revisão doc×código nesta trilha).
 
 ## Impacto em token
 

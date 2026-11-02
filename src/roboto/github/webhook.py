@@ -20,6 +20,11 @@ from roboto.result import Err, Ok, Result
 # evento GitHub -> (ação relevante -> agente). Evento/ação fora disso é ignorado (202).
 _PR_ACTIONS = {"opened": "review", "synchronize": "review", "reopened": "review"}
 
+# Anti-loop (Trilha B): ação do bot NÃO pode re-disparar o bot. Eventos cujo `sender` é o próprio
+# bot são ignorados — EXCETO os que alimentam o loop DESEJADO (bot empurra correção -> re-review),
+# distinguidos por (event_type, action), não por um filtro-por-actor cego que mataria o fix->review.
+_BOT_LOOP_ALLOWED = frozenset({("pull_request", "synchronize")})
+
 
 def verify_signature(secret: str, body: bytes, signature_header: str) -> bool:
     if not signature_header.startswith("sha256="):
@@ -63,6 +68,11 @@ def normalize_event(
 ) -> Result[GithubEvent | None, Error]:
     """Mapeia evento do GitHub para `GithubEvent`. Não-acionável / não-do-fleet → `Ok(None)`."""
     try:
+        # anti-loop: evento originado pelo próprio bot não re-dispara (salvo o loop desejado).
+        if bot_login and _sender_login(payload) == bot_login:
+            action = str(payload.get("action", ""))
+            if (event_type, action) not in _BOT_LOOP_ALLOWED:
+                return Ok[GithubEvent | None](None)
         if event_type == "issues" and payload.get("action") == "opened":
             issue = payload["issue"]
             assert isinstance(issue, dict)
@@ -151,3 +161,9 @@ def _pull_request(payload: dict[str, object]) -> dict[str, object]:
     pr = payload["pull_request"]
     assert isinstance(pr, dict)
     return pr
+
+
+def _sender_login(payload: dict[str, object]) -> str:
+    """Login de quem originou o evento (`payload.sender`); '' se ausente."""
+    sender = payload.get("sender")
+    return str(sender.get("login", "")) if isinstance(sender, dict) else ""
