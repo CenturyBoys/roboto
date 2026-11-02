@@ -55,6 +55,29 @@ def test_normalize_pull_request_opened() -> None:
     assert result.value.idempotency_key == "pull_request:opened:acme/app:7:abc123"
 
 
+def test_normalize_pull_request_review_dismissed() -> None:
+    # #151: review removido por alguém → o fleet re-revisa
+    payload: dict[str, object] = {
+        "action": "dismissed",
+        "repository": {"full_name": "acme/app"},
+        "pull_request": {"number": 7, "head": {"sha": "abc123"}},
+    }
+    result = normalize_event("pull_request_review", payload, "acme")
+    assert isinstance(result, Ok)
+    assert result.value is not None
+    assert result.value.agent == "review"
+    assert result.value.idempotency_key == "pull_request_review:dismissed:acme/app:7:abc123"
+
+
+def test_normalize_pull_request_review_non_dismissed_is_none() -> None:
+    payload: dict[str, object] = {
+        "action": "submitted",
+        "repository": {"full_name": "acme/app"},
+        "pull_request": {"number": 7, "head": {"sha": "abc123"}},
+    }
+    assert normalize_event("pull_request_review", payload, "acme").value is None  # type: ignore[union-attr]
+
+
 def test_normalize_ignored_event_is_none() -> None:
     result = normalize_event("issues", {"action": "labeled"}, "acme")
     assert result.value is None  # type: ignore[union-attr]

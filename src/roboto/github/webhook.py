@@ -111,6 +111,26 @@ def normalize_event(
                     idempotency_key=f"pull_request:{action}:{repo}:{number}:{head_sha}",
                 )
             )
+        # review DISMISSED (#151): alguém removeu um review (ex.: tirou o nosso e subiu dado) → o
+        # fleet re-revisa. idempotency pelo head_sha atual (não re-dispara no mesmo estado).
+        if event_type == "pull_request_review" and str(payload.get("action", "")) == "dismissed":
+            pr = _pull_request(payload)
+            if not _is_for_fleet(pr, trigger_label, bot_login):
+                return Ok[GithubEvent | None](None)
+            repo = _repo(payload)
+            number = str(pr["number"])
+            head = pr["head"]
+            assert isinstance(head, dict)
+            head_sha = str(head["sha"])
+            return Ok[GithubEvent | None](
+                GithubEvent(
+                    tenant=tenant,
+                    repo=repo,
+                    issue_id=number,
+                    agent="review",
+                    idempotency_key=f"pull_request_review:dismissed:{repo}:{number}:{head_sha}",
+                )
+            )
     except (KeyError, TypeError) as exc:
         return Err(Error("invalid", f"payload {event_type} malformado: {exc}"))
     return Ok[GithubEvent | None](None)

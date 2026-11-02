@@ -125,6 +125,18 @@ async def test_wip_limit_backpressure() -> None:
     assert await store.claim_next_queued("acme", T0, 60, wip_limit=2) is None  # nada mais na fila
 
 
+async def test_sweep_skips_run_under_intervention() -> None:
+    # #157: run sob intervenção humana ativa (sessão viva) NÃO é re-enfileirado pelo sweeper
+    store, runner = InMemoryStore(), StubRunner()
+    run, _ = await store.insert_run_if_absent(_ev(), T0)
+    await process_next(store, runner, "acme", T0, lease_seconds=60)  # claima (RUNNING, lease)
+    later = T0 + timedelta(seconds=120)  # lease expirada
+    held = await sweep(store, later, max_attempts=2, held=frozenset({run.id}))
+    assert held.unwrap() == 0  # segurado pelo humano → não mexe
+    free = await sweep(store, later, max_attempts=2)  # sem held → re-enfileira normal
+    assert free.unwrap() == 1
+
+
 async def test_sweep_requeue_backoff_then_dead_letter() -> None:
     store, runner = InMemoryStore(), StubRunner()
     await ingest(store, _ev(), T0)
