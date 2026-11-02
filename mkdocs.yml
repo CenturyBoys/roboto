@@ -47,6 +47,7 @@ markdown_extensions:
       permalink: true
 nav:
   - Início: index.md
+  - Estado do projeto: status.md
   - Tutoriais:
       - Operador (como usar): tutorial-operador.md
       - Dev / arquitetura: tutorial-dev.md
@@ -57,6 +58,7 @@ nav:
       - Responsabilidades: responsabilidades.md
       - Status da implementação: status-implementacao.md
   - Trilhas (como funciona):
+      - 0 — Papéis → agentes: trilha-0-papeis.md
       - A — Contratos de trabalho: trilha-a-contratos.md
       - B — Orquestração e gatilhos: trilha-b-orquestracao.md
       - C — Skills do fleet: trilha-c-skills.md
