@@ -23,16 +23,19 @@ Uma **máquina de estados durável** que pega trabalho (evento → `run`), execu
 ```mermaid
 stateDiagram-v2
   [*] --> queued
-  queued --> running: claim (lock por issue)
-  running --> waiting: precisa de humano
+  queued --> running: claim
+  running --> waiting: aprovação
   waiting --> running: resposta
   running --> verifying: PR aberto
-  running --> failed: erro / watchdog
-  verifying --> done: merge humano
-  failed --> queued: retry (backoff)
-  failed --> [*]: dead-letter
+  running --> failed: erro
+  verifying --> done: merge
+  failed --> queued: retry
+  failed --> [*]: DLQ
   done --> [*]
 ```
+
+*Legenda:* **claim** = lock por (tenant, issue) · **erro** inclui o watchdog de inatividade ·
+**retry** = backoff exponencial · **DLQ** = dead-letter ao esgotar as tentativas.
 
 ## 3. Garantias de resiliência (as 4 peças)
 

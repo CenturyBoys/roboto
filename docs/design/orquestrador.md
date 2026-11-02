@@ -61,18 +61,22 @@ flowchart LR
 ```mermaid
 stateDiagram-v2
   [*] --> queued
-  queued --> running: dispatcher pega + lease
-  running --> waiting: precisa aprovacao / tool-result
-  waiting --> running: resposta (revalidada no servidor)
-  running --> verifying: abriu PR / aguarda CI+review
+  queued --> running: pega + lease
+  running --> waiting: aprovação
+  waiting --> running: resposta
+  running --> verifying: PR aberto
   verifying --> done: DoD ok
-  verifying --> running: falha de gate (retenta, attempt++)
-  running --> failed: erro terminal
-  running --> abandoned: lease expirou (sweeper)
-  abandoned --> queued: re-enfileira (attempt++ , teto)
+  verifying --> running: retry
+  running --> failed: erro
+  running --> abandoned: lease expirou
+  abandoned --> queued: re-enfileira
   done --> [*]
   failed --> [*]
 ```
+
+*Legenda:* **pega + lease** = o dispatcher reserva o run · **aprovação** = precisa de humano /
+tool-result (revalidado no servidor) · **retry** = falha de gate → re-implementa (`attempt++`) ·
+**re-enfileira** = o sweeper devolve à fila após o lease expirar (com teto de tentativas).
 
 **Invariante central:** o estado é gravado **ANTES** de qualquer chamada externa — um crash no meio é
 sempre recuperável (resume de estado verificado, H). `waiting` nunca vive no chat (M).
