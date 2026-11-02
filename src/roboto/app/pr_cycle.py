@@ -16,6 +16,7 @@ from typing import Protocol
 
 from roboto.agents.refiner import IssueDraft
 from roboto.agents.review import PullRequest, ReviewVerdict, check_issue_readiness, review_pr
+from roboto.app.comment_poll import BOT_MARKER
 from roboto.app.correction import CycleResult, correction_cycle
 from roboto.app.engine_loop import guarded_events
 from roboto.app.repo_profile import build_repo_profile
@@ -457,7 +458,7 @@ async def process_correct_tick(
             else "🔁 Correção aplicada; ainda restam pontos:\n- " + "\n- ".join(again.issues)
         )
         await github.comment_pr(
-            run.repo, pr_number, body + "\n\n_(correção do fleet, reviewer≠autor)_"
+            run.repo, pr_number, body + f"\n\n_(correção do fleet, reviewer≠autor)_\n{BOT_MARKER}"
         )
         final = RunState.VERIFYING if again.approved else RunState.FAILED
         await store.set_state(run.id, final, moment)

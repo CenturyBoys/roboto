@@ -31,9 +31,16 @@ class PrDecision:
 
 
 def decide_pr(
-    number: int, head_sha: str, prev: PrState | None, now: datetime, debounce: timedelta
+    number: int,
+    head_sha: str,
+    prev: PrState | None,
+    now: datetime,
+    debounce: timedelta,
+    *,
+    ci_failed: bool = False,
 ) -> PrDecision:
-    """Decisão PURA do poller para um PR (determinismo primeiro; testável sem rede/banco)."""
+    """Decisão PURA do poller para um PR (determinismo primeiro; testável sem rede/banco).
+    `ci_failed=True` (check_suite falhou, #166) ANTECIPA o disparo — não espera o debounce."""
     if prev is None:
         # 1ª vez que vejo este PR: registra atividade, NÃO avalia ainda (espera estabilizar)
         return PrDecision(number, head_sha, False, PrState(head_sha, now, ""))
@@ -42,8 +49,8 @@ def decide_pr(
         return PrDecision(number, head_sha, False, PrState(head_sha, now, prev.reviewed_sha))
     if head_sha == prev.reviewed_sha:
         return PrDecision(number, head_sha, False, prev)  # já avaliado neste sha
-    if now - prev.last_activity_at >= debounce:
-        # estável há ≥ debounce e ainda não avaliado → dispara e marca como avaliado
+    if ci_failed or now - prev.last_activity_at >= debounce:
+        # CI falhou OU estável há ≥ debounce, e ainda não avaliado → dispara e marca como avaliado
         stable = PrState(head_sha, prev.last_activity_at, head_sha)
         return PrDecision(number, head_sha, True, stable)
     return PrDecision(number, head_sha, False, prev)  # estável, mas ainda dentro do debounce
@@ -52,6 +59,9 @@ def decide_pr(
 class OpenPrLister(Protocol):
     # (número, head_sha) dos PRs abertos — adapter de plataforma (GitHub hoje, agnóstico depois)
     async def list_open_prs(self, repo: str) -> Result[list[tuple[int, str]], Error]: ...
+
+    # True se algum check falhou no commit (check_suite failed, #166) — antecipa o disparo
+    async def checks_failed(self, repo: str, sha: str) -> Result[bool, Error]: ...
 
 
 async def process_pr_poll_tick(
@@ -74,7 +84,14 @@ async def process_pr_poll_tick(
             continue
         for number, head_sha in prs.value:
             prev = await store.get_pr_state(tenant, repo, number)
-            decision = decide_pr(number, head_sha, prev, moment, debounce)
+            # só checa CI quando é candidato (estável e ainda não avaliado neste sha) — evita bater
+            # na API à toa. CI falhou -> antecipa o disparo (não espera o debounce).
+            ci_failed = False
+            candidato = prev is not None and head_sha == prev.last_seen_sha
+            if candidato and prev is not None and head_sha != prev.reviewed_sha:
+                cf = await github.checks_failed(repo, head_sha)
+                ci_failed = isinstance(cf, Ok) and cf.value
+            decision = decide_pr(number, head_sha, prev, moment, debounce, ci_failed=ci_failed)
             await store.set_pr_state(tenant, repo, number, decision.new_state)
             if decision.dispatch:
                 ev = GithubEvent(
