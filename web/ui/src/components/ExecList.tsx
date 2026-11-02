@@ -73,14 +73,14 @@ export function ExecList({ auto, onSelect }: { auto: boolean; onSelect: (id: num
   return (
     <div className="space-y-4">
       {/* cards-resumo: número grande, contexto pequeno */}
-      <div className="grid grid-cols-3 gap-2 sm:max-w-md">
+      <div className="grid grid-cols-3 gap-2 sm:max-w-md" data-testid="exec-summary">
         <Stat label="Ativos" value={counts.ativos} accent={counts.ativos > 0} />
         <Stat label="Concluídos" value={counts.done} />
         <Stat label="Falhas" value={counts.falhas} />
       </div>
 
       {/* filtro por estado (chips) */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2" data-testid="exec-filters">
         {BUCKETS.map((b) => (
           <button
             key={b.key}
@@ -127,7 +127,7 @@ export function ExecList({ auto, onSelect }: { auto: boolean; onSelect: (id: num
           </div>
 
           {/* Tablet/desktop: tabela — estado ANCORA a linha. */}
-          <Card className="hidden overflow-hidden p-0 sm:block">
+          <Card className="hidden overflow-hidden p-0 sm:block" data-testid="exec-table">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-muted">

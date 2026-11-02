@@ -71,6 +71,7 @@ export default function App() {
               variant="ghost"
               size="icon"
               aria-label="configurações"
+              data-testid="settings-toggle"
               onClick={() => setSettingsOpen((o) => !o)}
             >
               ⚙
@@ -120,6 +121,7 @@ export default function App() {
                     key={v}
                     variant={isActive(v) ? 'default' : 'ghost'}
                     size="sm"
+                    data-testid={`nav-${v}`}
                     onClick={() => go(v)}
                   >
                     {label}
@@ -129,6 +131,7 @@ export default function App() {
                   variant="ghost"
                   size="sm"
                   className="ml-auto text-muted"
+                  data-testid="auto-refresh"
                   onClick={() => setAuto((a) => !a)}
                   title="recarrega a lista a cada 4s"
                 >

@@ -14,6 +14,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["ruff>=0.6", "mypy>=1.11", "pytest>=8.0", "pytest-asyncio>=0.23"]
 engine = ["claude-agent-sdk>=0.2.168"]  # motor Claude Code (bundla o CLI); só no runner/PoC
+docs = ["mkdocs-material>=9.5"]  # site de docs (GitHub Pages)
 
 [build-system]
 requires = ["setuptools>=68"]
