@@ -30,6 +30,8 @@ from roboto.agents.review import (
     revisar_pr,
 )
 from roboto.app.comment_poll import BOT_MARKER
+from roboto.app.jev_guard import assess as assess_risk
+from roboto.app.jev_guard import files_from_diff
 from roboto.app.loops import ISSUE_BODY_END, ISSUE_BODY_START
 from roboto.app.session_hub import SessionHub
 from roboto.app.task_class import TaskType, classificar_task
@@ -311,6 +313,9 @@ def console_routes(
         interactions = await store.interactions_for_execution(run.id)
         tokens, cost = await store.cost_for_execution(run.id)  # custo da execução (Fatia 4)
         usage = summarize(await store.tool_counts_for_execution(run.id))  # comportamento (Trilha F)
+        # risco (jev-guard, H): determinístico pelos arquivos do diff cacheado — sem recomputar git
+        pr = await store.get_execution_pr(run.id)
+        risk = assess_risk(files_from_diff(pr.diff)) if pr is not None else assess_risk([])
         live = hub is not None and hub.get(run.id) is not None  # co-piloto só em sessão interativa
         return JSONResponse(
             {
@@ -319,6 +324,7 @@ def console_routes(
                 "interactions": [_interaction_dict(i) for i in interactions],
                 "cost": {"tokens": tokens, "cost_usd": round(cost, 6)},
                 "tool_usage": _tool_usage_dict(usage),
+                "risk": {"level": risk.level, "reasons": risk.reasons},
                 "live": live,
             }
         )

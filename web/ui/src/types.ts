@@ -51,12 +51,18 @@ export interface ToolUsage {
   efficiency: number | null
 }
 
+export interface Risk {
+  level: 'baixo' | 'medio' | 'alto'
+  reasons: string[]
+}
+
 export interface ExecutionDetail {
   execution: Execution
   sessions: Session[]
   interactions: Interaction[]
   cost: Money
   tool_usage: ToolUsage
+  risk: Risk
   live: boolean
 }
 

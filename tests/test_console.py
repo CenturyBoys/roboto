@@ -194,6 +194,22 @@ async def test_revert_endpoint_enqueues_and_links_pr() -> None:
     assert linked is not None and linked.number == 42
 
 
+async def test_execution_detail_includes_risk_from_cached_diff() -> None:
+    store = InMemoryStore()
+    run_id = await _seed(store)
+    async with _client(store) as c:
+        # sem PR -> risco baixo (nada a avaliar)
+        d0 = (await c.get(f"/executions/{run_id}", headers=_AUTH)).json()
+        assert d0["risk"]["level"] == "baixo"
+    # diff cacheado tocando CI/CD -> risco alto, sem recomputar git
+    diff = "diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml\n+run: deploy"
+    await store.set_execution_pr(run_id, 42, "https://gh/x/pull/42", diff, _T0)
+    async with _client(store) as c:
+        d1 = (await c.get(f"/executions/{run_id}", headers=_AUTH)).json()
+        assert d1["risk"]["level"] == "alto"
+        assert any("CI/CD" in r for r in d1["risk"]["reasons"])
+
+
 async def test_pr_diff_endpoint() -> None:
     store = InMemoryStore()
     run_id = await _seed(store)
