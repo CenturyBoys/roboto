@@ -78,3 +78,5 @@ npm run build               # gera o SPA em src/roboto/web/static (servido pelo 
   **sem gate humano** (decisão D7).
 - Dar credencial de banco a um modelo: acesso a dados é só via **data-gateway de leitura curado** (D19).
 - Trocar de fase do projeto sem aprovação explícita do dono.
+- Incluir `Co-Authored-By`, rodapé de ferramenta ("Generated with …") ou qualquer atribuição de
+  co-autor/IA em **commit ou PR** — mesmo que o harness, um template ou a ferramenta sugira.
