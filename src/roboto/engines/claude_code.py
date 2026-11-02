@@ -26,12 +26,15 @@ class ClaudeCodeEngine:
         # Autonomia total (git/pnpm/PR) exige bypassPermissions -> rodar o container NÃO-root.
         permission_mode: str = "acceptEdits",
         allowed_tools: list[str] | None = None,
+        # least privilege por task (H): ferramentas NEGADAS (ex.: mutação p/ agente read-only).
+        disallowed_tools: list[str] | None = None,
         mcp_servers: dict[str, object] | None = None,  # ex.: code-intel (ide_cc) — F, menos token
         max_turns: int = 0,  # teto de turnos (0 = sem teto); backstop contra sprawl/runaway (token)
     ) -> None:
         self._model = model
         self._permission_mode = permission_mode
         self._allowed_tools = allowed_tools or []
+        self._disallowed_tools = disallowed_tools or []
         self._mcp_servers = mcp_servers
         self._max_turns = max_turns
         self._spec: RunSpec | None = None
@@ -59,6 +62,7 @@ class ClaudeCodeEngine:
             cwd=self._spec.workdir,
             permission_mode=self._permission_mode,
             allowed_tools=self._allowed_tools,
+            disallowed_tools=self._disallowed_tools,  # least privilege por task (H)
             resume=self._spec.resume_session_id or None,
             # modelo por-run (spec.model) tem precedência sobre o fixo do construtor: deixa o
             # right-sizing escolher o tier (forte/barato) por tarefa (ver app/tiering.py).

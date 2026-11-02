@@ -43,3 +43,12 @@ def test_accepts_mcp_servers_for_code_intel() -> None:
     mcp = {"code-intel": {"command": "code-intel-mcp"}}
     engine = ClaudeCodeEngine(mcp_servers=mcp)  # type: ignore[arg-type]
     assert engine._mcp_servers == mcp
+
+
+def test_accepts_disallowed_tools_for_least_privilege() -> None:
+    engine = ClaudeCodeEngine(disallowed_tools=["Write", "Edit", "Bash"])
+    assert engine._disallowed_tools == ["Write", "Edit", "Bash"]
+
+
+def test_disallowed_tools_default_empty() -> None:
+    assert ClaudeCodeEngine()._disallowed_tools == []
