@@ -50,6 +50,7 @@ nav:
   - Tutoriais:
       - Operador (como usar): tutorial-operador.md
       - Dev / arquitetura: tutorial-dev.md
+      - Convenção de diagramas: convencao-diagramas.md
   - Arquitetura:
       - Visão geral: arquitetura.md
       - Orquestrador: design/orquestrador.md

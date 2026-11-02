@@ -45,6 +45,12 @@ COCKPIT_URL=http://localhost:8090 CONSOLE_TOKEN=<token> node scripts/screenshots
   tela/elemento que a doc aponte, **dê um `data-testid`** e, se for destacável, registre no `SCREENS`.
 - Mexeu na UI? Regenere e commite as imagens no mesmo PR (conformidade).
 
+## Diagramas (Mermaid)
+Renderizam nativo (fence configurado no `mkdocs.yml`). **Siga a convenção** —
+`docs/convencao-diagramas.md`: labels ≤ 2–3 palavras (detalhe vai na legenda em prosa), sem nó-hub
+(muitas arestas num só nó empilham as labels), ≤ ~8 nós, aspas em labels com `()`/`/`. Diagrama
+ilegível (labels coladas)? **Encurte as labels e mova o detalhe pra legenda** — é a correção padrão.
+
 ## Ao adicionar/alterar doc
 1. Edite/crie o `.md` em `docs/`.
 2. Se for página nova, registre no `nav:` do `mkdocs.yml`.
