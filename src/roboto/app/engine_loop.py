@@ -11,6 +11,9 @@ Determinístico dado o motor (testável com `StubEngine`).
 
 from __future__ import annotations
 
+import asyncio
+import os
+from collections.abc import AsyncIterator
 from datetime import datetime
 from enum import StrEnum
 
@@ -19,6 +22,28 @@ from roboto.engines.port import CodingEngine, EngineEvent, EngineEventKind, RunS
 from roboto.orchestrator.model import Error, InteractionKind, Run, RunState
 from roboto.orchestrator.store import Store
 from roboto.result import Err, Ok, Result
+
+# watchdog: segundos sem NENHUM evento do motor antes de considerar o turno TRAVADO (subprocesso
+# morto/pendurado sem FINISHED/FAILED). Sem isto o run fica preso em RUNNING até o lease expirar —
+# visto no PoC (o motor morria no "let's commit" e o `async for` pendurava pra sempre).
+ENGINE_IDLE_TIMEOUT = float(os.environ.get("ROBOTO_ENGINE_IDLE_TIMEOUT", "300"))
+
+
+async def guarded_events(
+    events: AsyncIterator[EngineEvent], idle_timeout: float | None = None
+) -> AsyncIterator[EngineEvent]:
+    """Repassa os eventos do motor com watchdog de INATIVIDADE: se passar `idle_timeout`s sem
+    nenhum evento, levanta `TimeoutError` em vez de pendurar o turno. O chamador trata como FAILED,
+    então o run sai de RUNNING (destrava o lock por issue e permite retry). `idle_timeout=None` lê
+    `ENGINE_IDLE_TIMEOUT` em call-time (monkeypatchável em teste)."""
+    timeout = ENGINE_IDLE_TIMEOUT if idle_timeout is None else idle_timeout
+    it = events.__aiter__()
+    while True:
+        try:
+            event = await asyncio.wait_for(it.__anext__(), timeout)
+        except StopAsyncIteration:
+            return
+        yield event
 
 
 class TurnOutcome(StrEnum):
@@ -53,36 +78,40 @@ async def drive_turn(
     await store.set_native_session(session.id, started.value, now)
     await store.set_state(run.id, RunState.RUNNING, now)
 
-    async for event in engine.events():
-        if event.kind is EngineEventKind.MESSAGE and event.text:  # feed ao vivo (Fatia 2)
-            await store.append_session_event(
-                run.tenant, run.id, "message", now, text=event.text, session_id=session.id
-            )
-        elif event.kind is EngineEventKind.TOOL_CALL:
-            await store.append_session_event(
-                run.tenant, run.id, "tool_call", now, tool=event.tool, session_id=session.id
-            )
-        if event.kind in (EngineEventKind.NEEDS_INPUT, EngineEventKind.NEEDS_APPROVAL):
-            kind = _interaction_kind(event.kind, event.options)
-            prompt = _prompt_for(event)
-            await request_human_input(
-                store,
-                tenant=run.tenant,
-                execution_id=run.id,
-                chat_id=chat_id,
-                kind=kind,
-                prompt=prompt,
-                options=event.options,
-                now=now,
-                session_id=session.id,
-            )
-            return Ok(TurnOutcome.WAITING)
-        if event.kind is EngineEventKind.FINISHED:
-            await store.set_state(run.id, RunState.VERIFYING, now)
-            return Ok(TurnOutcome.FINISHED)
-        if event.kind is EngineEventKind.FAILED:
-            await store.set_state(run.id, RunState.FAILED, now)
-            return Err(Error("engine", event.text or "falha no motor"))
+    try:
+        async for event in guarded_events(engine.events()):
+            if event.kind is EngineEventKind.MESSAGE and event.text:  # feed ao vivo (Fatia 2)
+                await store.append_session_event(
+                    run.tenant, run.id, "message", now, text=event.text, session_id=session.id
+                )
+            elif event.kind is EngineEventKind.TOOL_CALL:
+                await store.append_session_event(
+                    run.tenant, run.id, "tool_call", now, tool=event.tool, session_id=session.id
+                )
+            if event.kind in (EngineEventKind.NEEDS_INPUT, EngineEventKind.NEEDS_APPROVAL):
+                kind = _interaction_kind(event.kind, event.options)
+                prompt = _prompt_for(event)
+                await request_human_input(
+                    store,
+                    tenant=run.tenant,
+                    execution_id=run.id,
+                    chat_id=chat_id,
+                    kind=kind,
+                    prompt=prompt,
+                    options=event.options,
+                    now=now,
+                    session_id=session.id,
+                )
+                return Ok(TurnOutcome.WAITING)
+            if event.kind is EngineEventKind.FINISHED:
+                await store.set_state(run.id, RunState.VERIFYING, now)
+                return Ok(TurnOutcome.FINISHED)
+            if event.kind is EngineEventKind.FAILED:
+                await store.set_state(run.id, RunState.FAILED, now)
+                return Err(Error("engine", event.text or "falha no motor"))
+    except TimeoutError:
+        await store.set_state(run.id, RunState.FAILED, now)
+        return Err(Error("engine", "motor travado: watchdog de inatividade (subprocesso morto?)"))
     return Ok(TurnOutcome.COMPLETED)
 
 

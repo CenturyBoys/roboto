@@ -17,6 +17,7 @@ from typing import Protocol
 from roboto.agents.refiner import IssueDraft
 from roboto.agents.review import PullRequest, ReviewVerdict, check_issue_readiness, review_pr
 from roboto.app.correction import CycleResult, correction_cycle
+from roboto.app.engine_loop import guarded_events
 from roboto.app.repo_profile import build_repo_profile
 from roboto.app.tiering import classificar_tier
 from roboto.app.verify import VerifyResult, arquivos_ts, secao_verify, verificar
@@ -161,17 +162,27 @@ async def run_pr_cycle(
         "antes, está errando."
     )
     state: dict[str, int] = {}  # guarda o número do PR entre tentativas
+    coder: dict[str, str] = {}  # id NATIVO da sessão do coder, p/ RESUMIR na correção (= contexto)
 
     async def implement(feedback: list[str]) -> PullRequest:
         prompt = base_prompt
         if feedback:
             prompt += "\nCorrija os pontos do review:\n- " + "\n- ".join(feedback)
+        # correção RESUMINDO a sessão do coder: o corretor herda o contexto de quem implementou
+        # (não parte do zero sobre a árvore). 1ª tentativa é sessão nova; as correções resumem.
+        resume = coder.get("native") if feedback else None
         spec = RunSpec(
-            tenant=run.tenant, repo=run.repo, workdir=workdir, prompt=prompt, model=modelo_do_motor
+            tenant=run.tenant, repo=run.repo, workdir=workdir, prompt=prompt,
+            model=modelo_do_motor, resume_session_id=resume,
         )
         started = await engine.start(spec)
+        native = getattr(engine, "session_id", "") or (
+            started.value if isinstance(started, Ok) else ""
+        )
+        if native:
+            coder["native"] = native  # fixa p/ a próxima correção resumir o MESMO contexto
         tin = tout = 0
-        async for event in engine.events():  # deixa o motor editar o repo
+        async for event in guarded_events(engine.events()):  # deixa o motor editar o repo
             if store is not None and now is not None:  # feed ao vivo do cockpit (trilha O, Fatia 2)
                 if event.kind is EngineEventKind.MESSAGE and event.text:
                     await store.append_session_event(
@@ -186,9 +197,6 @@ async def run_pr_cycle(
         if store is not None and now is not None:
             # sessão do motor (D23): registra a sessão + o id NATIVO do Claude Code (p/ resume)
             session = await store.create_session(run.tenant, run.id, engine.engine, now)
-            native = getattr(engine, "session_id", "") or (
-                started.value if isinstance(started, Ok) else ""
-            )
             if native:
                 await store.set_native_session(session.id, native, now)
             # medição de token (D10/L): uso real do motor
@@ -299,18 +307,28 @@ async def process_pr_run_tick(
                 return
 
     workdir = f"{workdir_root}/{run.repo}"
-    result = await run_pr_cycle(
-        engine=engine,
-        gateway=gateway,
-        github=github,
-        git=git_factory(workdir),
-        run=run,
-        workdir=workdir,
-        reviewer=reviewer,
-        base=base,
-        store=store,  # medição de token (llm_call)
-        now=moment,
-    )
+    try:
+        result = await run_pr_cycle(
+            engine=engine,
+            gateway=gateway,
+            github=github,
+            git=git_factory(workdir),
+            run=run,
+            workdir=workdir,
+            reviewer=reviewer,
+            base=base,
+            store=store,  # medição de token (llm_call)
+            now=moment,
+        )
+    except Exception as exc:  # noqa: BLE001 — motor travado (watchdog) / git / PR: tira de RUNNING
+        # Sem isto, uma falha aqui é engolida pelo `run_periodic` e o run fica preso em RUNNING até
+        # o lease expirar (visto no PoC). FAILED é terminal e destrava o lock por issue; o humano
+        # re-dispara pelo cockpit (/executions/{id}/retry).
+        await store.set_state(run.id, RunState.FAILED, moment)
+        await store.append_session_event(
+            run.tenant, run.id, "message", moment, text=f"⚠️ execução falhou: {exc}"
+        )
+        return
     await store.set_state(
         run.id, RunState.VERIFYING if result.approved else RunState.FAILED, moment
     )

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 
+import roboto.app.engine_loop as engine_loop
 from roboto.app.engine_loop import TurnOutcome, drive_turn
 from roboto.engines.capabilities import CAPABILITIES, Capability
 from roboto.engines.port import EngineEvent, EngineEventKind
@@ -86,6 +88,26 @@ async def test_failed_sets_run_failed() -> None:
     run = await _run(store)
     engine = StubEngine([EngineEvent(EngineEventKind.FAILED, text="boom")])
     outcome = await drive_turn(engine, store, run=run, chat_id="5", now=_T0)
+    assert isinstance(outcome, Err)
+    assert outcome.error.kind == "engine"
+    assert store._runs[run.id].state is RunState.FAILED
+
+
+class _StallEngine(StubEngine):
+    """Motor que NUNCA emite evento dentro do watchdog (simula subprocesso morto sem FINISHED)."""
+
+    async def events(self):  # type: ignore[no-untyped-def]
+        await asyncio.sleep(3600)
+        if False:  # pragma: no cover — mantém isto um async generator sem emitir nada
+            yield EngineEvent(EngineEventKind.FINISHED)
+
+
+async def test_engine_stall_fails_instead_of_hanging(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # watchdog: motor pendurado (sem FINISHED/FAILED) -> FAILED, não trava o run em RUNNING.
+    monkeypatch.setattr(engine_loop, "ENGINE_IDLE_TIMEOUT", 0.01)
+    store = InMemoryStore()
+    run = await _run(store)
+    outcome = await drive_turn(_StallEngine([]), store, run=run, chat_id="5", now=_T0)
     assert isinstance(outcome, Err)
     assert outcome.error.kind == "engine"
     assert store._runs[run.id].state is RunState.FAILED

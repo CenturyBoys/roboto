@@ -118,6 +118,15 @@ async def test_cycle_corrects_then_approves() -> None:
     assert "correções" in github.comments[0]  # 1º review pediu correção
 
 
+async def test_correction_resumes_coder_session() -> None:
+    # B: a correção RESUME a sessão do coder (mesmo contexto de quem implementou), não do zero.
+    gw = _SeqGateway(["VEREDITO: reprovado\n- sem teste", "VEREDITO: aprovado"])
+    _, engine, _, _ = await _cycle(gw)
+    assert len(engine.started) == 2
+    assert engine.started[0].resume_session_id is None  # 1ª impl: sessão nova
+    assert engine.started[1].resume_session_id == "stub-session"  # correção: resume do coder
+
+
 async def test_cycle_reuses_live_pr() -> None:
     # já existe um PR aberto p/ o branch -> não abre outro (idempotência, repo vivo)
     store = InMemoryStore()
