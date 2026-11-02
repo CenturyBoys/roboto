@@ -323,6 +323,33 @@ class GithubAppClient:
             if owns:
                 await client.aclose()
 
+    async def add_assignee(self, repo: str, number: int, login: str) -> Result[None, Error]:
+        """Atribui `login` como assignee da issue (o fleet "levanta a mão" ao assumir — #150).
+        Idempotente no GitHub (não duplica). Best-effort: o chamador loga e segue em erro."""
+        if not login:
+            return Ok(None)
+        owns = self._client is None
+        client = (
+            self._client if self._client is not None else httpx.AsyncClient(timeout=self._timeout)
+        )
+        try:
+            token = await self._installation_token(client)
+            resp = await client.post(
+                f"{self._api}/repos/{repo}/issues/{number}/assignees",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                },
+                json={"assignees": [login]},
+            )
+            resp.raise_for_status()
+            return Ok(None)
+        except httpx.HTTPError as exc:
+            return Err(Error("github", f"add_assignee {repo}#{number}: {exc}"))
+        finally:
+            if owns:
+                await client.aclose()
+
     async def set_issue_state(self, repo: str, number: int, state: str) -> Result[None, Error]:
         """Abre/fecha uma issue (`state` = "open" | "closed"). Usado pela recuperação (H): reverter
         um PR reabre a issue pra o fleet refazer."""

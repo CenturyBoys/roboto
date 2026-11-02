@@ -228,6 +228,7 @@ async def _run_daemon(config: Config, store: Store) -> None:
                 now=_now,
                 base=config.base_branch,
                 wip_limit=config.wip_limit,  # backpressure (J)
+                self_assign_login=config.bot_login,  # self-assign ao assumir (#150)
             )
 
         async def _run_scope() -> None:

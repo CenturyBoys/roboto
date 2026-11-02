@@ -54,7 +54,12 @@ stateDiagram-v2
 - **Watchdog de inatividade**: se o motor fica `ENGINE_IDLE_TIMEOUT`s sem evento (subprocesso morto
   sem FINISHED/FAILED), vira **FAILED** em vez de pendurar o run em RUNNING até o lease expirar.
   `app/engine_loop.guarded_events`.
-- **Lease + sweeper**: run RUNNING com lease expirado é re-enfileirado (recuperável em restart).
+- **Lease + sweeper**: run RUNNING com lease expirado é re-enfileirado (recuperável em restart) —
+  **exceto** sob intervenção humana ativa (sweeper pula, #157).
+- **Fail-fast do ciclo (#144):** `open_pr` que falha **não** vira PR nº 0 silencioso — propaga e
+  FALHA o run; **diff vazio** (motor não editou nada) também falha explícito — não se revisa "o nada".
+- **Self-assign (#150):** ao pegar um run de `impl`, o fleet se **atribui como assignee** da issue
+  (`github.add_assignee`, best-effort) — rastreabilidade de quem assumiu a tarefa.
 
 ## 5. Gatilhos — hoje por POLLING (sem webhook)
 

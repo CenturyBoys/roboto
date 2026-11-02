@@ -76,6 +76,11 @@ class GithubPrOps(Protocol):
         self, repo: str, number: int, state: str
     ) -> Result[None, Error]: ...
 
+    # fleet "levanta a mão": self-assign ao pegar a task (#150) — best-effort
+    async def add_assignee(
+        self, repo: str, number: int, login: str
+    ) -> Result[None, Error]: ...
+
     async def submit_review(
         self, repo: str, number: int, body: str, comments: list[tuple[str, int, str]]
     ) -> Result[None, Error]: ...
@@ -294,6 +299,9 @@ async def run_pr_cycle(
         await git.prepare_branch(branch)
         await git.commit_all(title if not feedback else f"{title} (correção)")
         await _guard_secrets(git, base, store=store, run=run, now=now)  # H: bloqueia antes do push
+        # #144: diff vazio = motor não editou nada → FALHA explícita (não revisa "o nada").
+        if not (await git.diff(base)).strip():
+            raise RuntimeError("motor não editou nada (diff vazio vs base) — nada a revisar")
         await git.push(branch)
         if "pr" not in state:
             # idempotência contra PR vivo: reaproveita o PR aberto do branch, se houver
@@ -304,7 +312,13 @@ async def run_pr_cycle(
                 opened = await github.open_pr(
                     run.repo, title=title, body=await build_pr_body(), head=branch, base=base
                 )
-                state["pr"] = opened.value.number if isinstance(opened, Ok) else 0
+                # #144: open_pr falho NÃO vira PR nº 0 silencioso — propaga e FALHA o run (senão o
+                # review rodava sobre diff vazio e dava veredito sem valor).
+                if isinstance(opened, Err):
+                    raise RuntimeError(
+                        f"open_pr falhou (PAT sem 'Pull requests: write'?): {opened.error}"
+                    )
+                state["pr"] = opened.value.number
         number = state["pr"]
         diff = await github.get_pr_diff(run.repo, number)
         diff_text = diff.value if isinstance(diff, Ok) else ""
@@ -360,6 +374,7 @@ async def process_pr_run_tick(
     base: str = "main",
     lease_seconds: int = 3600,  # ciclo é longo; lease generoso p/ o sweeper não reclamar no meio
     wip_limit: int = 0,  # backpressure (J): cap de runs ativos por tenant; 0 = sem limite
+    self_assign_login: str = "",  # #150: login do fleet p/ self-assign; "" = não atribui
 ) -> None:
     """Pega o próximo run da fila e roda o ciclo. Aprovado -> VERIFYING; desistiu -> FAILED.
 
@@ -372,6 +387,10 @@ async def process_pr_run_tick(
     )
     if run is None:
         return
+
+    # #150: o fleet "levanta a mão" — self-assign da issue ao assumir (best-effort, não derruba).
+    if self_assign_login and run.issue_id.isdigit():
+        await github.add_assignee(run.repo, int(run.issue_id), self_assign_login)
 
     # gate de prontidão ANTES de implementar: issue esqueleto -> pede ao humano, NÃO chuta (D28)
     if run.issue_id.isdigit():
