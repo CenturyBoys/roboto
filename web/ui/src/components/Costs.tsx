@@ -22,6 +22,8 @@ export function Costs() {
 
   useEffect(() => {
     load()
+    const t = setInterval(load, 5000) // auto-refresh: custos novos aparecem sem F5
+    return () => clearInterval(t)
   }, [load])
 
   if (error) return <ErrorState message={error} onRetry={load} />

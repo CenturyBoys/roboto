@@ -506,7 +506,7 @@ async def test_correct_tick_fixes_pr_on_its_branch() -> None:
     engine = StubEngine(
         [
             EngineEvent(EngineEventKind.MESSAGE, text="corrigido"),
-            EngineEvent(EngineEventKind.FINISHED),
+            EngineEvent(EngineEventKind.FINISHED, tokens_in=800, tokens_out=200),
         ]
     )
     git, github = _FakeGit(), _FakeGithub()
@@ -527,6 +527,9 @@ async def test_correct_tick_fixes_pr_on_its_branch() -> None:
     assert git.pushes == ['feature/pr-221']  # force-push atualizou o MESMO PR
     assert store._runs[run.id].state is RunState.VERIFYING  # re-review aprovou
     assert any('re-aprovado' in c for c in github.comments)
+    # custo do coder da correção registrado (antes ficava 0 → sumia do Custos)
+    calls = await store.llm_calls("acme", 10)
+    assert any(c.tokens_in == 800 and c.tokens_out == 200 for c in calls)
 
 
 async def test_correct_tick_approved_pr_is_noop() -> None:

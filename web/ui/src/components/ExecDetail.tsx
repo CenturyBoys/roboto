@@ -47,7 +47,15 @@ export function ExecDetail({
 
   useEffect(() => {
     void load()
-  }, [load])
+    // auto-refresh: o detalhe acompanha o run AO VIVO (estado/custo/risco), não só no F5.
+    // Para de pollar quando o run chega num estado terminal (done/failed/abandoned).
+    const t = setInterval(() => {
+      const st = data?.execution.state
+      if (st === 'done' || st === 'failed' || st === 'abandoned') return
+      void load()
+    }, 4000)
+    return () => clearInterval(t)
+  }, [load, data?.execution.state])
 
   async function act(fn: (id: number) => Promise<unknown>) {
     try {
