@@ -146,7 +146,7 @@ async def _run_daemon(config: Config, store: Store) -> None:
         server.serve(),
         run_periodic(_poll, 2.0, stop),
         run_periodic(lambda: publish_outbox(store, adapters.router, _now()), 1.0, stop),
-        run_periodic(lambda: sweep(store, _now()), 30.0, stop),
+        run_periodic(lambda: sweep(store, _now(), held=hub.live_ids()), 30.0, stop),
     ]
 
     # laço do motor de coding (D22/PoC N3), ligado por ROBOTO_ENGINE

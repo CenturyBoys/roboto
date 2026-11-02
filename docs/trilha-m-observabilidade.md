@@ -38,6 +38,9 @@ Observabilidade = a medição das trilhas F/H/L **virada tela**. O cockpit ganho
 - **Persistência leve (default):** estado em **issue + git + run journal** (session_event/feed) —
   resume de alto nível entre etapas. O container é efêmero; o estado durável vive **fora** dele (store).
 - **Dead-letter + replay** (trilha B): falha após retries → dead-letter → replay pelo cockpit.
+- **Guarda-corpos de intervenção (#157):** enquanto um humano está na **sessão viva**, o sweeper
+  **não re-enfileira** o run (`sweep(..., held=hub.live_ids())`) — a intervenção não é interrompida
+  nem o estado/lease corrompido.
 - **Rollback = `git revert` + reabrir issue** (trilha H) — **resume ≠ rollback**.
 
 ## 5. Follow-ups (backlog)

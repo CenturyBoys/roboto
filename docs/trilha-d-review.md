@@ -2,8 +2,8 @@
 
 > Documento **operacional**. O *porquê* está em
 > [`research/D-review-de-pr.md`](https://github.com/CenturyBoys/roboto/blob/main/research/D-review-de-pr.md).
-> **Status:** núcleo + fluxo automático + **re-review com contexto** no `main`. Falta só o sliver do
-> gatilho em *review dismissed* (#151).
+> **Status:** núcleo + fluxo automático + **re-review com contexto** + **gatilho em review dismissed**
+> no `main` (#151 fechado).
 
 ## 1. Princípios
 
@@ -57,5 +57,7 @@ O re-review recebe os **comentários/reviews anteriores** do PR (`get_pr_comment
 e o prompt pede pra **não repetir** o que já foi apontado — foca no que mudou. Já ligado no botão
 Revisar PR.
 
-**Sliver restante:** gatilho em `review dismissed` (hoje o gatilho é commit novo / `@potter` /
-`check_suite` — ver [Trilha B](trilha-b-orquestracao.md)).
+**Gatilho em review dismissed (#151):** se alguém **remove** um review (ex.: tira o do fleet e sobe
+dado), o evento `pull_request_review:dismissed` **re-dispara o review** (`github/webhook`), com
+idempotência pelo `head_sha` atual. Demais gatilhos: commit novo / `@potter` / `check_suite` — ver
+[Trilha B](trilha-b-orquestracao.md).

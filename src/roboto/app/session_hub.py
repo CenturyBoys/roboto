@@ -105,3 +105,7 @@ class SessionHub:
 
     def close(self, execution_id: int) -> None:
         self._live.pop(execution_id, None)
+
+    def live_ids(self) -> frozenset[int]:
+        """Execuções com sessão viva — o sweeper NÃO re-enfileira estas (intervenção ativa)."""
+        return frozenset(self._live)

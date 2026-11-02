@@ -80,13 +80,22 @@ async def publish_outbox(
     return Ok(sent)
 
 
-async def sweep(store: Store, now: datetime, max_attempts: int = 3) -> Result[int, Error]:
+async def sweep(
+    store: Store,
+    now: datetime,
+    max_attempts: int = 3,
+    *,
+    held: frozenset[int] = frozenset(),
+) -> Result[int, Error]:
     """Reclama runs abandonados (lease expirada): re-enfileira com backoff ou manda à dead-letter.
 
     Antes de reclamável de novo, o run espera o backoff (``next_attempt_at``). Ao estourar
     ``max_attempts`` vai para a dead-letter (com contexto), em vez de só virar FAILED mudo.
+
+    ``held`` (#157): execuções sob **intervenção humana ativa** (sessão viva) — o sweeper as
+    **pula**, pra não re-enfileirar no meio de uma intervenção e corromper o estado/lease.
     """
-    abandoned = await store.find_abandoned(now)
+    abandoned = [r for r in await store.find_abandoned(now) if r.id not in held]
     for run in abandoned:
         next_attempt = run.attempt + 1
         if next_attempt < max_attempts:
