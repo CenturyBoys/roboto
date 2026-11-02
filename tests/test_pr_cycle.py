@@ -9,7 +9,7 @@ from roboto.engines.port import EngineEvent, EngineEventKind
 from roboto.engines.stub import StubEngine
 from roboto.github.app import IssueRef
 from roboto.llm.port import ChatMessage, Completion, Tier
-from roboto.orchestrator.model import Error, GithubEvent, RunState
+from roboto.orchestrator.model import Engine, Error, GithubEvent, RunState
 from roboto.orchestrator.store import InMemoryStore
 from roboto.result import Err, Ok, Result
 
@@ -247,6 +247,65 @@ async def test_process_pr_run_tick_fails_and_warns_on_secret_leak() -> None:
     assert github.opened == 0  # PR não aberto
     events = await store.session_events(run.id, 0, 50)
     assert any("secret-scan" in e.text for e in events)  # avisou no feed
+
+
+class _RaisingEngine:
+    """Motor que levanta um erro na partida — p/ testar o tratamento de falha do tick."""
+
+    def __init__(self, message: str) -> None:
+        self._message = message
+
+    @property
+    def engine(self):  # type: ignore[no-untyped-def]
+        return Engine.CLAUDE_CODE
+
+    @property
+    def session_id(self) -> str:
+        return ""
+
+    async def start(self, spec):  # type: ignore[no-untyped-def]
+        raise RuntimeError(self._message)
+
+    async def events(self):  # type: ignore[no-untyped-def]
+        if False:
+            yield None
+
+    async def respond(self, answer: str):  # type: ignore[no-untyped-def]
+        return Ok(None)
+
+    async def interrupt(self):  # type: ignore[no-untyped-def]
+        return Ok(None)
+
+
+async def test_transient_error_requeues_with_backoff_not_failed() -> None:
+    # B: erro transitório de provedor (402) → re-enfileira com backoff (retoma sozinho), não FAILED
+    from roboto.orchestrator.model import RunState
+
+    store = InMemoryStore()
+    run = await _run(store)  # type: ignore[assignment]
+    engine = _RaisingEngine("API Error: 402 would exceed your available credit")
+    await process_pr_run_tick(
+        engine, _SeqGateway([""]), _FakeGithub(), store,  # type: ignore[arg-type]
+        tenant="acme", workdir_root="/work", reviewer="review",
+        git_factory=lambda ws: _FakeGit(), now=lambda: _T0,
+    )
+    r = store._runs[run.id]  # type: ignore[attr-defined]
+    assert r.state is RunState.QUEUED  # re-enfileirado (não FAILED)
+    assert r.attempt == 1 and r.next_attempt_at is not None  # backoff armado
+
+
+async def test_permanent_error_goes_failed() -> None:
+    from roboto.orchestrator.model import RunState
+
+    store = InMemoryStore()
+    run = await _run(store)  # type: ignore[assignment]
+    engine = _RaisingEngine("git push rejected: non-fast-forward")  # permanente
+    await process_pr_run_tick(
+        engine, _SeqGateway([""]), _FakeGithub(), store,  # type: ignore[arg-type]
+        tenant="acme", workdir_root="/work", reviewer="review",
+        git_factory=lambda ws: _FakeGit(), now=lambda: _T0,
+    )
+    assert store._runs[run.id].state is RunState.FAILED  # type: ignore[attr-defined]
 
 
 async def test_self_assign_on_claim() -> None:

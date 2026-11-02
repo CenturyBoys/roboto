@@ -23,11 +23,15 @@ class OpenRouterGateway:
         # roteamento tier → CADEIA de modelos (primário + fallback). Precede `models` (compat).
         routing: dict[Tier, tuple[str, ...]] | None = None,
         models: dict[Tier, str] | None = None,  # compat: 1 modelo por tier (vira cadeia de 1)
+        # teto de saída por chamada (L/K): reduz a RESERVA upfront da OpenRouter (evita 402
+        # "would exceed your available credit" em request grande). 0 = sem cap (default do modelo).
+        max_tokens: int = 0,
         client: httpx.AsyncClient | None = None,
         timeout: float = 60.0,
     ) -> None:
         self._key = api_key
         self._base = base_url.rstrip("/")
+        self._max_tokens = max_tokens
         if routing is not None:
             self._routing = routing
         elif models is not None:
@@ -57,6 +61,8 @@ class OpenRouterGateway:
                 # vereditos diferentes (PoC). temp=0 fixa. Geradores (impl/chat) ficam no default.
                 if tier is Tier.JUDGE:
                     payload["temperature"] = 0
+                if self._max_tokens:  # cap da reserva upfront (evita 402 em request grande)
+                    payload["max_tokens"] = self._max_tokens
                 try:
                     resp = await client.post(
                         f"{self._base}/chat/completions", json=payload, headers=headers

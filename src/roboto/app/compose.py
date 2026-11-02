@@ -40,7 +40,9 @@ def build_adapters(config: Config, store: Store | None = None) -> Adapters:
     routing = build_routing(
         cheap=config.cheap_model, judge=config.judge_model, frontier=config.frontier_model
     )
-    gateway = OpenRouterGateway(config.models.openrouter_api_key, routing=routing)
+    gateway = OpenRouterGateway(
+        config.models.openrouter_api_key, routing=routing, max_tokens=config.max_tokens
+    )
     transcriber = WhisperTranscriber(
         config.models.stt_api_key, base_url=config.models.stt_base_url
     )

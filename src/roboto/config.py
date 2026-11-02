@@ -73,6 +73,9 @@ class Config:
     # WIP limit / backpressure (trilha J): máx. de runs ATIVOS por tenant; atingiu → novos ficam na
     # fila até abrir vaga. 0 = sem limite. ROBOTO_WIP_LIMIT.
     wip_limit: int = 0
+    # teto de saída por chamada no gateway (L/K): reduz a reserva upfront da OpenRouter (evita 402
+    # em request grande). 0 = sem cap. ROBOTO_MAX_TOKENS.
+    max_tokens: int = 0
 
 
 _REQUIRED = (
@@ -115,6 +118,7 @@ SETTABLE_KEYS: tuple[str, ...] = (
     "FRONTIER_MODEL",
     "ROBOTO_BUDGET_USD",
     "ROBOTO_WIP_LIMIT",
+    "ROBOTO_MAX_TOKENS",
 )
 
 
@@ -167,6 +171,10 @@ def load_config(env: Mapping[str, str]) -> Result[Config, Error]:
     if not wip_raw.isdigit():
         return Err(Error("config", f"ROBOTO_WIP_LIMIT inválido: {wip_raw!r}"))
 
+    maxtok_raw = env.get("ROBOTO_MAX_TOKENS", "0")
+    if not maxtok_raw.isdigit():
+        return Err(Error("config", f"ROBOTO_MAX_TOKENS inválido: {maxtok_raw!r}"))
+
     # auth do GitHub: modo PAT (GITHUB_API_TOKEN) OU GitHub App completo (D27/N3)
     has_app = bool(
         env.get("GITHUB_APP_ID")
@@ -218,5 +226,6 @@ def load_config(env: Mapping[str, str]) -> Result[Config, Error]:
             frontier_model=env.get("FRONTIER_MODEL", ""),
             budget_usd_month=budget_usd,
             wip_limit=int(wip_raw),
+            max_tokens=int(maxtok_raw),
         )
     )

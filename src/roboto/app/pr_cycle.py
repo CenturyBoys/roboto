@@ -31,15 +31,18 @@ from roboto.app.repo_profile import build_repo_profile, read_agents_conventions
 from roboto.app.secret_scan import SecretLeakError, scan_diff
 from roboto.app.task_class import TaskType, classificar_task
 from roboto.app.tiering import classificar_tier
+from roboto.app.transient import is_transient
 from roboto.app.verify import VerifyResult, arquivos_ts, secao_verify, verificar
 from roboto.engines.port import CodingEngine, EngineEventKind, RunSpec
 from roboto.github.app import IssueRef
 from roboto.llm.port import ModelGateway
+from roboto.orchestrator.core import backoff_until
 from roboto.orchestrator.model import Error, Run, RunState
 from roboto.orchestrator.store import Store
 from roboto.result import Err, Ok, Result
 
 _COST_PER_MTOK = 0.4  # custo aprox. Qwen/OpenRouter ($/milhão de tokens) — medir/afinar (L)
+_MAX_RUN_ATTEMPTS = 3  # teto de re-tentativas em erro transitório (B) antes de FAILED terminal
 
 
 class GitOps(Protocol):
@@ -236,6 +239,9 @@ async def run_pr_cycle(
         "exige atualizar a doc (.md/docs/ADR) no MESMO commit. "
         "Rode os checks do repo (lint, typecheck, testes, doc-sync) e corrija até passarem "
         "ANTES de concluir. "
+        "NÃO abra PR, NÃO rode `git push`, `gh pr create` nem a API de PR do GitHub — o FLEET faz "
+        "isso por você (commit + push + PR). Só IMPLEMENTE e deixe os arquivos prontos; abrir PR "
+        "aqui cria PR DUPLICADO. "
         "ECONOMIA DE TOKEN (F) — REGRA OBRIGATÓRIA de navegação: para DESCOBRIR onde algo está, "
         "quem usa um símbolo ou o que quebra ao mudá-lo, use SEMPRE as ferramentas do code-intel "
         "(mcp__code-intel__find_symbol, find_references, document_symbols, blast_radius) e o "
@@ -439,9 +445,18 @@ async def process_pr_run_tick(
             now=moment,
         )
     except Exception as exc:  # noqa: BLE001 — motor travado (watchdog) / git / PR: tira de RUNNING
-        # Sem isto, uma falha aqui é engolida pelo `run_periodic` e o run fica preso em RUNNING até
-        # o lease expirar (visto no PoC). FAILED é terminal e destrava o lock por issue; o humano
-        # re-dispara pelo cockpit (/executions/{id}/retry).
+        # Erro TRANSITÓRIO de provedor (402 sem crédito, 429, 5xx, overloaded) → re-enfileira com
+        # backoff (B): quando a condição passa (ex.: humano recarrega), o daemon retoma SOZINHO. Só
+        # vira FAILED terminal se não-transitório ou se estourar o teto de tentativas.
+        nxt = run.attempt + 1
+        if is_transient(str(exc)) and nxt < _MAX_RUN_ATTEMPTS:
+            await store.requeue_run_with_backoff(run.id, nxt, backoff_until(nxt, moment), moment)
+            await store.append_session_event(
+                run.tenant, run.id, "message", moment,
+                text=f"⏳ erro transitório (provedor) — re-enfileirado (tentativa {nxt}) com "
+                f"backoff; retoma sozinho quando passar: {exc}",
+            )
+            return
         await store.set_state(run.id, RunState.FAILED, moment)
         await store.append_session_event(
             run.tenant, run.id, "message", moment, text=f"⚠️ execução falhou: {exc}"

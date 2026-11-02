@@ -60,6 +60,12 @@ stateDiagram-v2
   FALHA o run; **diff vazio** (motor não editou nada) também falha explícito — não se revisa "o nada".
 - **Self-assign (#150):** ao pegar um run de `impl`, o fleet se **atribui como assignee** da issue
   (`github.add_assignee`, best-effort) — rastreabilidade de quem assumiu a tarefa.
+- **Retry em erro TRANSITÓRIO (B/H):** erro de provedor temporário (402 sem crédito, 429, 5xx,
+  overloaded — `app/transient.is_transient`) **re-enfileira com backoff** em vez de FAILED terminal
+  → quando a condição passa (ex.: recarga de crédito), o daemon **retoma sozinho** (teto de tentativas
+  → dead-letter se persistir). Erro permanente (git/PR/bug) segue terminal.
+- **Sem PR duplicado:** o prompt de implement proíbe o motor de abrir PR/rodar `git push`/`gh` — **o
+  fleet** abre o PR (commit→push→`open_pr`); senão saíam 2 PRs (um do motor, um do orquestrador).
 
 ## 5. Gatilhos — hoje por POLLING (sem webhook)
 

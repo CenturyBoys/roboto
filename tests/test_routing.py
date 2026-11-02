@@ -67,6 +67,26 @@ async def test_all_models_fail_returns_err() -> None:
     assert "falharam" in res.error.message
 
 
+async def test_max_tokens_cap_in_payload() -> None:
+    # L/K: o cap de max_tokens entra no payload (reduz a reserva upfront → evita 402 em request)
+    import json
+
+    seen: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        seen["max_tokens"] = body.get("max_tokens")
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": "v"}}], "model": body["model"], "usage": {}},
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="http://x")
+    gw = OpenRouterGateway("k", routing=build_routing(), max_tokens=8192, client=client)
+    await gw.complete([ChatMessage(role="user", content="x")], Tier.CHEAP)
+    assert seen["max_tokens"] == 8192
+
+
 async def test_judge_sends_temperature_zero() -> None:
     import json
 
