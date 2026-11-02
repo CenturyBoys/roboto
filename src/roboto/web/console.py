@@ -25,6 +25,7 @@ from roboto.agents.refiner import IssueDraft, converse
 from roboto.agents.review import PullRequest, check_issue_readiness, review_pr
 from roboto.app.loops import ISSUE_BODY_END, ISSUE_BODY_START
 from roboto.app.session_hub import SessionHub
+from roboto.app.task_class import TaskType, classificar_task
 from roboto.app.tmux_copilot import session_name
 from roboto.llm.port import ModelGateway
 from roboto.orchestrator.model import (
@@ -575,6 +576,14 @@ def console_routes(
         if isinstance(got, Err):
             return JSONResponse({"error": got.error.message}, status_code=502)
         title, body = got.value
+        # gate anti-codar-definição (#158): não implementa task de DEFINIÇÃO CONFIANTE (done = spec)
+        tclass = classificar_task(title, body)
+        if tclass.task_type is TaskType.DEFINICAO and tclass.confianca == "alta":
+            return JSONResponse(
+                {"error": "task de definição não é implementada (done = spec aprovada)",
+                 "sinais": tclass.sinais},
+                status_code=409,
+            )
         verdict = check_issue_readiness(IssueDraft(title=title, body=body))
         if not verdict.ready:
             return JSONResponse(

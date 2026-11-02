@@ -19,6 +19,7 @@ from roboto.agents.review import PullRequest, ReviewVerdict, check_issue_readine
 from roboto.app.correction import CycleResult, correction_cycle
 from roboto.app.engine_loop import guarded_events
 from roboto.app.repo_profile import build_repo_profile
+from roboto.app.task_class import TaskType, classificar_task
 from roboto.app.tiering import classificar_tier
 from roboto.app.verify import VerifyResult, arquivos_ts, secao_verify, verificar
 from roboto.engines.port import CodingEngine, EngineEventKind, RunSpec
@@ -295,6 +296,18 @@ async def process_pr_run_tick(
         issue = await github.get_issue(run.repo, int(run.issue_id))
         if isinstance(issue, Ok):
             title, body = issue.value
+            # gate anti-codar-definição (#158): task de DEFINIÇÃO não vira código — seu "done" é a
+            # spec aprovada. Só bloqueia quando a classificação é CONFIANTE (keyword); "sem critério
+            # + sem keyword" é ambíguo (dev incompleto) → deixa o gate de DoR pedir pra completar.
+            tclass = classificar_task(title, body)
+            if tclass.task_type is TaskType.DEFINICAO and tclass.confianca == "alta":
+                await github.comment_pr(
+                    run.repo, int(run.issue_id),
+                    "Esta é uma task de **definição** (produz spec/decisão, não código) — não vou "
+                    f"implementar. Sinais: {', '.join(tclass.sinais)}. 'Done' = spec aprovada.",
+                )
+                await store.set_state(run.id, RunState.WAITING, moment)
+                return
             verdict = check_issue_readiness(IssueDraft(title=title, body=body))
             if not verdict.ready:
                 falta = ", ".join(verdict.missing)

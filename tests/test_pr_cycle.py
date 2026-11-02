@@ -54,13 +54,21 @@ _READY_BODY = "## Contexto\nx\n## Escopo\ny\n## Critérios de aceite\n- [ ] z\n#
 
 
 class _FakeGithub:
-    def __init__(self, existing_pr: int | None = None, ready_issue: bool = True) -> None:
+    def __init__(
+        self,
+        existing_pr: int | None = None,
+        ready_issue: bool = True,
+        custom_body: str | None = None,
+    ) -> None:
         self.opened = 0
         self.comments: list[str] = []
         self._existing = existing_pr
         self._ready = ready_issue
+        self._custom_body = custom_body
 
     async def get_issue(self, repo: str, number: int) -> Result[tuple[str, str], Error]:
+        if self._custom_body is not None:
+            return Ok(("título", self._custom_body))
         body = _READY_BODY if self._ready else "só um esqueleto"
         return Ok(("título", body))
 
@@ -259,6 +267,30 @@ async def test_process_pr_run_tick_empty_queue_is_noop() -> None:
         now=lambda: _T0,
     )
     assert engine.started == []  # fila vazia -> nada rodou
+
+
+async def test_pr_run_tick_blocks_definicao() -> None:
+    # #158: task de DEFINIÇÃO (keyword ADR/decidir, sem critérios) -> NÃO implementa, fica WAITING.
+    from roboto.orchestrator.model import RunState
+
+    store = InMemoryStore()
+    run = await _run(store)
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    github = _FakeGithub(custom_body="Precisamos decidir o ADR de rate limiting. Sem critérios.")
+    await process_pr_run_tick(
+        engine,
+        _SeqGateway([]),  # type: ignore[arg-type]
+        github,
+        store,
+        tenant="acme",
+        workdir_root="/work",
+        reviewer="review",
+        git_factory=lambda ws: _FakeGit(),
+        now=lambda: _T0,
+    )
+    assert engine.started == []  # NÃO implementou (é definição)
+    assert store._runs[run.id].state is RunState.WAITING  # type: ignore[attr-defined]
+    assert any("defini" in c.lower() for c in github.comments)
 
 
 async def test_correct_tick_fixes_pr_on_its_branch() -> None:
