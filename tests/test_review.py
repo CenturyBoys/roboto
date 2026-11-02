@@ -135,6 +135,21 @@ class _CapturingGateway:
         return Ok(Completion(text=self._reply, model="cap", tokens_in=0, tokens_out=0))
 
 
+async def test_re_review_mantem_bloqueador_nao_resolvido_no_prompt() -> None:
+    # bug pego no ponta-a-ponta: findings anteriores NÃO podem virar "ignore"; o prompt manda
+    # VERIFICAR contra o diff atual e MANTER se não resolvido (não aprovar só por já ter sido dito).
+    gw = _CapturingGateway("")
+    prev = ["🛑 [BLOQUEADOR] Falta teste de integração (x.ts:10)"]
+    result = await review_pr_findings(
+        _pr(author="alice"), gw, reviewer="bob", contexto_previo=prev
+    )
+    assert isinstance(result, Ok)
+    user = "\n".join(m.content for m in gw.seen if m.role == "user")
+    assert "Falta teste de integração" in user  # o parecer anterior entrou no prompt
+    assert "MANTENHA" in user and "não resolvido" in user.lower()  # framing correto
+    assert "NÃO repita o que já foi apontado" not in user  # framing antigo (bugado) removido
+
+
 async def test_pr_review_injeta_achados_do_verify_no_prompt() -> None:
     gw = _CapturingGateway("VEREDITO: reprovado\nPROBLEMAS:\n- erro de tipo não tratado")
     achados = ["env.ts:226 Cannot find name 'process'."]
