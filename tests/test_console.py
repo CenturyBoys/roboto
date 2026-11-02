@@ -159,6 +159,28 @@ async def test_execution_detail_includes_cost() -> None:
         assert detail["cost"] == {"tokens": 500, "cost_usd": 0.5}
 
 
+async def test_costs_includes_budget_status() -> None:
+    from datetime import UTC, datetime
+
+    from roboto.web.console import build_console
+
+    store = InMemoryStore()
+    await _seed(store)
+    # gasto NO MÊS corrente (o endpoint agrega desde o 1º dia do mês via now())
+    await store.record_llm_call(
+        tenant="acme", run_id=None, provider="o", model="m", tier="t",
+        tokens_in=0, tokens_out=0, cost_usd=8.0, now=datetime.now(UTC),
+    )
+    app = build_console(store, tenant="acme", token=_TOKEN, budget_usd=10.0)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://console"
+    ) as c:
+        data = (await c.get("/costs", headers=_AUTH)).json()
+    assert data["budget"]["cap_usd"] == 10.0
+    assert data["budget"]["spent_usd"] == 8.0
+    assert data["budget"]["pct"] == 0.8 and data["budget"]["alert"] is True
+
+
 async def test_execution_detail_includes_tool_usage() -> None:
     store = InMemoryStore()
     run_id = await _seed(store)

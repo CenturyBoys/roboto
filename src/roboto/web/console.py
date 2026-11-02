@@ -29,6 +29,7 @@ from roboto.agents.review import (
     montar_review,
     revisar_pr,
 )
+from roboto.app.budget import assess as assess_budget
 from roboto.app.comment_poll import BOT_MARKER
 from roboto.app.jev_guard import assess as assess_risk
 from roboto.app.jev_guard import files_from_diff
@@ -261,6 +262,7 @@ def console_routes(
     default_repo: str = "",
     gateway: ModelGateway | None = None,
     start_session: Callable[[Run, str], Awaitable[bool]] | None = None,
+    budget_usd: float = 0.0,  # teto mensal de gasto de API (trilha L); 0 = sem teto
 ) -> list[BaseRoute]:
     def _unauthorized(request: Request) -> bool:
         return not token or request.headers.get("authorization") != f"Bearer {token}"
@@ -289,11 +291,23 @@ def console_routes(
             {"run_id": rid, "tokens": int(t[0]), "cost_usd": round(t[1], 6)}
             for rid, t in sorted(agg.items(), reverse=True)
         ]
+        # orçamento (trilha L): gasto do MÊS corrente vs teto. Determinístico, não bloqueante.
+        month_start = datetime.now(UTC).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        spent_month = await store.spend_since(tenant, month_start)
+        bud = assess_budget(spent_month, budget_usd)
         return JSONResponse(
             {
                 "calls": [_llm_dict(c) for c in calls],
                 "totals": {"tokens": tokens, "cost_usd": cost},
                 "by_execution": by_execution,
+                "budget": {
+                    "spent_usd": round(bud.spent_usd, 6),
+                    "cap_usd": bud.cap_usd,
+                    "pct": bud.pct,
+                    "alert": bud.alert,
+                    "over": bud.over,
+                    "month_start": month_start.isoformat(),
+                },
             }
         )
 
@@ -815,11 +829,12 @@ def build_console(
     default_repo: str = "",
     gateway: ModelGateway | None = None,
     start_session: Callable[[Run, str], Awaitable[bool]] | None = None,
+    budget_usd: float = 0.0,
 ) -> Starlette:
     return Starlette(
         routes=console_routes(
             store, tenant=tenant, token=token, ttyd_base=ttyd_base, hub=hub,
             issues=issues, default_repo=default_repo, gateway=gateway,
-            start_session=start_session,
+            start_session=start_session, budget_usd=budget_usd,
         )
     )

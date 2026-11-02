@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { getCosts } from '@/lib/api'
-import type { Costs as CostsData } from '@/types'
+import type { Budget, Costs as CostsData } from '@/types'
 import { timeAgo } from '@/lib/format'
 import { Card } from './ui/card'
 import { Stat } from './ui/stat'
@@ -37,6 +37,8 @@ export function Costs() {
 
   return (
     <div className="space-y-4">
+      {data.budget?.cap_usd > 0 && <BudgetBar budget={data.budget} />}
+
       {/* cards-resumo: métrica grande, contexto pequeno */}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:max-w-lg">
         <Stat label="Custo total" value={`$${data.totals.cost_usd.toFixed(4)}`} accent />
@@ -104,5 +106,26 @@ export function Costs() {
         </TableWrap>
       </Card>
     </div>
+  )
+}
+
+// Orçamento do mês (trilha L): gasto vs teto mensal. Verde <80% · âmbar ≥80% · vermelho ≥100%.
+function BudgetBar({ budget }: { budget: Budget }) {
+  const pct = Math.min(budget.pct, 1)
+  const color = budget.over ? 'bg-red-400' : budget.alert ? 'bg-accent' : 'bg-green-400'
+  const label = budget.over ? 'acima do teto' : budget.alert ? 'atenção (≥80%)' : 'dentro do teto'
+  return (
+    <Card data-testid="budget-bar">
+      <div className="mb-1 flex items-center justify-between text-sm">
+        <span className="font-bold">Orçamento do mês</span>
+        <span className="font-mono text-muted">
+          ${budget.spent_usd.toFixed(2)} / ${budget.cap_usd.toFixed(2)} ·{' '}
+          {Math.round(budget.pct * 100)}% · {label}
+        </span>
+      </div>
+      <div className="h-2 w-full overflow-hidden rounded-full bg-border">
+        <div className={`h-full ${color}`} style={{ width: `${Math.round(pct * 100)}%` }} />
+      </div>
+    </Card>
   )
 }
