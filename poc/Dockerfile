@@ -55,6 +55,8 @@ COPY poc/run_cycle.py /opt/roboto/poc/run_cycle.py
 COPY poc/migrate.py /opt/roboto/poc/migrate.py
 COPY poc/bootstrap.sh /opt/roboto/poc/bootstrap.sh
 COPY migrations /opt/roboto/migrations
+# skills do fleet (Trilha C): o entrypoint symlinka p/ ~/.claude/skills → o motor as acha no repo-alvo
+COPY fleet /opt/roboto/fleet
 COPY poc/entrypoint.sh /usr/local/bin/poc-entrypoint
 RUN chmod +x /usr/local/bin/poc-entrypoint
 

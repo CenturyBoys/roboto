@@ -8,6 +8,14 @@ set -euo pipefail
 # modo PAT: 1 token serve p/ API e clone — reaproveita GITHUB_API_TOKEN se CLONE não vier
 GITHUB_CLONE_TOKEN="${GITHUB_CLONE_TOKEN:-${GITHUB_API_TOKEN:-}}"
 
+# skills do fleet (Trilha C): expõe fleet/skills ao MOTOR em qualquer repo-alvo (progressive
+# disclosure). O Claude Code descobre skills em ~/.claude/skills (global), além do cwd do repo-alvo.
+if [ -d /opt/roboto/fleet/skills ]; then
+  mkdir -p "$HOME/.claude"
+  ln -sfn /opt/roboto/fleet/skills "$HOME/.claude/skills"
+  echo "fleet skills ligadas em ~/.claude/skills: $(ls /opt/roboto/fleet/skills | tr '\n' ' ')"
+fi
+
 # 1) config do router a partir do template (injeta a chave do OpenRouter)
 mkdir -p "$HOME/.claude-code-router"
 envsubst < /opt/roboto/poc/ccr.config.json > "$HOME/.claude-code-router/config.json"
