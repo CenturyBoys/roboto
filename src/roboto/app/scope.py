@@ -11,6 +11,7 @@ from collections.abc import Callable
 from datetime import datetime
 
 from roboto.agents.refiner import IssueDraft, _parse_draft
+from roboto.app.memory import recall_block
 from roboto.app.refine import _SEED, propose_issue
 from roboto.engines.port import CodingEngine, EngineEventKind, RunSpec
 from roboto.orchestrator.model import Run
@@ -40,8 +41,7 @@ async def run_scope(
 ) -> IssueDraft:
     """Roda o motor em leitura pra transformar a ideia num rascunho fundamentado no repo."""
     # second brain (trilha G): recall determinístico (FTS, sem LLM) dos fatos/decisões relevantes
-    facts = await store.recall(run.tenant, idea, 5)
-    memory = "\n".join(f"- [{f.kind}] {f.text}" for f in facts) or "(sem fatos registrados ainda)"
+    memory = await recall_block(store, run.tenant, idea) or "(sem fatos registrados ainda)"
     prompt = _SCOPE_PROMPT.format(repo=run.repo, workdir=workdir, idea=idea, memory=memory)
     started = await engine.start(
         RunSpec(tenant=run.tenant, repo=run.repo, workdir=workdir, prompt=prompt)

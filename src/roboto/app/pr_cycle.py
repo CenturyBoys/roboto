@@ -26,6 +26,7 @@ from roboto.app.comment_poll import BOT_MARKER
 from roboto.app.correction import CycleResult, correction_cycle
 from roboto.app.engine_loop import guarded_events
 from roboto.app.jev_guard import assess as assess_risk
+from roboto.app.memory import recall_block
 from roboto.app.repo_profile import build_repo_profile, read_agents_conventions
 from roboto.app.secret_scan import SecretLeakError, scan_diff
 from roboto.app.task_class import TaskType, classificar_task
@@ -210,9 +211,17 @@ async def run_pr_cycle(
     # manda o motor "ler sozinho" (gasta token F e pode ignorar). Capado pelo orçamento de token.
     conventions = read_agents_conventions(workdir)
     conventions_block = f"\n{conventions}\n" if conventions else ""
+    # second brain (G): o harness recalla decisões/fatos relevantes e injeta — continuidade entre
+    # runs sem sessão gigante. Recall determinístico (FTS/overlap), capado por orçamento (F).
+    memory = await recall_block(store, run.tenant, f"{pr_title} {contexto}") if store else ""
+    memory_block = (
+        f"\nMEMÓRIA RELEVANTE (second brain — decisões/fatos anteriores):\n{memory}\n"
+        if memory
+        else ""
+    )
     base_prompt = (
         f"Implemente a issue {run.issue_id} no repo {run.repo} (cwd {workdir}).{contexto}"
-        f"{profile_block}{conventions_block}\n"
+        f"{profile_block}{conventions_block}{memory_block}\n"
         "ESCOPO MÍNIMO: entregue APENAS o que os Critérios de aceite da issue pedem — nada além. "
         "NÃO crie documentos/arquivos extras (ex.: breakdown ou 'update' de épico), NÃO edite o "
         "épico nem outras issues, NÃO toque em código não relacionado, NÃO commite lockfile/deps "
