@@ -571,6 +571,14 @@ class PostgresStore:
             )
             return float(row["c"])
 
+    async def count_runs_by_state(self, tenant: str) -> dict[str, int]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT state, COUNT(*) AS n FROM run WHERE tenant = $1 GROUP BY state",
+                tenant,
+            )
+            return {r["state"]: int(r["n"]) for r in rows}
+
     async def cost_for_execution(self, execution_id: int) -> tuple[int, float]:
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(

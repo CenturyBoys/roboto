@@ -82,6 +82,18 @@ export interface Costs {
   budget: Budget
 }
 
+export interface Overview {
+  by_state: Record<string, number>
+  total: number
+  active: number
+  queued: number
+  waiting: number
+  failed: number
+  done: number
+  dead_letters: number
+  budget: Budget
+}
+
 export interface PrDiff {
   number: number | null
   url: string | null

@@ -157,6 +157,8 @@ class Store(Protocol):
 
     async def spend_since(self, tenant: str, since: datetime) -> float: ...
 
+    async def count_runs_by_state(self, tenant: str) -> dict[str, int]: ...
+
     async def get_app_config(self) -> dict[str, str]: ...
 
     async def set_app_config(self, values: dict[str, str], now: datetime) -> None: ...
@@ -579,6 +581,13 @@ class InMemoryStore:
         return sum(
             c.cost_usd for c in self._llm_calls if c.tenant == tenant and c.at >= since
         )
+
+    async def count_runs_by_state(self, tenant: str) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for r in self._runs.values():
+            if r.tenant == tenant:
+                counts[str(r.state)] = counts.get(str(r.state), 0) + 1
+        return counts
 
     async def get_app_config(self) -> dict[str, str]:
         return dict(self._app_config)

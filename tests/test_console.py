@@ -159,6 +159,24 @@ async def test_execution_detail_includes_cost() -> None:
         assert detail["cost"] == {"tokens": 500, "cost_usd": 0.5}
 
 
+async def test_overview_counts_runs_by_state() -> None:
+    from roboto.orchestrator.model import RunState
+
+    store = InMemoryStore()
+    r1 = await _seed(store, key="a")
+    r2 = await _seed(store, key="b")
+    await store.set_state(r1, RunState.RUNNING, _T0)
+    await store.set_state(r2, RunState.FAILED, _T0)
+    async with _client(store) as c:
+        assert (await c.get("/overview")).status_code == 401  # exige token
+        ov = (await c.get("/overview", headers=_AUTH)).json()
+    assert ov["total"] == 2
+    assert ov["active"] == 1  # 1 running
+    assert ov["failed"] == 1
+    assert ov["by_state"]["running"] == 1 and ov["by_state"]["failed"] == 1
+    assert ov["by_state"]["done"] == 0  # zero-fill p/ UI estável
+
+
 async def test_costs_includes_budget_status() -> None:
     from datetime import UTC, datetime
 

@@ -6,6 +6,7 @@ import type {
   Interaction,
   IssueDetail,
   IssueList,
+  Overview,
   PrDiff,
   RefineStep,
   SetupStatus,
@@ -41,6 +42,7 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 export const listExecutions = () => api<{ executions: Execution[] }>('/executions')
 export const getExecution = (id: number) => api<ExecutionDetail>(`/executions/${id}`)
 export const getCosts = () => api<Costs>('/costs')
+export const getOverview = () => api<Overview>('/overview')
 export const listIssues = () => api<IssueList>('/issues')
 export const getIssue = (n: number) => api<IssueDetail>(`/issues/${n}`)
 export const refineIssue = (n: number, transcript: [string, string][]) =>

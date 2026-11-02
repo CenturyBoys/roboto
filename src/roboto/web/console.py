@@ -311,6 +311,38 @@ def console_routes(
             }
         )
 
+    async def overview(request: Request) -> JSONResponse:
+        # monitor da frota (trilha M): saúde operacional num golpe — runs por estado, dead-letters,
+        # saúde de orçamento. Determinístico (sem LLM); a verdade segue na issue+git.
+        if _unauthorized(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        raw = await store.count_runs_by_state(tenant)
+        by_state = {str(s): raw.get(str(s), 0) for s in RunState}  # zero-fill p/ UI estável
+        total = sum(by_state.values())
+        active = by_state[str(RunState.RUNNING)] + by_state[str(RunState.VERIFYING)]
+        dead_letters = len(await store.list_dead_letter(tenant))
+        month_start = datetime.now(UTC).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        bud = assess_budget(await store.spend_since(tenant, month_start), budget_usd)
+        return JSONResponse(
+            {
+                "by_state": by_state,
+                "total": total,
+                "active": active,
+                "queued": by_state[str(RunState.QUEUED)],
+                "waiting": by_state[str(RunState.WAITING)],
+                "failed": by_state[str(RunState.FAILED)],
+                "done": by_state[str(RunState.DONE)],
+                "dead_letters": dead_letters,
+                "budget": {
+                    "spent_usd": round(bud.spent_usd, 6),
+                    "cap_usd": bud.cap_usd,
+                    "pct": bud.pct,
+                    "alert": bud.alert,
+                    "over": bud.over,
+                },
+            }
+        )
+
     async def list_executions(request: Request) -> JSONResponse:
         if _unauthorized(request):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
@@ -815,6 +847,7 @@ def console_routes(
         Route("/interactions", pending_interactions),
         Route("/interactions/{interaction_id:int}/answer", answer_interaction, methods=["POST"]),
         Route("/costs", costs),
+        Route("/overview", overview),
     ]
 
 
