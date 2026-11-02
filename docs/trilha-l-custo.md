@@ -45,7 +45,15 @@ fica como follow-up, pra não cortar sem a régua calibrada.
 As alavancas de redução já vivem em outras trilhas e aqui viram **orçamento mensurável**: right-sizing
 (I), ferramenta certa / menos token (F), checks determinísticos fora do LLM (D/H).
 
-## 5. Fonte da verdade e follow-ups
+## 5. Cap de `max_tokens` — reserva upfront (evita 402)
+
+A OpenRouter **reserva** o custo MÁXIMO de cada chamada antes de rodar (`input + max_tokens × preço`).
+Num request grande (ex.: Sonnet com muito contexto) a reserva pode estourar o saldo e dar **402
+"would exceed your available credit"** mesmo com crédito positivo. `ROBOTO_MAX_TOKENS` capa a saída no
+gateway (`OpenRouterGateway`) → reserva menor. No motor (via ccr), o mesmo cap vai pelo transformer
+`maxtoken` do ccr. Complementa o **retry transitório** (trilha B): 402 também re-enfileira e retoma.
+
+## 6. Fonte da verdade e follow-ups
 
 O custo vive em `llm_call` (medição real, não estimativa). A view Custos mostra total, por execução e
 por chamada (modelo+tier) + a barra do mês.
