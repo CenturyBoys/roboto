@@ -257,11 +257,20 @@ async def _run_daemon(config: Config, store: Store) -> None:
                 adapters.github, store, tenant=config.tenant, now=_now, seen=_label_seen
             )
 
+        # gatilho por comentário `@potter <comando>` (#166): polling, anti-loop por marcador.
+        from roboto.app.comment_poll import process_comment_poll_tick
+
+        async def _run_comments() -> None:
+            await process_comment_poll_tick(
+                adapters.github, store, tenant=config.tenant, repos=poll_repos, now=_now
+            )
+
         tasks.append(run_periodic(_run_claude, 5.0, stop))
         tasks.append(run_periodic(_run_scope, 5.0, stop))
         tasks.append(run_periodic(_run_refine, 5.0, stop))
         tasks.append(run_periodic(_run_correct, 5.0, stop))
         tasks.append(run_periodic(_run_pr_poll, 60.0, stop))
+        tasks.append(run_periodic(_run_comments, 30.0, stop))
         tasks.append(run_periodic(_run_labels, 20.0, stop))
         tasks.append(run_periodic(_close_merged, 15.0, stop))
 

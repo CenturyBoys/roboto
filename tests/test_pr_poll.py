@@ -47,11 +47,15 @@ def test_already_reviewed_sha_is_noop() -> None:
 
 
 class _FakeGH:
-    def __init__(self, prs: list[tuple[int, str]]) -> None:
+    def __init__(self, prs: list[tuple[int, str]], ci_failed: bool = False) -> None:
         self._prs = prs
+        self._ci_failed = ci_failed
 
     async def list_open_prs(self, repo: str):  # type: ignore[no-untyped-def]
         return Ok(self._prs)
+
+    async def checks_failed(self, repo: str, sha: str):  # type: ignore[no-untyped-def]
+        return Ok(self._ci_failed)
 
 
 async def test_tick_dispatches_correct_after_debounce() -> None:
@@ -71,3 +75,21 @@ async def test_tick_dispatches_correct_after_debounce() -> None:
     assert len(runs) == 1
     assert runs[0].agent == "correct"
     assert runs[0].issue_id == "7"
+
+
+async def test_tick_ci_failed_dispatches_before_debounce() -> None:
+    # check_suite falhou -> antecipa o `correct` sem esperar o debounce de 30 min (#166).
+    store = InMemoryStore()
+    gh = _FakeGH([(7, "shaX")], ci_failed=True)
+    # 1ª passada: registra o PR (ainda não avalia)
+    await process_pr_poll_tick(
+        gh, store, tenant="acme", repos=["acme/app"], now=lambda: _T0, debounce_seconds=1800
+    )
+    assert await store.list_runs("acme", 10) == []
+    # 2ª passada 1 min depois (DENTRO do debounce), mas CI falhou -> dispara já
+    later = _T0 + timedelta(minutes=1)
+    await process_pr_poll_tick(
+        gh, store, tenant="acme", repos=["acme/app"], now=lambda: later, debounce_seconds=1800
+    )
+    runs = await store.list_runs("acme", 10)
+    assert len(runs) == 1 and runs[0].agent == "correct"

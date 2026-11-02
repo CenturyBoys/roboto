@@ -64,9 +64,16 @@ O juiz roda com **`temperature=0`** (`llm/openrouter.py`, tier JUDGE) + **rubric
 (`agents/review.REVIEW_PR_SYSTEM`: BLOQUEADOR vs menor; qualquer bloqueador → reprovado). Sem isto o
 mesmo diff dava vereditos diferentes e o gate era não-confiável.
 
+### 5.3 Gatilho por comentário `@potter` + check_suite (#166)
+- **`@potter <comando>`** num comentário de issue/PR dispara o run: `@potter implementa|refina|revisa`
+  → `impl`/`refine`/`correct`. Polling dos comentários (`app/comment_poll.py`), cursor por repo.
+- **Anti-loop por MARCADOR** (sem conta de bot): o fleet nunca escreve `@potter` e assina os próprios
+  comentários com `<!-- potter:bot -->`; o poller ignora comentário com o marcador.
+- **check_suite failed:** se o CI do head do PR falhou, o poller **antecipa** o `correct` (não espera
+  o debounce) — `github.checks_failed` + `decide_pr(ci_failed=True)`.
+
 ## 6. O que ainda falta na B (backlog)
 
-- **#166 (resto):** gatilho `issue_comment` com **`@potter <comando>`** (anti-loop por **marcador**
-  no comentário do bot, não por conta de bot) e `check_suite`/`workflow_run failed` → agente de CI.
-- Identidade do bot via **@-mention/comando** (sem conta dedicada).
-- Ambiente alvo: **daemon na VPS** (a espinha dorsal agnóstica), não GitHub Actions.
+- **Identidade do bot** via @-mention/comando já cobre o MVP; conta de bot dedicada fica opcional.
+- **Ambiente alvo:** **daemon na VPS** (a espinha dorsal agnóstica), não GitHub Actions.
+- Alimentar os **logs do CI** ao motor na correção de `check_suite` (hoje dispara o `correct` genérico).

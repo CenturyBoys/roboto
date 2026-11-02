@@ -187,6 +187,61 @@ class GithubAppClient:
             if owns:
                 await client.aclose()
 
+    async def list_recent_comments(
+        self, repo: str
+    ) -> Result[list[tuple[int, int, str]], Error]:
+        """[(comment_id, issue_number, body)] dos comentários recentes (gatilho `@potter`, #166)."""
+        owns = self._client is None
+        client = (
+            self._client if self._client is not None else httpx.AsyncClient(timeout=self._timeout)
+        )
+        try:
+            token = await self._installation_token(client)
+            resp = await client.get(
+                f"{self._api}/repos/{repo}/issues/comments",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                },
+                params={"sort": "created", "direction": "desc", "per_page": "30"},
+            )
+            resp.raise_for_status()
+            out: list[tuple[int, int, str]] = []
+            for c in resp.json():
+                tail = str(c.get("issue_url", "")).rsplit("/", 1)[-1]
+                if tail.isdigit():
+                    out.append((int(c["id"]), int(tail), str(c.get("body", ""))))
+            return Ok(out)
+        except httpx.HTTPError as exc:
+            return Err(Error("github", f"list_recent_comments {repo}: {exc}"))
+        finally:
+            if owns:
+                await client.aclose()
+
+    async def checks_failed(self, repo: str, sha: str) -> Result[bool, Error]:
+        """True se algum check-run do commit falhou (gatilho check_suite failed, #166)."""
+        owns = self._client is None
+        client = (
+            self._client if self._client is not None else httpx.AsyncClient(timeout=self._timeout)
+        )
+        try:
+            token = await self._installation_token(client)
+            resp = await client.get(
+                f"{self._api}/repos/{repo}/commits/{sha}/check-runs",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                },
+            )
+            resp.raise_for_status()
+            runs = resp.json().get("check_runs", [])
+            return Ok(any(r.get("conclusion") in ("failure", "timed_out") for r in runs))
+        except httpx.HTTPError as exc:
+            return Err(Error("github", f"checks_failed {repo}@{sha}: {exc}"))
+        finally:
+            if owns:
+                await client.aclose()
+
     async def update_issue(
         self, repo: str, number: int, *, title: str, body: str
     ) -> Result[None, Error]:
