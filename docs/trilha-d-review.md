@@ -2,8 +2,8 @@
 
 > Documento **operacional**. O *porquê* está em
 > [`research/D-review-de-pr.md`](https://github.com/CenturyBoys/roboto/blob/main/research/D-review-de-pr.md).
-> **Status:** núcleo + fluxo automático no `main`. Falta só a **#151** (re-review com contexto
-> completo do PR + gatilho em *review dismissed*).
+> **Status:** núcleo + fluxo automático + **re-review com contexto** no `main`. Falta só o sliver do
+> gatilho em *review dismissed* (#151).
 
 ## 1. Princípios
 
@@ -51,7 +51,11 @@ por polling (PR estabilizou, `@potter revisa`, `check_suite` falhou) — ver
   polling) usam o **mesmo** review estruturado — o PR do fleet já nasce com os comentários inline, e
   os findings viram feedback rico pra correção.
 
-## 6. O que falta (#151)
+## 6. Re-review com contexto (#151)
 
-Re-review com **contexto completo** do PR (comentários + reviews anteriores, pra não repetir o que já
-foi dito) e gatilho em `review dismissed`.
+O re-review recebe os **comentários/reviews anteriores** do PR (`get_pr_comments` → `contexto_previo`)
+e o prompt pede pra **não repetir** o que já foi apontado — foca no que mudou. Já ligado no botão
+Revisar PR.
+
+**Sliver restante:** gatilho em `review dismissed` (hoje o gatilho é commit novo / `@potter` /
+`check_suite` — ver [Trilha B](trilha-b-orquestracao.md)).

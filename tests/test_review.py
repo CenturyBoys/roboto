@@ -247,3 +247,15 @@ def test_montar_review_separa_inline_e_resumo() -> None:
     assert inline == [("a.py", 5, formatar_finding(com_loc))]  # com localização -> inline
     assert "design ruim" in body  # sem localização -> entra no resumo (não some)
     assert aprovado is False  # há bloqueador
+
+
+async def test_review_findings_usa_contexto_previo() -> None:
+    # #151: reviews anteriores entram no prompt pra o juiz NÃO repetir o apontamento.
+    gw = _CapturingGateway(_FIND_TXT)
+    await review_pr_findings(
+        _pr(author="alice"), gw, reviewer="bob",
+        contexto_previo=["🔁 já apontei: falta teste no login"],
+    )
+    prompt = "\n".join(m.content for m in gw.seen if m.role == "user")
+    assert "falta teste no login" in prompt
+    assert "NÃO repita" in prompt

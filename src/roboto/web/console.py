@@ -113,6 +113,8 @@ class IssueSource(Protocol):
         self, repo: str, number: int, body: str, comments: list[tuple[str, int, str]]
     ) -> Result[None, Error]: ...
 
+    async def get_pr_comments(self, repo: str, number: int) -> Result[list[str], Error]: ...
+
 # SPA buildado pelo front (web/ui → vite build). Se presente, o console serve o app React; senão,
 # cai no viewer legado embutido (dev/teste sem Node não quebram). Ver research/O §7.
 _STATIC_DIR = Path(__file__).parent / "static"
@@ -560,7 +562,12 @@ def console_routes(
         title, author = meta.value
         pr = PullRequest(number=number, author=author, title=title, diff=diff.value)
         strategy = os.environ.get("ROBOTO_REVIEW_STRATEGY", "single")
-        res = await revisar_pr(pr, gateway, reviewer="review", strategy=strategy)
+        # #151: re-review não repete — passa os comentários anteriores do PR como contexto
+        previo = await issues.get_pr_comments(repo, number)
+        contexto = previo.value if isinstance(previo, Ok) else None
+        res = await revisar_pr(
+            pr, gateway, reviewer="review", contexto_previo=contexto, strategy=strategy
+        )
         if isinstance(res, Err):
             return JSONResponse({"error": res.error.message}, status_code=502)
         findings = res.value
