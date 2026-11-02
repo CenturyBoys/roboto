@@ -1,0 +1,38 @@
+/* Tema Potter sobre o Material — tokens (CSS custom properties) como no cockpit. */
+:root {
+  --potter-accent: #ffd21e;   /* o raio */
+  --potter-bg: #0f1115;
+  --potter-surface: #171a21;
+  --potter-border: #272b35;
+  --md-accent-fg-color: var(--potter-accent);
+}
+
+/* Tema escuro = a cara do cockpit. */
+[data-md-color-scheme="slate"] {
+  --md-default-bg-color: var(--potter-bg);
+  --md-code-bg-color: var(--potter-surface);
+  --md-default-fg-color--light: #c8ccd4;
+  --md-typeset-a-color: var(--potter-accent);
+}
+
+/* Header com o fio do raio em amarelo. */
+.md-header {
+  border-bottom: 1px solid var(--potter-border);
+}
+.md-header__title {
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+/* Acento é SINAL (regra do RFC de UI): links, código inline e destaque. */
+.md-typeset a {
+  text-decoration-color: color-mix(in srgb, var(--potter-accent) 50%, transparent);
+}
+.md-typeset code {
+  border: 1px solid var(--potter-border);
+}
+
+/* Tabelas respiráveis. */
+.md-typeset table:not([class]) th {
+  background: color-mix(in srgb, var(--potter-accent) 12%, transparent);
+}

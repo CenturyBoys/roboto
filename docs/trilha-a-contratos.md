@@ -1,7 +1,7 @@
 # Trilha A — Contratos de trabalho (como funciona)
 
 > Documento **operacional** (como o sistema funciona hoje). O *porquê* / a investigação fica em
-> [`research/A-contratos-de-trabalho.md`](../research/A-contratos-de-trabalho.md).
+> [`research/A-contratos-de-trabalho.md`](https://github.com/CenturyBoys/roboto/blob/main/research/A-contratos-de-trabalho.md).
 > **Princípio-âncora:** o contrato (o que é issue/DoR/DoD/estado/tipo) é **agnóstico de plataforma**;
 > o GitHub é um **adapter** (labels, templates). Trocar de plataforma = trocar o adapter.
 

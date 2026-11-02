@@ -1,0 +1,65 @@
+site_name: Potter ⚡ — Continuous Development
+site_description: Fleet de agentes cobrindo o ciclo de vida de software no GitHub
+docs_dir: docs
+theme:
+  name: material
+  language: pt-BR
+  font:
+    text: Inter
+    code: JetBrains Mono
+  palette:
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: yellow
+      toggle:
+        icon: material/weather-sunny
+        name: tema claro
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: black
+      accent: yellow
+      toggle:
+        icon: material/weather-night
+        name: tema escuro
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.tracking
+    - toc.follow
+    - search.suggest
+    - content.code.copy
+extra_css:
+  - stylesheets/potter.css
+markdown_extensions:
+  - admonition
+  - tables
+  - attr_list
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - toc:
+      permalink: true
+nav:
+  - Início: index.md
+  - Tutoriais:
+      - Operador (como usar): tutorial-operador.md
+      - Dev / arquitetura: tutorial-dev.md
+  - Arquitetura:
+      - Visão geral: arquitetura.md
+      - Orquestrador: design/orquestrador.md
+      - Responsabilidades: responsabilidades.md
+      - Status da implementação: status-implementacao.md
+  - Trilhas (como funciona):
+      - A — Contratos de trabalho: trilha-a-contratos.md
+      - B — Orquestração e gatilhos: trilha-b-orquestracao.md
+  - Fluxos:
+      - Visão geral: fluxos/README.md
+      - Refinamento: fluxos/01-refinamento.md
+      - Implementação: fluxos/02-implementacao.md
+      - Code review: fluxos/03-code-review.md
+  - Operação:
+      - Gatilhos: triggers.md
+      - Telegram: telegram-guia.md
+      - Ferramentas (code-intel): TOOLS.md

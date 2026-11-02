@@ -1,7 +1,7 @@
 # Trilha B — Orquestração e gatilhos (como funciona)
 
 > Documento **operacional** (como o sistema funciona hoje). O *porquê* / a investigação fica em
-> [`research/B-orquestracao-e-gatilhos.md`](../research/B-orquestracao-e-gatilhos.md).
+> [`research/B-orquestracao-e-gatilhos.md`](https://github.com/CenturyBoys/roboto/blob/main/research/B-orquestracao-e-gatilhos.md).
 > **Princípio-âncora:** o núcleo é **agnóstico de plataforma**; GitHub é um **adapter**. A lógica de
 > orquestração não conhece GitHub — recebe eventos normalizados e emite efeitos via adapters.
 
