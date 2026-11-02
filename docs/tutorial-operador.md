@@ -72,19 +72,3 @@ sem loop. Os comandos são lidos por **polling** (sem webhook).
 - Cada issue ganha uma label de estado: `status:in-progress` → `status:in-review` → `status:done`
   (ou `blocked`) — projetada automaticamente.
 - No cockpit, **Auto-refresh** mantém a lista viva; o **feed** mostra cada passo do motor ao vivo.
-
-## 8. Screenshots — documentação viva
-
-As imagens deste tutorial são **geradas da UI real** (Playwright), não desenhadas à mão — então a
-doc **não mente** sobre a tela. Com o cockpit rodando:
-
-```bash
-cd web/ui && npm ci && npx playwright install chromium
-COCKPIT_URL=http://localhost:8090 CONSOLE_TOKEN=<seu-token> node scripts/screenshots.mjs
-# -> regenera docs/assets/screens/*.png
-```
-
-Cada elemento tem um **`data-testid` estável** (`nav-execs`, `exec-summary`, `settings-toggle`…), então
-o script consegue **destacar** exatamente a peça que a doc explica — e serve de âncora de
-**conformidade** (o mesmo id vale pra teste e pra doc).
-
