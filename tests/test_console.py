@@ -289,6 +289,21 @@ class _FakeIssues:
         self.commented = (number, body)
         return Ok(None)
 
+    async def get_pr(self, repo: str, number: int) -> Result[tuple[str, str], Error]:
+        return Ok((f"PR #{number}", "autor-humano"))
+
+    async def get_pr_diff(self, repo: str, number: int) -> Result[str, Error]:
+        return Ok("diff --git a/x.ts b/x.ts\n+ok")
+
+    async def get_pr_comments(self, repo: str, number: int) -> Result[list[str], Error]:
+        return Ok([])
+
+    async def submit_review(
+        self, repo: str, number: int, body: str, comments: list[tuple[str, int, str]]
+    ) -> Result[None, Error]:
+        self.reviewed = (number, body)
+        return Ok(None)
+
 
 class _FakeGateway:
     """Gateway de modelo fake: devolve um texto canônico (sem rede) p/ testar o refino."""
@@ -317,6 +332,26 @@ async def test_issues_endpoint_lists_open() -> None:
         assert [i["number"] for i in data["issues"]] == [180, 112]
         assert data["issues"][0]["title"] == "rate limit distribuído"
         assert data["issues"][0]["labels"] == ["feat", "roboto"]
+
+
+async def test_review_action_creates_visible_execution() -> None:
+    # visibilidade (M/O): revisar um PR vira uma EXECUÇÃO (aparece em Execuções/Monitor), não só
+    # um retorno efêmero — sobrevive a refresh.
+    store = InMemoryStore()
+    src = _FakeIssues([])  # gateway "" → sem findings → aprovado
+    async with _console(
+        store, issues=src, default_repo="acme/app", gateway=_FakeGateway("")
+    ) as c:
+        r = (await c.post("/prs/221/review", headers=_AUTH)).json()
+    assert "run_id" in r
+    runs = await store.list_runs("acme", 10)
+    rev = [x for x in runs if x.agent == "review"]
+    assert len(rev) == 1 and rev[0].issue_id == "221"
+    assert str(rev[0].state) == "done"  # concluído e visível
+    events = await store.session_events(rev[0].id, 0, 50)
+    assert any("Veredito" in e.text for e in events)  # feed tem o veredito
+    pr = await store.get_execution_pr(rev[0].id)
+    assert pr is not None and pr.number == 221  # PR linkado (exec detail mostra diff/risco)
 
 
 async def test_issues_endpoint_unconfigured() -> None:

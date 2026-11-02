@@ -32,6 +32,9 @@ Observabilidade = a medição das trilhas F/H/L **virada tela**. O cockpit ganho
 - Auto-refresh (5s) — a frota viva num golpe (`data-testid=fleet-monitor`).
 - Determinístico (sem LLM); a verdade segue na issue+git. Custo/comportamento por execução ficam no
   detalhe (trilhas F/L) e na view Custos.
+- **Toda ação vira execução visível:** o **Revisar PR** manual, antes síncrono e invisível, agora
+  cria um run `review` (feed do veredito + custo medido + PR linkado) — some do "limbo", aparece em
+  Execuções/Monitor e **sobrevive a refresh** (o parecer não vivia só no estado do navegador).
 
 ## 4. Continuidade — onde o estado vive
 
