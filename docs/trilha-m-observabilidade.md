@@ -29,7 +29,9 @@ Observabilidade = a medição das trilhas F/H/L **virada tela**. O cockpit ganho
 | **dead-letters** (itens que falharam após retries) | `store.list_dead_letter` |
 | **orçamento do mês** (gasto vs teto, alerta) | trilha L (`spend_since` + `budget.assess`) |
 
-- Auto-refresh (5s) — a frota viva num golpe (`data-testid=fleet-monitor`).
+- **Auto-refresh em tudo que é vivo:** Monitor (5s), lista de Execuções, **detalhe da execução** (4s
+  enquanto o run não está terminal — estado/custo/risco acompanham ao vivo) e **Custos** (5s). Antes
+  só Monitor+lista atualizavam → "as coisas aconteciam e a tela não mexia".
 - Determinístico (sem LLM); a verdade segue na issue+git. Custo/comportamento por execução ficam no
   detalhe (trilhas F/L) e na view Custos.
 - **Toda ação vira execução visível:** o **Revisar PR** manual, antes síncrono e invisível, agora

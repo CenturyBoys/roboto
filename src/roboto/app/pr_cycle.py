@@ -555,6 +555,7 @@ async def process_correct_tick(
         await engine.start(
             RunSpec(tenant=run.tenant, repo=run.repo, workdir=workdir, prompt=prompt)
         )
+        tin = tout = 0
         async for event in guarded_events(engine.events()):  # feed ao vivo no cockpit
             if event.kind is EngineEventKind.MESSAGE and event.text:
                 await store.append_session_event(
@@ -564,6 +565,14 @@ async def process_correct_tick(
                 await store.append_session_event(
                     run.tenant, run.id, "tool_call", moment, tool=event.tool
                 )
+            elif event.kind is EngineEventKind.FINISHED:
+                tin, tout = event.tokens_in, event.tokens_out
+        # custo do coder da correção (L): sem isto o run de correct aparecia com custo 0 no cockpit
+        await store.record_llm_call(
+            tenant=run.tenant, run_id=run.id, provider="openrouter", model="qwen/qwen3-coder",
+            tier="frontier", tokens_in=tin, tokens_out=tout,
+            cost_usd=(tin + tout) / 1_000_000 * _COST_PER_MTOK, now=moment,
+        )
 
         await git.commit_all(f"fix(review): corrige apontamentos do review (PR #{pr_number})")
         await _guard_secrets(git, base, store=store, run=run, now=moment)  # H: gate antes do push
