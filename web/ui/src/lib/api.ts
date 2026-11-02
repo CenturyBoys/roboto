@@ -100,6 +100,9 @@ export const cancelExecution = (id: number) =>
   api<{ id: number; state: string }>(`/executions/${id}/cancel`, { method: 'POST' })
 export const retryExecution = (id: number) =>
   api<{ id: number; state: string }>(`/executions/${id}/retry`, { method: 'POST' })
+// H (recuperação): reverte o PR da execução e reabre a issue (abre um PR de revert; merge humano).
+export const revertExecution = (id: number) =>
+  api<{ run_id: number; reverting_pr: number }>(`/executions/${id}/revert`, { method: 'POST' })
 
 // Setup mode (trilha O): o daemon serve /healthz com o modo; a tela de config usa status/save.
 export const getHealth = () => api<Health>('/healthz')

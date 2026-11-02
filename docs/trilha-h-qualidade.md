@@ -52,8 +52,19 @@ máquina), o run vai a `FAILED` e o motivo (redigido) aparece no feed pro humano
 
 - **Dead-letter + replay** (trilha B): run/efeito que falha após os retries vai pra dead-letter (com
   contexto e erro) e pode ser **replayado** pelo cockpit (`orchestrator/*`, endpoints em `web/console`).
-- **Rollback default decidido:** `git revert` + reabrir a issue (git-first, determinístico) — **ainda
-  não implementado** (follow-up). Checkpoint/time-travel sofisticado só como exceção justificada.
+- **Reverter PR (git-first, novo):** o botão **↩️ Reverter PR** no detalhe da execução enfileira um
+  run `revert`; o daemon cria uma branch de revert a partir da base, **reverte os commits do PR**,
+  empurra e abre um **PR de revert**, e **reabre a issue** pra o fleet refazer (`app/revert`).
+
+| Peça | O que faz | Onde |
+|---|---|---|
+| ação no cockpit | botão confirma e enfileira o revert (liga o PR ao run) | `web/console` `/executions/{id}/revert`, `ExecDetail` |
+| processador | `git revert` dos commits + PR de revert + reabre issue | `app/revert.process_revert_tick` |
+| git | cria a branch de revert e reverte o range; **False** se conflitar | `git_ops.revert_range` |
+
+- **Merge do revert continua humano** (D7): o revert é uma **proposta** (um PR), não um push
+  destrutivo. Conflito no `git revert` → run `FAILED` + aviso no feed, **nada é empurrado**.
+- Checkpoint/time-travel sofisticado só como exceção justificada (não implementado).
 
 ## 5. Observabilidade (serve a economia de token)
 
@@ -69,8 +80,7 @@ determinística". O veredito do review é determinístico (`aprovado_por_finding
 
 ## 7. Follow-ups (backlog)
 
-- **git-revert + reabrir issue** (mecanismo de rollback decidido).
-- **Secret-scan: heurística de entropia** além dos formatos canônicos (hoje: alta precisão).
-- **Evals / golden set** de falhas reais + LLM-as-judge calibrado como **CI gate** anti-regressão.
+- **evals / golden set** de falhas reais + LLM-as-judge calibrado como **CI gate** anti-regressão.
 - **jev-guard**: allow/deny por confiança + risco pra ações de alto impacto.
 - **Aprovação por ação** (tool-level) ligada ao SDK vivo, com *canonical rendering* anti-loopjacking.
+- **Secret-scan: heurística de entropia** além dos formatos canônicos (hoje: alta precisão).

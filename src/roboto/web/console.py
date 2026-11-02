@@ -426,6 +426,29 @@ def console_routes(
         await store.set_state(run.id, RunState.QUEUED, datetime.now(UTC), attempt=run.attempt + 1)
         return JSONResponse({"id": run.id, "state": str(RunState.QUEUED)})
 
+    async def revert(request: Request) -> JSONResponse:
+        # H (recuperação git-first): enfileira um run `agent='revert'` que o daemon pega p/ reverter
+        # o PR desta execução e reabrir a issue (merge continua humano). Liga o PR ao run de revert.
+        if _unauthorized(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        run = await _owned_run(request)
+        if run is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        pr = await store.get_execution_pr(run.id)
+        if pr is None:
+            return JSONResponse(
+                {"error": "esta execução não tem PR para reverter"}, status_code=409
+            )
+        when = datetime.now(UTC)
+        ev = GithubEvent(
+            tenant=tenant, repo=run.repo, issue_id=run.issue_id, agent="revert",
+            idempotency_key=f"revert:{run.repo}:{pr.number}:{when.isoformat()}",
+            origin_chat_id=run.origin_chat_id,
+        )
+        revert_run, _ = await store.insert_run_if_absent(ev, when)
+        await store.set_execution_pr(revert_run.id, pr.number, pr.url, pr.diff, when)
+        return JSONResponse({"run_id": revert_run.id, "reverting_pr": pr.number})
+
     async def terminal(request: Request) -> JSONResponse:
         if _unauthorized(request):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
@@ -753,6 +776,7 @@ def console_routes(
         Route("/executions/{run_id:int}", execution_detail),
         Route("/executions/{run_id:int}/cancel", cancel, methods=["POST"]),
         Route("/executions/{run_id:int}/retry", retry, methods=["POST"]),
+        Route("/executions/{run_id:int}/revert", revert, methods=["POST"]),
         Route("/executions/{run_id:int}/terminal", terminal),
         Route("/executions/{run_id:int}/events", events_stream),
         Route("/executions/{run_id:int}/diff", pr_diff),
