@@ -11,7 +11,9 @@ fica como follow-up. Varre só linhas `+` (o que o PR INTRODUZ), nunca contexto 
 
 from __future__ import annotations
 
+import math
 import re
+from collections import Counter
 from dataclasses import dataclass
 
 # (nome legível, regex). Formatos canônicos com baixíssimo falso-positivo.
@@ -27,6 +29,29 @@ _PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("Stripe secret key", re.compile(r"\b(?:sk|rk)_live_[A-Za-z0-9]{24,}\b")),
     ("OpenAI/Anthropic key", re.compile(r"\bsk-[A-Za-z0-9]{20,}\b")),
 )
+
+# heurística KEYED (menos falso-positivo que entropia pura): um identificador com CARA de segredo
+# atribuído a um literal de string. Combinado com alta entropia do valor, é sinal forte.
+_ASSIGN = re.compile(
+    r"""(?ix)
+    # palavra-chave com cara de segredo (pode estar dentro de um identificador, ex.: DB_PASSWORD)
+    (?:pass(?:word|wd)?|secret|token|api[_-]?key|access[_-]?key
+       |private[_-]?key|client[_-]?secret|auth[_-]?token)
+    \w*            # resto do identificador
+    \s*[:=]\s*
+    ['"]([^'"]{16,})['"]
+    """
+)
+# entropia (bits/char) acima da qual o valor "parece aleatório" (segredo), não palavra/placeholder.
+_ENTROPY_MIN = 3.5
+
+
+def _shannon_bits_per_char(s: str) -> float:
+    if not s:
+        return 0.0
+    counts = Counter(s)
+    n = len(s)
+    return -sum((c / n) * math.log2(c / n) for c in counts.values())
 
 
 @dataclass(frozen=True)
@@ -64,4 +89,12 @@ def scan_diff(diff: str) -> list[SecretFinding]:
             if key not in seen:
                 seen.add(key)
                 findings.append(SecretFinding(pattern=name, redacted=redacted))
+        # camada KEYED + entropia: chave com cara de segredo atribuída a valor de alta entropia.
+        am = _ASSIGN.search(added)
+        if am and _shannon_bits_per_char(am.group(1)) >= _ENTROPY_MIN:
+            redacted = _redact(am.group(1))
+            key = ("segredo atribuído (heurística)", redacted)
+            if key not in seen:
+                seen.add(key)
+                findings.append(SecretFinding(pattern=key[0], redacted=redacted))
     return findings
