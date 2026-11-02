@@ -61,6 +61,7 @@ nav:
       - B — Orquestração e gatilhos: trilha-b-orquestracao.md
       - C — Skills do fleet: trilha-c-skills.md
       - D — Review de PR: trilha-d-review.md
+      - F — Economia de token: trilha-f-token.md
   - Fluxos:
       - Visão geral: fluxos/README.md
       - Refinamento: fluxos/01-refinamento.md

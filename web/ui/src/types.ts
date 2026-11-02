@@ -45,11 +45,18 @@ export interface Money {
   cost_usd: number
 }
 
+export interface ToolUsage {
+  total: number
+  by_category: Record<string, number>
+  efficiency: number | null
+}
+
 export interface ExecutionDetail {
   execution: Execution
   sessions: Session[]
   interactions: Interaction[]
   cost: Money
+  tool_usage: ToolUsage
   live: boolean
 }
 

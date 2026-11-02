@@ -9,7 +9,7 @@ import {
   getTerminal,
   retryExecution,
 } from '@/lib/api'
-import type { ExecutionDetail, PrDiff, Terminal } from '@/types'
+import type { ExecutionDetail, PrDiff, Terminal, ToolUsage } from '@/types'
 import { Button } from './ui/button'
 import { Card, CardLabel, CardTitle } from './ui/card'
 import { Chat } from './Chat'
@@ -153,6 +153,10 @@ export function ExecDetail({
           <dt className="text-muted">custo</dt>
           <dd className="font-mono text-xs text-accent">
             {data.cost.tokens} tokens · ${data.cost.cost_usd.toFixed(4)}
+          </dd>
+          <dt className="text-muted">ferramentas</dt>
+          <dd data-testid="exec-tool-usage" className="font-mono text-xs">
+            <ToolUsageLine usage={data.tool_usage} />
           </dd>
         </dl>
       </Card>
@@ -331,6 +335,27 @@ function Row({ k, v }: { k: string; v: string }) {
     <>
       <dt className="text-muted">{k}</dt>
       <dd className="font-mono text-xs">{v}</dd>
+    </>
+  )
+}
+
+// Sinal comportamental da Trilha F: entre as ops de "olhar código", quanto foi pelo caminho barato
+// (code-intel) vs ler arquivo inteiro (Read). Verde = econômico; vermelho = lendo arquivo inteiro.
+function ToolUsageLine({ usage }: { usage: ToolUsage }) {
+  if (!usage || usage.total === 0) return <span className="text-muted">sem chamadas ainda</span>
+  const c = usage.by_category
+  const eff = usage.efficiency
+  const effColor =
+    eff === null ? 'text-muted' : eff >= 0.7 ? 'text-green-300' : eff >= 0.4 ? 'text-accent' : 'text-red-300'
+  return (
+    <>
+      <span className={effColor}>
+        {eff === null ? 'sem navegação' : `${Math.round(eff * 100)}% semântico`}
+      </span>{' '}
+      <span className="text-muted">
+        · code-intel {c.semantic ?? 0} · Read {c.read_full ?? 0} · busca {c.search ?? 0} · edit{' '}
+        {c.edit ?? 0} · shell {c.shell ?? 0}
+      </span>
     </>
   )
 }

@@ -175,6 +175,8 @@ class Store(Protocol):
         self, execution_id: int, after_id: int, limit: int
     ) -> list[SessionEvent]: ...
 
+    async def tool_counts_for_execution(self, execution_id: int) -> dict[str, int]: ...
+
     async def set_execution_pr(
         self, execution_id: int, number: int, url: str, diff: str, now: datetime
     ) -> None: ...
@@ -610,3 +612,10 @@ class InMemoryStore:
             if e.execution_id == execution_id and e.id > after_id
         ]
         return items[:limit]
+
+    async def tool_counts_for_execution(self, execution_id: int) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for e in self._session_events:
+            if e.execution_id == execution_id and e.kind == "tool_call" and e.tool:
+                counts[e.tool] = counts.get(e.tool, 0) + 1
+        return counts
