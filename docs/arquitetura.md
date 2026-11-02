@@ -5,15 +5,11 @@ roteamento; LLM só no julgamento/geração) e **Telegram = conversa, GitHub = r
 
 ## Os dois "cérebros"
 
-```
-┌─────────────────────────┐        ┌──────────────────────────────┐
-│ REFINER / REVIEW         │        │ MOTOR (Claude Code)          │
-│ fala com você, vira      │        │ IMPLEMENTA a issue no repo   │
-│ ideia→issue, revisa      │        │                              │
-│ modelo: OpenRouter/Qwen  │        │ modelo: Qwen via ccr         │
-│         (direto)         │        │   (ccr finge Haiku/Sonnet)   │
-│ VÊ o Telegram            │        │ NÃO vê o Telegram            │
-└─────────────────────────┘        └──────────────────────────────┘
+```mermaid
+flowchart LR
+  TG([Telegram]) --> REF["<b>Refiner / Review</b><br/>ideia→issue · revisa<br/>OpenRouter/Qwen · VÊ o Telegram"]
+  REF -->|issue → run| MOT["<b>Motor (Claude Code)</b><br/>implementa no repo<br/>Qwen via ccr · NÃO vê o Telegram"]
+  MOT -.->|needs input| TG
 ```
 
 O Telegram **não** fala com o Claude Code direto. A ponte é: `Telegram → issue → run → motor`.
@@ -21,30 +17,32 @@ Durante um run, se o motor precisa de algo, vira **pergunta no Telegram** (D24) 
 
 ## Interface do Telegram (inbound/outbound)
 
+```mermaid
+flowchart TB
+  GU[getUpdates] --> POLL["poll_tick<br/>cursor persistido"] --> DISP[dispatch_inbound] --> PC{parse_command}
+  PC --> H[help]
+  PC --> L[list]
+  PC --> P["pick #N"]
+  PC --> D["discuss #N"]
+  PC --> NEW[ideia nova] --> RTI[refine_to_issue]
+  REPLY["reply a uma pergunta"] --> HR{"handle_reply<br/>roteia por message_id"}
+  HR --> QN["QUESTION (refiner)"]
+  HR --> AP["APPROVAL (proposta)"]
+  HR --> NI["engine NEEDS_INPUT"]
 ```
-getUpdates ──► TelegramChannel.poll ──► poll_tick ──► dispatch_inbound
-                (cursor persistido)                        │
-                                                           ▼  parse_command (determinístico)
-      ┌───────────────┬───────────────┬──────────────┬───────────────┐
-      │ help          │ list          │ pick #N      │ discuss #N     │  (ou: ideia nova)
-      │ (guia)        │ (lista issues)│ (trabalhar)  │ (issue existe) │       │
-      └───────────────┴───────────────┴──────────────┴───────────────┘       ▼
-                                                              refine_to_issue (conversa)
-      reply a uma pergunta? ──► handle_reply (roteia pelo message_id, D24)
-                                     │
-             ┌───────────────────────┼────────────────────────┐
-             ▼                        ▼                         ▼
-      QUESTION (refiner)       APPROVAL (proposta)       (engine NEEDS_INPUT)
-      continua a conversa      ok → cria/edita           responde o motor
-```
+
+*Legenda:* `pick`/`discuss` trabalham uma issue; `ideia nova` vira issue via refino; o `reply` a uma
+pergunta é roteado pelo `message_id` da mensagem enviada (D24).
 
 Saída: tudo que o bot manda passa pelo **outbox** (`telegram_notify` / `telegram_question`). O
 `telegram_question` **guarda o message_id** da mensagem enviada — é o que permite rotear o *reply*.
 
 ## Gerência de sessão — os 3 IDs (D23)
 
-```
-SESSION ⊂ EXECUTION(=run) ⊃ INTERACTION
+```mermaid
+flowchart LR
+  EXEC["EXECUTION (= run)<br/>a unidade de trabalho"] --> SESS["SESSION<br/>sessão do motor"]
+  EXEC --> INT["INTERACTION<br/>pergunta ao humano"]
 ```
 
 - **execution (= run)**: a unidade de trabalho (uma issue/ideia). Máquina de estados:
@@ -57,13 +55,13 @@ SESSION ⊂ EXECUTION(=run) ⊃ INTERACTION
 
 Fluxo de uma sessão do motor (`engine_loop.drive_turn`):
 
-```
-run (running)
-  └─ create_session(run, engine) ──► set_native_session(claude_code_session_id)
-        └─ engine.events():
-             MESSAGE / TOOL_CALL ....................... (trabalho)
-             NEEDS_INPUT / NEEDS_APPROVAL → request_human_input → interaction + WAITING
-             FINISHED → grava tokens no llm_call; run → verifying
+```mermaid
+flowchart TB
+  RUN["run (running)"] --> CS[create_session] --> SNS[set_native_session]
+  SNS --> EV{"engine.events()"}
+  EV --> MT["MESSAGE / TOOL_CALL<br/>(trabalho)"]
+  EV --> NI["NEEDS_INPUT / APPROVAL"] --> INT["request_human_input<br/>interaction + WAITING"]
+  EV --> FIN[FINISHED] --> VER["grava tokens (llm_call)<br/>run → verifying"]
 ```
 
 > ⚠️ **Gap conhecido:** hoje o caminho real de código (`pega #N` → `run_pr_cycle`) chama
