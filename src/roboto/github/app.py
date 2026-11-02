@@ -337,6 +337,40 @@ class GithubAppClient:
             if owns:
                 await client.aclose()
 
+    async def set_issue_state_label(
+        self, repo: str, number: int, label: str
+    ) -> Result[None, Error]:
+        """Troca as labels `status:*` da issue pela `label` (preserva as demais) — projeção do
+        estado canônico do daemon (Trilha A, #161). GitHub cria a label se ela não existir."""
+        owns = self._client is None
+        client = (
+            self._client if self._client is not None else httpx.AsyncClient(timeout=self._timeout)
+        )
+        hdr = {"Accept": "application/vnd.github+json"}
+        try:
+            token = await self._installation_token(client)
+            hdr["Authorization"] = f"Bearer {token}"
+            got = await client.get(
+                f"{self._api}/repos/{repo}/issues/{number}/labels", headers=hdr
+            )
+            got.raise_for_status()
+            current = [str(x["name"]) for x in got.json()]
+            keep = [n for n in current if not n.startswith("status:")]
+            if current == keep + [label]:
+                return Ok(None)  # já está certo — não bate na API à toa
+            resp = await client.put(
+                f"{self._api}/repos/{repo}/issues/{number}/labels",
+                headers=hdr,
+                json={"labels": keep + [label]},
+            )
+            resp.raise_for_status()
+            return Ok(None)
+        except httpx.HTTPError as exc:
+            return Err(Error("github", f"set_issue_state_label {repo}#{number}: {exc}"))
+        finally:
+            if owns:
+                await client.aclose()
+
     async def pr_merged(self, repo: str, number: int) -> Result[bool, Error]:
         """True se o PR foi MERGEADO (detecta o merge humano sem webhook — fecha o run local)."""
         owns = self._client is None

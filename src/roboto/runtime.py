@@ -246,11 +246,23 @@ async def _run_daemon(config: Config, store: Store) -> None:
                 now=_now, debounce_seconds=poll_debounce,
             )
 
+        # projeção do estado da issue -> label `estado:*` no GitHub (#161). Estado canônico = run
+        # mais recente da issue; GitHub é adapter. `_label_seen` deduplica por processo.
+        from roboto.app.issue_state import project_issue_labels_tick
+
+        _label_seen: dict[tuple[str, str], str] = {}
+
+        async def _run_labels() -> None:
+            await project_issue_labels_tick(
+                adapters.github, store, tenant=config.tenant, now=_now, seen=_label_seen
+            )
+
         tasks.append(run_periodic(_run_claude, 5.0, stop))
         tasks.append(run_periodic(_run_scope, 5.0, stop))
         tasks.append(run_periodic(_run_refine, 5.0, stop))
         tasks.append(run_periodic(_run_correct, 5.0, stop))
         tasks.append(run_periodic(_run_pr_poll, 60.0, stop))
+        tasks.append(run_periodic(_run_labels, 20.0, stop))
         tasks.append(run_periodic(_close_merged, 15.0, stop))
 
     await asyncio.gather(*tasks)
