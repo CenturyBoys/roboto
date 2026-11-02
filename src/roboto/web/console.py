@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -22,7 +23,13 @@ from starlette.routing import BaseRoute, Mount, Route
 from starlette.staticfiles import StaticFiles
 
 from roboto.agents.refiner import IssueDraft, converse
-from roboto.agents.review import PullRequest, check_issue_readiness, review_pr
+from roboto.agents.review import (
+    PullRequest,
+    check_issue_readiness,
+    montar_review,
+    revisar_pr,
+)
+from roboto.app.comment_poll import BOT_MARKER
 from roboto.app.loops import ISSUE_BODY_END, ISSUE_BODY_START
 from roboto.app.session_hub import SessionHub
 from roboto.app.task_class import TaskType, classificar_task
@@ -101,6 +108,10 @@ class IssueSource(Protocol):
     async def get_pr(self, repo: str, number: int) -> Result[tuple[str, str], Error]: ...
 
     async def get_pr_diff(self, repo: str, number: int) -> Result[str, Error]: ...
+
+    async def submit_review(
+        self, repo: str, number: int, body: str, comments: list[tuple[str, int, str]]
+    ) -> Result[None, Error]: ...
 
 # SPA buildado pelo front (web/ui → vite build). Se presente, o console serve o app React; senão,
 # cai no viewer legado embutido (dev/teste sem Node não quebram). Ver research/O §7.
@@ -548,16 +559,29 @@ def console_routes(
             return JSONResponse({"error": "não achei o PR (nº/repo?)"}, status_code=404)
         title, author = meta.value
         pr = PullRequest(number=number, author=author, title=title, diff=diff.value)
-        verdict = await review_pr(pr, gateway, reviewer="review")
-        if isinstance(verdict, Err):
-            return JSONResponse({"error": verdict.error.message}, status_code=502)
-        v = verdict.value
-        head = "✅ Review aprovado." if v.approved else "🔁 Review pediu correções:"
-        body = head + ("" if v.approved else "\n- " + "\n- ".join(v.issues))
-        body += "\n\n_Revisão do fleet roboto (deepseek)._"
-        await issues.comment_pr(repo, number, body)
+        strategy = os.environ.get("ROBOTO_REVIEW_STRATEGY", "single")
+        res = await revisar_pr(pr, gateway, reviewer="review", strategy=strategy)
+        if isinstance(res, Err):
+            return JSONResponse({"error": res.error.message}, status_code=502)
+        findings = res.value
+        inline, body, aprovado = montar_review(findings)
+        body += f"\n{BOT_MARKER}"
+        # tenta INLINE (submit_review); se o GitHub recusar as linhas (fora do diff), cai no resumo
+        posted = await issues.submit_review(repo, number, body, inline)
+        if isinstance(posted, Err):
+            await issues.comment_pr(repo, number, body)
         return JSONResponse(
-            {"approved": v.approved, "issues": v.issues, "number": number, "author": author}
+            {
+                "approved": aprovado,
+                "issues": [f.titulo for f in findings],
+                "findings": [
+                    {"severidade": f.severidade, "titulo": f.titulo, "arquivo": f.arquivo,
+                     "linha": f.linha, "confianca": f.confianca}
+                    for f in findings
+                ],
+                "number": number,
+                "author": author,
+            }
         )
 
     async def implement_with_engine(request: Request) -> JSONResponse:
