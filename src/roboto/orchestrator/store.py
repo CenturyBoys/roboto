@@ -155,6 +155,8 @@ class Store(Protocol):
 
     async def recall(self, tenant: str, query: str, limit: int) -> list[MemoryFact]: ...
 
+    async def spend_since(self, tenant: str, since: datetime) -> float: ...
+
     async def get_app_config(self) -> dict[str, str]: ...
 
     async def set_app_config(self, values: dict[str, str], now: datetime) -> None: ...
@@ -572,6 +574,11 @@ class InMemoryStore:
                 scored.append((score, f))
         scored.sort(key=lambda x: (-x[0], -x[1].id))
         return [f for _, f in scored[:limit]]
+
+    async def spend_since(self, tenant: str, since: datetime) -> float:
+        return sum(
+            c.cost_usd for c in self._llm_calls if c.tenant == tenant and c.at >= since
+        )
 
     async def get_app_config(self) -> dict[str, str]:
         return dict(self._app_config)

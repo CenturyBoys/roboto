@@ -67,6 +67,9 @@ class Config:
     # FRONTIER_MODEL (geração forte). Vazio = baseline (qwen). Override cai pro baseline se falhar.
     cheap_model: str = ""
     frontier_model: str = ""
+    # teto mensal de gasto de API em US$ (trilha L, D6: ~1 Max ≈ R$550 → ~US$100). 0 = sem teto.
+    # alerta em 80%; surfado no cockpit (não bloqueante). ROBOTO_BUDGET_USD.
+    budget_usd_month: float = 0.0
 
 
 _REQUIRED = (
@@ -107,6 +110,7 @@ SETTABLE_KEYS: tuple[str, ...] = (
     "JUDGE_MODEL",
     "CHEAP_MODEL",
     "FRONTIER_MODEL",
+    "ROBOTO_BUDGET_USD",
 )
 
 
@@ -148,6 +152,12 @@ def load_config(env: Mapping[str, str]) -> Result[Config, Error]:
     lease_raw = env.get("LEASE_SECONDS", "300")
     if not lease_raw.isdigit():
         return Err(Error("config", f"LEASE_SECONDS inválido: {lease_raw!r}"))
+
+    budget_raw = env.get("ROBOTO_BUDGET_USD", "0")
+    try:
+        budget_usd = float(budget_raw)
+    except ValueError:
+        return Err(Error("config", f"ROBOTO_BUDGET_USD inválido: {budget_raw!r}"))
 
     # auth do GitHub: modo PAT (GITHUB_API_TOKEN) OU GitHub App completo (D27/N3)
     has_app = bool(
@@ -198,5 +208,6 @@ def load_config(env: Mapping[str, str]) -> Result[Config, Error]:
             judge_model=env.get("JUDGE_MODEL", ""),
             cheap_model=env.get("CHEAP_MODEL", ""),
             frontier_model=env.get("FRONTIER_MODEL", ""),
+            budget_usd_month=budget_usd,
         )
     )

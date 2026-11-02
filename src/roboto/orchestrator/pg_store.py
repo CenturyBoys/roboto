@@ -562,6 +562,15 @@ class PostgresStore:
                 tenant, run_id, provider, model, tier, tokens_in, tokens_out, cost_usd, now,
             )
 
+    async def spend_since(self, tenant: str, since: datetime) -> float:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT COALESCE(SUM(cost_usd), 0) AS c FROM llm_call "
+                "WHERE tenant = $1 AND at >= $2",
+                tenant, since,
+            )
+            return float(row["c"])
+
     async def cost_for_execution(self, execution_id: int) -> tuple[int, float]:
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(

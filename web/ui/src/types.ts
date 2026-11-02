@@ -66,10 +66,20 @@ export interface ExecutionDetail {
   live: boolean
 }
 
+export interface Budget {
+  spent_usd: number
+  cap_usd: number
+  pct: number
+  alert: boolean
+  over: boolean
+  month_start: string
+}
+
 export interface Costs {
   calls: LlmCall[]
   totals: Money
   by_execution: ({ run_id: number } & Money)[]
+  budget: Budget
 }
 
 export interface PrDiff {
