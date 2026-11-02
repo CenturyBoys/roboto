@@ -22,8 +22,16 @@ REVIEW_ISSUE_SYSTEM = (
     "VEREDITO: aprovado|reprovado\nPROBLEMAS:\n- <cada problema, se houver>"
 )
 REVIEW_PR_SYSTEM = (
-    "Você é revisor de PR. Avalie correção, aderência ao AGENTS.md e cobertura de testes do diff. "
-    "Responda EXATAMENTE:\nVEREDITO: aprovado|reprovado\nPROBLEMAS:\n- <cada problema, se houver>"
+    "Você é revisor de PR. Avalie correção, aderência ao AGENTS.md e cobertura de testes do diff.\n"
+    "RUBRICA (decida o veredito por ela, não por impressão):\n"
+    "- Classifique CADA problema como BLOQUEADOR ou menor.\n"
+    "- BLOQUEADOR = bug de correção/segurança, requisito do AGENTS.md não cumprido, OU teste "
+    "exigido ausente (inclui integração/CI quando a mudança pede).\n"
+    "- VEREDITO reprovado se houver QUALQUER bloqueador. Só aprovado quando NÃO há nenhum "
+    "(ressalvas menores podem existir num aprovado, mas liste-as).\n"
+    "- Na dúvida entre aprovar e reprovar, REPROVE.\n"
+    "Responda EXATAMENTE:\nVEREDITO: aprovado|reprovado\nPROBLEMAS:\n"
+    "- <cada problema; prefixe [BLOQUEADOR] ou [menor]>"
 )
 
 
