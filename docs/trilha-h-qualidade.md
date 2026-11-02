@@ -44,9 +44,12 @@ máquina), o run vai a `FAILED` e o motivo (redigido) aparece no feed pro humano
 | scanner | formatos conhecidos (chave privada, AWS, GitHub, Slack, Google, Stripe, sk-*) nas linhas `+` | `app/secret_scan.scan_diff` |
 | gate | varre o diff local nos **dois** pontos de push (impl e correção) e aborta se achar | `app/pr_cycle._guard_secrets` |
 
-- **Alta precisão de propósito:** bloquear tem custo (trava PR legítimo), então só **formatos
-  canônicos** de credencial — nada de heurística de entropia aqui (fica como follow-up). Varre só o
-  que o PR **introduz** (linhas `+`), nunca contexto nem remoções.
+- **Duas camadas:** (1) **formatos canônicos** de credencial (baixíssimo falso-positivo); (2)
+  **heurística keyed + entropia** — identificador com cara de segredo (`DB_PASSWORD`, `api_key`…)
+  atribuído a um valor de **alta entropia** (≥3.5 bits/char, ≥16 chars). Exigir os **dois** sinais
+  (nome + aleatoriedade) mantém o falso-positivo baixo: placeholder (`changeme`), valor curto ou chave
+  não-secreta **não** bloqueiam.
+- Varre só o que o PR **introduz** (linhas `+`), nunca contexto nem remoções.
 - **Nunca vaza no log:** o finding mostra só um prefixo redigido (`ghp_…*** (40 chars)`).
 
 ## 4. Recuperação
@@ -134,4 +137,3 @@ determinística". O veredito do review é determinístico (`aprovado_por_finding
 - **evals — LLM-as-judge** (dimensões subjetivas: qualidade de refino/review), em run **agendado**.
 - **jev-guard — escalada automática**: alto risco → esperar OK humano (hoje só surfa o nível).
 - **Aprovação por ação — enforcement**: plugar o primitivo anti-loopjacking no callback do SDK vivo.
-- **Secret-scan: heurística de entropia** além dos formatos canônicos (hoje: alta precisão).

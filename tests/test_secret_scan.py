@@ -68,3 +68,25 @@ def test_dedups_repeated_secret() -> None:
 def test_detects_each_provider_format(secret: str, expected: str) -> None:
     findings = scan_diff(f'+k = "{secret}"\n')
     assert any(f.pattern == expected for f in findings)
+
+
+# --- heurística KEYED + entropia (formatos desconhecidos) ---
+
+def test_entropy_flags_secret_named_key_with_random_value() -> None:
+    diff = '+DB_PASSWORD = "xQ7v2Lp9Rz4Wk1Nf8Ht3Bc6"\n'  # chave secreta + valor de alta entropia
+    findings = scan_diff(diff)
+    assert any("heurística" in f.pattern for f in findings)
+
+
+def test_entropy_ignores_low_entropy_placeholder() -> None:
+    # placeholder repetitivo (baixa entropia) NÃO bloqueia — evita falso-positivo
+    assert scan_diff('+password = "changeme-changeme"\n') == []
+
+
+def test_entropy_ignores_short_value() -> None:
+    assert scan_diff('+token = "abc123"\n') == []  # < 16 chars
+
+
+def test_entropy_ignores_non_secret_key() -> None:
+    # chave sem cara de segredo, mesmo com valor aleatório → não flaga (precisa dos DOIS sinais)
+    assert scan_diff('+commit_sha = "xQ7v2Lp9Rz4Wk1Nf8Ht3Bc6"\n') == []
