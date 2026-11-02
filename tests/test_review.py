@@ -26,6 +26,19 @@ def test_complete_issue_is_ready() -> None:
     assert verdict.missing == []
 
 
+def test_checkbox_under_subsection_is_ready() -> None:
+    # '- [ ]' sob um subtítulo '### Teste 1' DENTRO de 'Critérios de aceite' conta (a seção vai
+    # até o próximo heading de nível igual/superior, não quebra no primeiro '###').
+    body = (
+        "## Contexto\nx\n## Escopo\ny\n## Critérios de aceite\n"
+        "### Teste 1 — brute force\n- [ ] bloqueia após N tentativas\n"
+        "## DoD\n- [ ] ci"
+    )
+    verdict = check_issue_readiness(IssueDraft(title="feat: x", body=body))
+    assert verdict.ready is True
+    assert verdict.missing == []
+
+
 def test_checkbox_only_in_dod_is_not_ready() -> None:
     # '- [ ]' só no DoD, nenhum sob 'Critérios de aceite' -> não testável -> not ready (#160)
     body = "## Contexto\nx\n## Escopo\ny\n## Critérios de aceite\nfaz z\n## DoD\n- [ ] ci"

@@ -49,21 +49,30 @@ class PullRequest:
 
 
 def _section_text(body: str, heading: str) -> str:
-    """Texto sob a seção `## {heading}` até a próxima `##` (vazio se a seção não existe).
+    """Texto sob a seção `## {heading}` até a próxima seção de nível IGUAL/SUPERIOR.
 
-    Match leniente do título (substring, case-insensitive) p/ aceitar variações como
-    'Critérios de aceite (TDD)'.
+    Subseções mais profundas (`###`+) ficam DENTRO do texto — senão um `- [ ]` sob
+    `### Teste 1` dentro de `## Critérios de aceite` seria perdido (o corte antigo quebrava
+    no primeiro `###`). Vazio se a seção não existe. Match leniente do título (substring,
+    case-insensitive) p/ aceitar variações como 'Critérios de aceite (TDD)'.
     """
     target = heading.strip().lower()
     out: list[str] = []
-    capturing = False
+    level = 0  # nº de '#' do heading capturado; 0 = ainda não capturando
     for line in body.splitlines():
-        if line.strip().startswith("##"):
-            if capturing:
-                break
-            capturing = target in line.strip().lstrip("#").strip().lower()
-            continue
-        if capturing:
+        stripped = line.strip()
+        if stripped.startswith("##"):
+            depth = len(stripped) - len(stripped.lstrip("#"))
+            if level:
+                if depth <= level:
+                    break  # heading de nível igual/superior encerra a seção
+                # subseção (depth > level): faz parte do texto — cai no append abaixo
+            elif target in stripped.lstrip("#").strip().lower():
+                level = depth
+                continue
+            else:
+                continue
+        if level:
             out.append(line)
     return "\n".join(out)
 
