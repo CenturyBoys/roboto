@@ -83,6 +83,30 @@ async def test_finished_goes_to_verifying() -> None:
     assert await store.pending_effects(10) == []
 
 
+async def test_finished_records_engine_cost() -> None:
+    # L/D10: turno via drive_turn (refine/scope/copilot) deve GRAVAR o custo do motor — antes ficava
+    # 0 mesmo tendo rodado (só impl/correct eram medidos).
+    store = InMemoryStore()
+    run = await _run(store)
+    engine = StubEngine(
+        [EngineEvent(EngineEventKind.FINISHED, tokens_in=100_000, tokens_out=20_000)]
+    )
+    await drive_turn(engine, store, run=run, chat_id="5", now=_T0)
+    tokens, usd = await store.cost_for_execution(run.id)
+    assert tokens == 120_000
+    assert usd > 0  # 120k * $0.4/Mtok = $0.048
+
+
+async def test_finished_without_tokens_records_nothing() -> None:
+    # motor que não reporta tokens (ex.: stub): não cria llm_call fantasma de custo 0
+    store = InMemoryStore()
+    run = await _run(store)
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    await drive_turn(engine, store, run=run, chat_id="5", now=_T0)
+    tokens, usd = await store.cost_for_execution(run.id)
+    assert tokens == 0 and usd == 0.0
+
+
 async def test_failed_sets_run_failed() -> None:
     store = InMemoryStore()
     run = await _run(store)

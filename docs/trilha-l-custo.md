@@ -17,9 +17,11 @@ a economia de token ser comprovável e o gasto previsível.
 | por chamada | `llm_call` (tokens_in/out + `cost_usd` + `at` + tier + modelo) — trilha F |
 | por execução | `cost_for_execution(run_id)` → mostrado no detalhe da execução |
 
-> **Todo run registra custo:** impl, **correção** (`process_correct_tick`), refino, scope e review
-> (metered) gravam `llm_call` — antes a correção ficava com custo 0 e sumia do Custos. A view Custos
-> **auto-atualiza** (não precisa F5).
+> **Todo run registra custo:** impl, **correção** (`process_correct_tick`), **refino/scope/copilot**
+> (turnos do motor via `drive_turn`) e review (metered) gravam `llm_call`. O `drive_turn` mede o
+> motor no evento `FINISHED` (tokens_in/out → `cost_usd`) — antes **só** impl/correct eram medidos e
+> os turnos de refino/scope apareciam com **custo 0** apesar de o motor ter rodado (bug corrigido). A
+> view Custos **auto-atualiza** (não precisa F5).
 | por mês | `spend_since(tenant, início-do-mês)` → agregação SQL (`SUM(cost_usd)`) |
 
 ## 3. Orçamento do mês vs teto (novo)
