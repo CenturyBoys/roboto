@@ -32,9 +32,9 @@ flowchart TB
   M --> L[gate segura em ordem · DoR puxa refino 1-a-1]
 ```
 
-## O que já existe (incremento 1)
+## O que já existe (incrementos 1–2)
 
-Parte **determinística e testada** em [`agents/breakdown.py`](https://github.com/CenturyBoys/roboto/blob/main/src/roboto/agents/breakdown.py):
+**Incremento 1 — base determinística** em [`agents/breakdown.py`](https://github.com/CenturyBoys/roboto/blob/main/src/roboto/agents/breakdown.py):
 
 - **`is_epic(title, body)`** — heurística: "épico"/"epic" como palavra no título é sinal forte;
   senão soma sinais do corpo (palavra épico, ≥8 checkboxes, ≥3 cenários/critérios, menção a
@@ -44,9 +44,17 @@ Parte **determinística e testada** em [`agents/breakdown.py`](https://github.co
 - **`skeleton_body(item, prev_number)`** — monta o corpo do esqueleto; a frase `Depende de #N` é a
   mesma que o gate `blocked_by` reconhece, garantindo o encadeamento ponta a ponta.
 
+**Incremento 2 — modo breakdown conversacional** em `agents/refiner.py`:
+
+- **`breakdown_converse(transcript, gateway)`** — passo multi-turno (espelha o `converse()` do
+  refino normal): devolve uma **pergunta** (`PERGUNTA:`) quando falta info, ou o **breakdown**
+  (lista de esqueletos já encadeados) quando dá pra propor.
+- **`BREAKDOWN_SYSTEM`** — o contrato do prompt: ordena por dependência técnica, limita a 3–6 itens,
+  e **instrui a pesquisar na web** (validar lib/versão/abordagem) **citando a fonte** — efetivo
+  quando o motor por trás tem acesso à internet (Claude Code), como combinado.
+
 ## Próximos incrementos
 
-2. Modo breakdown no refiner (prompt + loop conversacional) + instrução de pesquisa na web.
 3. Materializar no GitHub (create + encadeamento + link ao épico).
 4. Painel de breakdown no cockpit (UI) + endpoint.
 5. Dogfood: destrinchar um épico real pela UI.

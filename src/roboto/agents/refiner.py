@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from roboto.agents.breakdown import Breakdown, parse_breakdown
 from roboto.channels.model import InboundMessage, MessageKind, OutboundMessage
 from roboto.llm.port import ChatMessage, ModelGateway, Tier, Transcriber
 from roboto.orchestrator.model import Error
@@ -96,6 +97,51 @@ async def converse(
         idx = text.upper().index("PERGUNTA:") + len("PERGUNTA:")
         return Ok(ConversationStep(question=text[idx:].strip() or text, draft=None))
     return Ok(ConversationStep(question=None, draft=_parse_draft(text)))
+
+
+BREAKDOWN_SYSTEM = (
+    "Você é o agente de refinamento DESTRINCHANDO um ÉPICO em sub-issues menores e executáveis. "
+    "Dado o épico e a conversa até aqui:\n"
+    "- Antes de propor, se precisar VALIDAR algo (lib/versão, viabilidade, breaking change, "
+    "abordagem), PESQUISE na web e CITE a fonte (URL) no ponto correspondente.\n"
+    "- Se FALTAR info essencial que não dá pra inferir do texto nem da pesquisa, faça UMA pergunta "
+    "objetiva começando com 'PERGUNTA:'.\n"
+    "- Quando já der pra destrinchar, responda SÓ a lista, sem texto extra, neste formato:\n"
+    "ITEM: <título curto da sub-issue, imperativo>\n"
+    "- <ponto a cobrir>\n"
+    "- <ponto a cobrir>\n"
+    "DEPENDE: nenhuma   (SÓ se esta sub-issue NÃO depende da anterior; por padrão cada uma depende "
+    "da anterior)\n"
+    "ITEM: <próxima sub-issue>\n...\n"
+    "Ordene por DEPENDÊNCIA técnica (o que destrava o resto primeiro). Cada ITEM é um ESQUELETO "
+    "(título + pontos) — NÃO escreva DoR completo aqui; o refino a fundo é 1-a-1 depois. "
+    "Prefira 3–6 itens; não infle."
+)
+
+
+@dataclass(frozen=True)
+class BreakdownStep:
+    """Passo da conversa de breakdown: ou uma pergunta ao humano, ou o breakdown proposto."""
+
+    question: str | None
+    breakdown: Breakdown | None
+
+
+async def breakdown_converse(
+    transcript: list[tuple[str, str]], gateway: ModelGateway
+) -> Result[BreakdownStep, Error]:
+    """Destrincha um épico multi-turno: pergunta (PERGUNTA:) ou propõe os N esqueletos (ITEM:)."""
+    messages = [ChatMessage(role="system", content=BREAKDOWN_SYSTEM)]
+    messages.extend(ChatMessage(role=role, content=content) for role, content in transcript)
+    result = await gateway.complete(messages, Tier.CHEAP)
+    if isinstance(result, Err):
+        return Err(result.error)
+    text = result.value.text.strip()
+    first = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
+    if first.upper().startswith("PERGUNTA:"):
+        idx = text.upper().index("PERGUNTA:") + len("PERGUNTA:")
+        return Ok(BreakdownStep(question=text[idx:].strip() or text, breakdown=None))
+    return Ok(BreakdownStep(question=None, breakdown=parse_breakdown(text)))
 
 
 async def refine(raw_text: str, gateway: ModelGateway) -> Result[IssueDraft, Error]:
