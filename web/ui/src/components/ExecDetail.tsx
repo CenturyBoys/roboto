@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
+  allowSecret,
   applyProposal,
   cancelExecution,
   dispatchImplement,
@@ -134,6 +135,24 @@ export function ExecDetail({
     }
   }
 
+  // H/B: override humano do secret-scan — operador marca falso-positivo e libera o push. Impactante
+  // (vai versionar algo que parece segredo) → confirma. Reenfileira; acompanhe o novo run.
+  async function doAllowSecret() {
+    const ok = window.confirm(
+      'Liberar o push mesmo com o secret-scan positivo?\n\nUse só se for FALSO-POSITIVO (ex.: token ' +
+        'de exemplo). O literal será versionado. Fica auditado no feed.',
+    )
+    if (!ok) return
+    setApplyMsg(null)
+    try {
+      await allowSecret(id)
+      setApplyMsg('push liberado (falso-positivo) — run reenfileirado; acompanhe o progresso.')
+      await load()
+    } catch {
+      setApplyMsg('não deu p/ liberar — tente de novo.')
+    }
+  }
+
   if (error) return <p className="text-muted">{error}</p>
   if (!data) return <p className="text-muted">carregando…</p>
   const e = data.execution
@@ -162,6 +181,16 @@ export function ExecDetail({
         <Button data-testid="exec-revert" variant="outline" onClick={() => void doRevert()}>
           ↩️ Reverter PR
         </Button>
+        {data.secret_blocked && (
+          <Button
+            data-testid="exec-allow-secret"
+            variant="outline"
+            onClick={() => void doAllowSecret()}
+            title="secret-scan barrou o push; libere só se for falso-positivo (token de exemplo)"
+          >
+            🔓 Liberar push (falso-positivo)
+          </Button>
+        )}
       </div>
       {applyMsg && <p className="text-xs text-accent">{applyMsg}</p>}
 

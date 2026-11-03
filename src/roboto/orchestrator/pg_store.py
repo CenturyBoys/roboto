@@ -556,6 +556,21 @@ class PostgresStore:
                 tenant, repo, issue_id,
             )
 
+    async def allow_secret(self, run_id: int, now: datetime) -> None:
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO secret_override (run_id, at) VALUES ($1, $2) "
+                "ON CONFLICT (run_id) DO UPDATE SET at = $2",
+                run_id, now,
+            )
+
+    async def is_secret_allowed(self, run_id: int) -> bool:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT 1 FROM secret_override WHERE run_id = $1", run_id
+            )
+        return row is not None
+
     async def list_runs(self, tenant: str, limit: int) -> list[Run]:
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(

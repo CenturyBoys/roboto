@@ -139,6 +139,7 @@ async def run_pr_cycle(
     max_attempts: int = 3,
     store: Store | None = None,
     now: datetime | None = None,
+    allow_secret: bool = False,  # override humano (H): libera o push mesmo com secret-scan positivo
 ) -> CycleResult:
     branch = f"roboto/run-{run.id}"
     # título/corpo do PR seguem a ISSUE (não "run 1: 107"): título = título da issue; corpo linka
@@ -329,8 +330,14 @@ async def run_pr_cycle(
             await _engine_turn(_secret_fix_prompt(leak), coder.get("native"))
             await git.commit_all("remove literal com cara de segredo (secret-scan)")
             leak = await _guard_secrets(git, base, store=store, run=run, now=now)
-        if leak:
+        if leak and not allow_secret:
             raise SecretLeakError(leak)  # persistiu após auto-correção → terminal (último recurso)
+        if leak and allow_secret and store is not None and now is not None:
+            # override humano (B): operador marcou falso-positivo — libera, mas AUDITA no feed
+            await store.append_session_event(
+                run.tenant, run.id, "message", now,
+                text=f"⚠️ secret-scan OVERRIDE humano: push liberado apesar de — {leak}",
+            )
         # #144: diff vazio = motor não editou nada → FALHA explícita (não revisa "o nada").
         if not (await git.diff(base)).strip():
             raise RuntimeError("motor não editou nada (diff vazio vs base) — nada a revisar")
@@ -468,6 +475,8 @@ async def process_pr_run_tick(
                 return
 
     workdir = f"{workdir_root}/{run.repo}"
+    # override humano do secret-scan (B): operador liberou este run (FP) → ciclo não aborta no scan
+    secret_ok = await store.is_secret_allowed(run.id)
     try:
         result = await run_pr_cycle(
             engine=engine,
@@ -480,6 +489,7 @@ async def process_pr_run_tick(
             base=base,
             store=store,  # medição de token (llm_call)
             now=moment,
+            allow_secret=secret_ok,
         )
     except Exception as exc:  # noqa: BLE001 — motor travado (watchdog) / git / PR: tira de RUNNING
         # Erro TRANSITÓRIO de provedor (402 sem crédito, 429, 5xx, overloaded) → re-enfileira com

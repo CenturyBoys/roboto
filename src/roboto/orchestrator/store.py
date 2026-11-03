@@ -203,6 +203,10 @@ class Store(Protocol):
 
     async def delete_breakdown_draft(self, tenant: str, repo: str, issue_id: str) -> None: ...
 
+    async def allow_secret(self, run_id: int, now: datetime) -> None: ...
+
+    async def is_secret_allowed(self, run_id: int) -> bool: ...
+
 
 class InMemoryStore:
     """Store em memória para testes tier-1 e o MVP local."""
@@ -223,6 +227,7 @@ class InMemoryStore:
         self._session_events: list[SessionEvent] = []
         self._execution_prs: dict[int, ExecutionPr] = {}
         self._breakdown_drafts: dict[tuple[str, str, str], str] = {}
+        self._secret_allowed: set[int] = set()  # override humano do secret-scan (H), por run
         self._dead_letters: dict[int, DeadLetter] = {}
         self._dl_seq = 0
         self._fact_seq = 0
@@ -521,6 +526,12 @@ class InMemoryStore:
 
     async def delete_breakdown_draft(self, tenant: str, repo: str, issue_id: str) -> None:
         self._breakdown_drafts.pop((tenant, repo, issue_id), None)
+
+    async def allow_secret(self, run_id: int, now: datetime) -> None:
+        self._secret_allowed.add(run_id)
+
+    async def is_secret_allowed(self, run_id: int) -> bool:
+        return run_id in self._secret_allowed
 
     async def list_runs(self, tenant: str, limit: int) -> list[Run]:
         runs = [

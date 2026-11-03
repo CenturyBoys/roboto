@@ -51,8 +51,16 @@ Bloquear está certo; terminar seco não. No ciclo de **implementação**, em ve
 o literal por um **placeholder/env** (um teste de redação de PII não precisa de token real) e
 re-escaneia — até `ROBOTO_…`/`_SECRET_FIX_ATTEMPTS` tentativas. Só vira `FAILED` se **persistir**
 após a auto-correção (último recurso). O push **nunca** sai antes de a varredura voltar limpa. (A
-correção de PR — `process_correct_tick` — mantém o bloqueio terminal; o override humano no cockpit
-cobre o caso de falso-positivo legítimo.)
+correção de PR — `process_correct_tick` — mantém o bloqueio terminal.)
+
+### Override humano (falso-positivo legítimo)
+
+Quando o literal PRECISA existir (raro), o operador resolve pelo cockpit, sem editar código do fleet:
+no detalhe de uma execução barrada (`secret_blocked`), o botão **"🔓 Liberar push (falso-positivo)"**
+(`POST /executions/{id}/allow-secret`) grava um **override durável** (tabela `secret_override`, por
+run) e reenfileira. No próximo tick, `run_pr_cycle(allow_secret=True)` **não aborta** — faz o push e
+**audita** no feed (`⚠️ secret-scan OVERRIDE humano…`). Confirmação na UI (ação impactante). Assim o
+guard é **robusto** (bloqueia por padrão, auto-corrige) sem ser **rígido** (tem escape auditado).
 
 - **Duas camadas:** (1) **formatos canônicos** de credencial (baixíssimo falso-positivo); (2)
   **heurística keyed + entropia** — identificador com cara de segredo (`DB_PASSWORD`, `api_key`…)
