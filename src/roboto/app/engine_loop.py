@@ -28,6 +28,8 @@ from roboto.result import Err, Ok, Result
 # visto no PoC (o motor morria no "let's commit" e o `async for` pendurava pra sempre).
 ENGINE_IDLE_TIMEOUT = float(os.environ.get("ROBOTO_ENGINE_IDLE_TIMEOUT", "300"))
 
+_COST_PER_MTOK = 0.4  # custo aprox. Qwen/OpenRouter ($/milhão de tokens) — medir/afinar (L)
+
 
 async def guarded_events(
     events: AsyncIterator[EngineEvent], idle_timeout: float | None = None
@@ -104,6 +106,21 @@ async def drive_turn(
                 )
                 return Ok(TurnOutcome.WAITING)
             if event.kind is EngineEventKind.FINISHED:
+                # medição de token do MOTOR (D10/L): sem isto, turnos via drive_turn (refine, scope,
+                # copilot) apareciam com custo 0 mesmo tendo rodado — só impl/correct eram medidos.
+                tin, tout = event.tokens_in, event.tokens_out
+                if tin or tout:
+                    await store.record_llm_call(
+                        tenant=run.tenant,
+                        run_id=run.id,
+                        provider="openrouter",
+                        model=str(engine.engine),
+                        tier="frontier",
+                        tokens_in=tin,
+                        tokens_out=tout,
+                        cost_usd=(tin + tout) / 1_000_000 * _COST_PER_MTOK,
+                        now=now,
+                    )
                 await store.set_state(run.id, RunState.VERIFYING, now)
                 return Ok(TurnOutcome.FINISHED)
             if event.kind is EngineEventKind.FAILED:
