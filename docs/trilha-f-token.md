@@ -20,6 +20,7 @@ operação em linguagem natural a cada turno.
 | **code-intel no motor** | 23 tools semânticas (refs, hierarquia, rename/move/extract verificados) | `runtime.py` monta o MCP se `ROBOTO_CODE_INTEL=1` (default) |
 | **Base Rust** | `ripgrep` + `fd` na imagem (busca que respeita `.gitignore` → output menor) | `poc/Dockerfile` |
 | **Regra de busca** | símbolos → code-intel; texto literal → ripgrep; **evitar** ler arquivo inteiro | prompt do motor |
+| **Brief do code-intel (harness)** | injeta no prompt o **catálogo de tools puxado do próprio MCP** (`tools/list`, auto-mantido) + `repo_map` — reduz a NECESSIDADE de grep/Read cego | `app/code_intel_brief.py` |
 | **`verify` harness-driven** | o harness chama o code-intel (não depende do modelo escolher) antes do PR | `app/verify.py` → trilha D |
 | **Registro de ferramentas** | `docs/TOOLS.md` pra o fleet não reinventar | `docs/TOOLS.md` |
 
