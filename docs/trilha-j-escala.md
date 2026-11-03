@@ -3,7 +3,8 @@
 > Documento **operacional** (como o sistema funciona hoje). O *porquê* / a investigação fica em
 > [`research/J-escala-ci-build-review.md`](https://github.com/CenturyBoys/roboto/blob/main/research/J-escala-ci-build-review.md).
 > **Princípio-âncora:** quase tudo aqui é **política determinística**, não decisão de LLM.
-> **Status:** concurrency-lock por issue + **WIP limit / backpressure** no `main`.
+> **Status:** concurrency-lock por issue + **WIP limit / backpressure** + **gate ciente de
+> dependência** (`blocked by`) no `main`.
 
 ## 1. O que a trilha entrega
 
@@ -37,12 +38,35 @@ flowchart LR
   C -->|issue já ativa| W
 ```
 
-## 4. Fonte da verdade e follow-ups
+## 4. Gate ciente de dependência (novo)
 
-A política vive no `claim` (determinística, testada); o teto na config. A verdade do estado segue
+> *Uma issue "blocked by #N" não pode ser implementada antes de #N existir* — senão o fleet coda em
+> cima de algo que ainda não está no código (ou dois agentes colidem na mesma área).
+
+- **Determinístico, do texto da issue.** `app/deps.py:blocked_by(título+corpo)` parseia referências de
+  **bloqueio** — `blocked by #N`, `bloqueada por #N`, `depends on #N`, `depende de #N` (uma ou várias:
+  `blocked by #79, #80`). **Não** confunde com `relaciona-se a / relates to / refs / Closes` — isso é
+  só relacionado, não bloqueia.
+- **No tick de implementação** (`process_pr_run_tick`): antes de delegar ao motor, consulta o estado de
+  cada bloqueadora (`github.get_issue_state`). Se **alguma ainda está `open`** → comenta na issue
+  (*"Bloqueada por #N (ainda aberta) — não implemento até ela fechar"*) e o run vai para **`WAITING`**
+  sem gastar motor nem abrir PR. Fechou a bloqueadora → o próximo tick segue normalmente.
+- **Por que no tick e não no claim:** o estado da bloqueadora muda no GitHub ao longo do tempo; checar
+  no momento da execução evita segurar um slot e reflete o mundo real sem polling extra.
+
+```mermaid
+flowchart LR
+  T{"tick impl"} --> B{"blocked by #N?"}
+  B -->|não| Go([implementa])
+  B -->|sim, #N open| Wait([WAITING + comenta])
+  B -->|sim, #N closed| Go
+```
+
+## 5. Fonte da verdade e follow-ups
+
+A política vive no `claim`/tick (determinística, testada); o teto na config. A verdade do estado segue
 na issue + git.
 
-**Follow-ups (backlog):** scheduling **ciente de dependência** (`blocked by` → não executa antes da
-bloqueadora mergear); **previsão de sobreposição** por arquivos/área da DoR; **merge queue** +
+**Follow-ups (backlog):** **previsão de sobreposição** por arquivos/área da DoR; **merge queue** +
 **test impact analysis** (two-step CI) + **quarentena de flaky** no lado do CI; conflito de merge =
 gate humano (trilha H). O custo de LLM do review **não batcheia** → entra no modelo de custo (L).

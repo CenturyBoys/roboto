@@ -24,6 +24,7 @@ from roboto.agents.review import (
 )
 from roboto.app.comment_poll import BOT_MARKER
 from roboto.app.correction import CycleResult, correction_cycle
+from roboto.app.deps import blocked_by
 from roboto.app.engine_loop import guarded_events
 from roboto.app.jev_guard import assess as assess_risk
 from roboto.app.memory import recall_block
@@ -78,6 +79,9 @@ class GithubPrOps(Protocol):
     async def set_issue_state(
         self, repo: str, number: int, state: str
     ) -> Result[None, Error]: ...
+
+    # estado de uma issue ("open"/"closed") — gate de dependência (J): não codar bloqueada
+    async def get_issue_state(self, repo: str, number: int) -> Result[str, Error]: ...
 
     # fleet "levanta a mão": self-assign ao pegar a task (#150) — best-effort
     async def add_assignee(
@@ -403,6 +407,17 @@ async def process_pr_run_tick(
         issue = await github.get_issue(run.repo, int(run.issue_id))
         if isinstance(issue, Ok):
             title, body = issue.value
+            # gate de DEPENDÊNCIA (J): "blocked by #N" e a #N ainda ABERTA → não coda, espera.
+            # Serializa o que colide (ex.: #220 depende do #79) e evita codar sobre o inexistente.
+            for bloq in blocked_by(f"{title}\n{body}"):
+                st = await github.get_issue_state(run.repo, bloq)
+                if isinstance(st, Ok) and st.value == "open":
+                    await github.comment_pr(
+                        run.repo, int(run.issue_id),
+                        f"Bloqueada por #{bloq} (ainda aberta) — não implemento até ela fechar.",
+                    )
+                    await store.set_state(run.id, RunState.WAITING, moment)
+                    return
             # gate anti-codar-definição (#158): task de DEFINIÇÃO não vira código — seu "done" é a
             # spec aprovada. Só bloqueia quando a classificação é CONFIANTE (keyword); "sem critério
             # + sem keyword" é ambíguo (dev incompleto) → deixa o gate de DoR pedir pra completar.

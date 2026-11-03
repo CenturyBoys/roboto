@@ -350,6 +350,30 @@ class GithubAppClient:
             if owns:
                 await client.aclose()
 
+    async def get_issue_state(self, repo: str, number: int) -> Result[str, Error]:
+        """Estado da issue ("open"|"closed") — usado pelo gate de dependência (J): não codar uma
+        issue bloqueada por outra que ainda está aberta."""
+        owns = self._client is None
+        client = (
+            self._client if self._client is not None else httpx.AsyncClient(timeout=self._timeout)
+        )
+        try:
+            token = await self._installation_token(client)
+            resp = await client.get(
+                f"{self._api}/repos/{repo}/issues/{number}",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                },
+            )
+            resp.raise_for_status()
+            return Ok(str(resp.json().get("state", "")))
+        except httpx.HTTPError as exc:
+            return Err(Error("github", f"get_issue_state {repo}#{number}: {exc}"))
+        finally:
+            if owns:
+                await client.aclose()
+
     async def set_issue_state(self, repo: str, number: int, state: str) -> Result[None, Error]:
         """Abre/fecha uma issue (`state` = "open" | "closed"). Usado pela recuperação (H): reverter
         um PR reabre a issue pra o fleet refazer."""

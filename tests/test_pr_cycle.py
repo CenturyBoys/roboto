@@ -81,6 +81,7 @@ class _FakeGithub:
         self.assignees: list[tuple[int, str]] = []  # #150: (issue_number, login)
         self.comments: list[str] = []
         self.issue_states: list[tuple[int, str]] = []  # revert (H): (issue_number, state)
+        self.blocker_state = "open"  # gate de dependência (J): estado da issue bloqueadora
         self.reviews: list[str] = []  # corpos de submit_review (review estruturado, Trilha D)
         self._existing = existing_pr
         self._ready = ready_issue
@@ -120,6 +121,9 @@ class _FakeGithub:
     async def set_issue_state(self, repo: str, number: int, state: str) -> Result[None, Error]:
         self.issue_states.append((number, state))
         return Ok(None)
+
+    async def get_issue_state(self, repo: str, number: int) -> Result[str, Error]:
+        return Ok(self.blocker_state)  # gate de dependência (J): "open" segura; "closed" libera
 
     async def submit_review(
         self, repo: str, number: int, body: str, comments: list[tuple[str, int, str]]
@@ -306,6 +310,44 @@ async def test_permanent_error_goes_failed() -> None:
         git_factory=lambda ws: _FakeGit(), now=lambda: _T0,
     )
     assert store._runs[run.id].state is RunState.FAILED  # type: ignore[attr-defined]
+
+
+async def test_blocked_issue_waits_not_implemented() -> None:
+    # J: issue "bloqueada por #79" com a #79 ABERTA → WAITING, não implementa
+    from roboto.orchestrator.model import RunState
+
+    store = InMemoryStore()
+    run = await _run(store)  # type: ignore[assignment]
+    body = _READY_BODY + "\n\nbloqueada por #79"
+    github = _FakeGithub(custom_body=body)
+    github.blocker_state = "open"  # #79 ainda aberta
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    await process_pr_run_tick(
+        engine, _SeqGateway([""]), github, store,  # type: ignore[arg-type]
+        tenant="acme", workdir_root="/work", reviewer="review",
+        git_factory=lambda ws: _FakeGit(), now=lambda: _T0,
+    )
+    assert store._runs[run.id].state is RunState.WAITING  # type: ignore[attr-defined]
+    assert len(engine.started) == 0  # NÃO implementou
+    assert any("Bloqueada por #79" in c for c in github.comments)
+
+
+async def test_blocked_issue_implements_when_blocker_closed() -> None:
+    # se a #79 está FECHADA, o bloqueio não segura — implementa normalmente
+    from roboto.orchestrator.model import RunState
+
+    store = InMemoryStore()
+    run = await _run(store)  # type: ignore[assignment]
+    github = _FakeGithub(custom_body=_READY_BODY + "\n\nblocked by #79")
+    github.blocker_state = "closed"  # #79 já fechou
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    await process_pr_run_tick(
+        engine, _SeqGateway([""]), github, store,  # type: ignore[arg-type]
+        tenant="acme", workdir_root="/work", reviewer="review",
+        git_factory=lambda ws: _FakeGit(), now=lambda: _T0,
+    )
+    assert store._runs[run.id].state is RunState.VERIFYING  # type: ignore[attr-defined]
+    assert len(engine.started) == 1  # implementou (bloqueador fechado)
 
 
 async def test_self_assign_on_claim() -> None:
