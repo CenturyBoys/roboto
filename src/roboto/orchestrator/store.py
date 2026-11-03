@@ -193,6 +193,16 @@ class Store(Protocol):
 
     async def get_execution_pr(self, execution_id: int) -> ExecutionPr | None: ...
 
+    async def get_breakdown_draft(
+        self, tenant: str, repo: str, issue_id: str
+    ) -> str | None: ...
+
+    async def set_breakdown_draft(
+        self, tenant: str, repo: str, issue_id: str, items_json: str, now: datetime
+    ) -> None: ...
+
+    async def delete_breakdown_draft(self, tenant: str, repo: str, issue_id: str) -> None: ...
+
 
 class InMemoryStore:
     """Store em memória para testes tier-1 e o MVP local."""
@@ -212,6 +222,7 @@ class InMemoryStore:
         self._app_config: dict[str, str] = {}
         self._session_events: list[SessionEvent] = []
         self._execution_prs: dict[int, ExecutionPr] = {}
+        self._breakdown_drafts: dict[tuple[str, str, str], str] = {}
         self._dead_letters: dict[int, DeadLetter] = {}
         self._dl_seq = 0
         self._fact_seq = 0
@@ -499,6 +510,17 @@ class InMemoryStore:
 
     async def get_execution_pr(self, execution_id: int) -> ExecutionPr | None:
         return self._execution_prs.get(execution_id)
+
+    async def get_breakdown_draft(self, tenant: str, repo: str, issue_id: str) -> str | None:
+        return self._breakdown_drafts.get((tenant, repo, issue_id))
+
+    async def set_breakdown_draft(
+        self, tenant: str, repo: str, issue_id: str, items_json: str, now: datetime
+    ) -> None:
+        self._breakdown_drafts[(tenant, repo, issue_id)] = items_json
+
+    async def delete_breakdown_draft(self, tenant: str, repo: str, issue_id: str) -> None:
+        self._breakdown_drafts.pop((tenant, repo, issue_id), None)
 
     async def list_runs(self, tenant: str, limit: int) -> list[Run]:
         runs = [

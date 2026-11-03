@@ -1,18 +1,45 @@
-import { useState } from 'react'
-import { applyBreakdown, ApiError, proposeBreakdown } from '@/lib/api'
+import { useEffect, useRef, useState } from 'react'
+import {
+  ApiError,
+  applyBreakdown,
+  deleteBreakdownDraft,
+  getBreakdownDraft,
+  proposeBreakdown,
+  saveBreakdownDraft,
+} from '@/lib/api'
 import type { BreakdownItem, CreatedSubIssue } from '@/types'
 import { Button } from './ui/button'
 import { Card, CardLabel } from './ui/card'
 import { useToast } from './ui/toast'
 
-// Breakdown de épico (#203, inc. 4). Fluxo: PROPOR (o refiner destrincha, nada é criado) → o humano
-// revisa/edita a lista → CRIAR (materializa as sub-issues encadeadas por dependência, linka no épico).
+// Breakdown de épico (#203). Fluxo: PROPOR (o refiner destrincha, nada é criado) → o humano revisa/
+// edita a lista → CRIAR (materializa as sub-issues encadeadas por dependência, linka no épico).
+// O rascunho editado é salvo no BACKEND (durável): sobrevive a F5 e troca de dispositivo.
 export function BreakdownPanel({ number }: { number: number }) {
   const [items, setItems] = useState<BreakdownItem[] | null>(null)
   const [question, setQuestion] = useState<string | null>(null)
   const [created, setCreated] = useState<CreatedSubIssue[] | null>(null)
   const [busy, setBusy] = useState<null | 'propose' | 'apply'>(null)
   const toast = useToast()
+  const hydrated = useRef(false) // evita re-salvar o rascunho que acabou de ser carregado
+
+  // ao abrir: restaura o rascunho salvo (se houver) — é isso que sobrevive ao F5
+  useEffect(() => {
+    getBreakdownDraft(number)
+      .then((d) => {
+        if (d.items && d.items.length > 0) setItems(d.items)
+      })
+      .catch(() => {})
+      .finally(() => {
+        hydrated.current = true
+      })
+  }, [number])
+
+  // autosave: toda edição da lista persiste no backend (não salva o estado inicial nem o "limpo")
+  useEffect(() => {
+    if (!hydrated.current || items === null) return
+    void saveBreakdownDraft(number, items).catch(() => {})
+  }, [number, items])
 
   async function propose() {
     if (busy) return
@@ -47,6 +74,15 @@ export function BreakdownPanel({ number }: { number: number }) {
     }
   }
 
+  async function discard() {
+    if (busy) return
+    await deleteBreakdownDraft(number).catch(() => {})
+    setItems(null)
+    setQuestion(null)
+    setCreated(null)
+    toast('Rascunho descartado.')
+  }
+
   function patch(idx: number, next: Partial<BreakdownItem>) {
     setItems((cur) => cur?.map((it, i) => (i === idx ? { ...it, ...next } : it)) ?? cur)
   }
@@ -62,9 +98,14 @@ export function BreakdownPanel({ number }: { number: number }) {
           {busy === 'propose' ? 'destrinchando…' : 'Destrinchar épico'}
         </Button>
         {items && items.length > 0 && (
-          <Button variant="outline" disabled={busy !== null} onClick={() => void create()}>
-            {busy === 'apply' ? 'criando…' : `Criar ${items.length} sub-issue(s)`}
-          </Button>
+          <>
+            <Button variant="outline" disabled={busy !== null} onClick={() => void create()}>
+              {busy === 'apply' ? 'criando…' : `Criar ${items.length} sub-issue(s)`}
+            </Button>
+            <Button variant="ghost" disabled={busy !== null} onClick={() => void discard()}>
+              descartar rascunho
+            </Button>
+          </>
         )}
       </div>
 

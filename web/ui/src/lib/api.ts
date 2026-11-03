@@ -75,6 +75,17 @@ export const applyBreakdown = (n: number, items: BreakdownItem[]) =>
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ items }),
   })
+// Rascunho DURÁVEL do breakdown (#203): salvo no backend → sobrevive a F5 e troca de dispositivo.
+export const getBreakdownDraft = (n: number) =>
+  api<{ items: BreakdownItem[] | null }>(`/issues/${n}/breakdown/draft`)
+export const saveBreakdownDraft = (n: number, items: BreakdownItem[]) =>
+  api<{ ok: boolean }>(`/issues/${n}/breakdown/draft`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ items }),
+  })
+export const deleteBreakdownDraft = (n: number) =>
+  api<{ ok: boolean }>(`/issues/${n}/breakdown/draft`, { method: 'DELETE' })
 // Revisar QUALQUER PR aberto (time/bot) com o revisor deepseek; posta o parecer como comentário.
 export const reviewPr = (n: number) =>
   api<{ approved: boolean; issues: string[]; number: number; author: string }>(
