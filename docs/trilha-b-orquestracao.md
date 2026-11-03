@@ -56,6 +56,12 @@ stateDiagram-v2
   `app/engine_loop.guarded_events`.
 - **Lease + sweeper**: run RUNNING com lease expirado é re-enfileirado (recuperável em restart) —
   **exceto** sob intervenção humana ativa (sweeper pula, #157).
+- **Reconciliar VERIFYING (sem webhook):** um run aprovado fica em `VERIFYING` até o merge humano;
+  como `VERIFYING` é **ATIVO**, segurava o lock (tenant, issue) e o WIP indefinidamente. Um laço
+  (`app/reconcile.reconcile_verifying`, a cada 15s) consulta o PR real: **mergeado → `DONE`**,
+  **fechado sem merge → `ABANDONED`**, aberto → mantém. Acha o PR de runs de **impl** (`execution_pr`)
+  **e** de **correct** (`issue_id` = nº do PR) — antes o laço só via impl, então todo `correct`
+  aprovado ficava preso em `verifying` pra sempre, vazando o lock.
 - **Fail-fast do ciclo (#144):** `open_pr` que falha **não** vira PR nº 0 silencioso — propaga e
   FALHA o run; **diff vazio** (motor não editou nada) também falha explícito — não se revisa "o nada".
 - **Self-assign (#150):** ao pegar um run de `impl`, o fleet se **atribui como assignee** da issue
