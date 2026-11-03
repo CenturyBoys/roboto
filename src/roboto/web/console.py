@@ -703,8 +703,32 @@ def console_routes(
         res = await materialize_breakdown(issues, repo, number, Breakdown(items=items))
         if isinstance(res, Err):
             return JSONResponse({"error": res.error.message}, status_code=502)
+        # materializou → o rascunho cumpriu o papel; apaga pra não reabrir uma proposta já criada
+        await store.delete_breakdown_draft(tenant, repo, str(number))
         created = [{"number": c.number, "url": c.url, "title": c.title} for c in res.value]
         return JSONResponse({"created": created})
+
+    async def issue_breakdown_draft(request: Request) -> JSONResponse:
+        # Rascunho DURÁVEL do breakdown (#203): GET lê, PUT salva, DELETE descarta — persistido no
+        # Store (Postgres), então sobrevive a F5 e troca de dispositivo. Um handler por método.
+        if _unauthorized(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        repo = request.query_params.get("repo") or default_repo
+        number = int(request.path_params["number"])
+        if not repo:
+            return JSONResponse({"error": "repo não configurado"}, status_code=409)
+        if request.method == "GET":
+            raw = await store.get_breakdown_draft(tenant, repo, str(number))
+            return JSONResponse({"items": json.loads(raw) if raw else None})
+        if request.method == "DELETE":
+            await store.delete_breakdown_draft(tenant, repo, str(number))
+            return JSONResponse({"ok": True})
+        payload = await request.json()  # PUT
+        items = payload.get("items", []) if isinstance(payload, dict) else []
+        await store.set_breakdown_draft(
+            tenant, repo, str(number), json.dumps(items), datetime.now(UTC)
+        )
+        return JSONResponse({"ok": True})
 
     async def review_pr_action(request: Request) -> JSONResponse:
         # Revisar QUALQUER PR aberto (do time/bot, não só do fleet) com o revisor deepseek (JUDGE)
@@ -945,6 +969,11 @@ def console_routes(
         Route("/issues/{number:int}/implement", implement_with_engine, methods=["POST"]),
         Route("/issues/{number:int}/breakdown", issue_breakdown_propose, methods=["POST"]),
         Route("/issues/{number:int}/breakdown/apply", issue_breakdown_apply, methods=["POST"]),
+        Route(
+            "/issues/{number:int}/breakdown/draft",
+            issue_breakdown_draft,
+            methods=["GET", "PUT", "DELETE"],
+        ),
         Route("/prs/{number:int}/review", review_pr_action, methods=["POST"]),
         Route("/prs/{number:int}/correct", correct_pr_action, methods=["POST"]),
         Route("/executions/{run_id:int}/proposal", proposal),

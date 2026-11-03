@@ -526,6 +526,36 @@ class PostgresStore:
                 diff=row["diff"], updated_at=row["updated_at"],
             )
 
+    async def get_breakdown_draft(self, tenant: str, repo: str, issue_id: str) -> str | None:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT items_json FROM breakdown_draft "
+                "WHERE tenant = $1 AND repo = $2 AND issue_id = $3",
+                tenant, repo, issue_id,
+            )
+        return None if row is None else str(row["items_json"])
+
+    async def set_breakdown_draft(
+        self, tenant: str, repo: str, issue_id: str, items_json: str, now: datetime
+    ) -> None:
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO breakdown_draft (tenant, repo, issue_id, items_json, updated_at)
+                VALUES ($1, $2, $3, $4, $5)
+                ON CONFLICT (tenant, repo, issue_id) DO UPDATE
+                    SET items_json = $4, updated_at = $5
+                """,
+                tenant, repo, issue_id, items_json, now,
+            )
+
+    async def delete_breakdown_draft(self, tenant: str, repo: str, issue_id: str) -> None:
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                "DELETE FROM breakdown_draft WHERE tenant = $1 AND repo = $2 AND issue_id = $3",
+                tenant, repo, issue_id,
+            )
+
     async def list_runs(self, tenant: str, limit: int) -> list[Run]:
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(

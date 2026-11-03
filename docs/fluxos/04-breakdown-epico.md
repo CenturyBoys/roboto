@@ -74,6 +74,16 @@ flowchart TB
   "depende da anterior") → *Criar N sub-issue(s)*; mostra os links das filhas criadas. O *Destrinchar*
   nunca cria; a criação é um segundo clique explícito.
 
-## Próximos incrementos
+**Incremento 5 — rascunho durável** (sobrevive a F5 e troca de dispositivo):
 
-5. Dogfood: destrinchar um épico real (ex.: #66 do arenavalendo) pela UI.
+- Tabela `breakdown_draft` (migration 0011), chave `(tenant, repo, issue)`, 1 linha por épico (upsert);
+  métodos no `Store` (InMemory + Postgres).
+- **`GET/PUT/DELETE /issues/{n}/breakdown/draft`** — ler / salvar / descartar. O `apply` **apaga** o
+  rascunho ao materializar (não reabre uma proposta já criada).
+- UI: o `BreakdownPanel` **restaura** o rascunho ao abrir, faz **autosave** a cada edição, e tem
+  **descartar rascunho**. Agora dá pra propor, sair, dar F5 (ou trocar de máquina) e voltar pra
+  finalizar — a proposta editada continua lá.
+
+## Próximo
+
+6. Dogfood: destrinchar um épico real (ex.: #66 do arenavalendo) pela UI e materializar.
