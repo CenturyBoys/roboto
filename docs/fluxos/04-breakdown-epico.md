@@ -53,8 +53,17 @@ flowchart TB
   e **instrui a pesquisar na web** (validar lib/versão/abordagem) **citando a fonte** — efetivo
   quando o motor por trás tem acesso à internet (Claude Code), como combinado.
 
+**Incremento 3 — materializar no GitHub** em `app/breakdown_apply.py`:
+
+- **`materialize_breakdown(github, repo, epic_number, breakdown)`** — cria as sub-issues **em ordem**,
+  cada uma com `Depende de #<número real da anterior>` (números que só existem após criar → criação
+  sequencial) + `Parte do épico #N`. Comenta no épico o **índice** das filhas (guarda-chuva).
+- **Encadeamento real:** a dependência aponta pro número GitHub de fato, então o gate `blocked_by`
+  já segura cada filha em WAITING até a anterior fechar. `DEPENDE: nenhuma` no meio não encadeia.
+- **Fail-fast:** para na 1ª falha de criação (não deixa cadeia pela metade silenciosa); as já criadas
+  permanecem e aparecem no comentário do épico.
+
 ## Próximos incrementos
 
-3. Materializar no GitHub (create + encadeamento + link ao épico).
-4. Painel de breakdown no cockpit (UI) + endpoint.
+4. Painel de breakdown no cockpit (UI) + endpoint (com o **OK humano** antes de materializar).
 5. Dogfood: destrinchar um épico real pela UI.
