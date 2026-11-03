@@ -245,9 +245,26 @@ async def run_pr_cycle(
         if memory
         else ""
     )
+    # aprendizado entre TENTATIVAS (B/G): no retry (mesmo run, attempt>0) o motor nasce fresco e
+    # poderia recair no mesmo erro. Injeta o MOTIVO da última falha — lido do feed da própria
+    # execução (determinístico) — pra ele já começar evitando a causa.
+    aprendizado_block = ""
+    if store is not None and run.attempt > 0:
+        hist = await store.session_events(run.id, 0, 500)
+        motivos = [
+            e.text for e in hist
+            if e.text.startswith("⚠️ execução falhou") or "secret-scan" in e.text.lower()
+        ]
+        if motivos:
+            aprendizado_block = (
+                "\nAPRENDIZADO DA TENTATIVA ANTERIOR (esta issue JÁ falhou — NÃO repita a causa):\n"
+                f"{motivos[-1]}\n"
+                "Já comece evitando isso: se foi secret-scan, use placeholder/env desde o início; "
+                "se foi review/checks, atenda o apontamento antes de concluir.\n"
+            )
     base_prompt = (
         f"Implemente a issue {run.issue_id} no repo {run.repo} (cwd {workdir}).{contexto}"
-        f"{profile_block}{conventions_block}{memory_block}\n"
+        f"{profile_block}{conventions_block}{memory_block}{aprendizado_block}\n"
         "ESCOPO MÍNIMO: entregue APENAS o que os Critérios de aceite da issue pedem — nada além. "
         "NÃO crie documentos/arquivos extras (ex.: breakdown ou 'update' de épico), NÃO edite o "
         "épico nem outras issues, NÃO toque em código não relacionado, NÃO commite lockfile/deps "

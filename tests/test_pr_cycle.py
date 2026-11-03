@@ -260,6 +260,42 @@ async def test_cycle_autofixes_secret_then_pushes() -> None:
     assert any("secret-scan" in e.text for e in events)  # registrou o bloqueio/retry no feed
 
 
+async def test_retry_injects_previous_failure_into_prompt() -> None:
+    # B/G: no retry (attempt>0), o motivo da falha anterior (mesmo run) entra no prompt do motor.
+    import dataclasses
+
+    store = InMemoryStore()
+    run = await _run(store)
+    await store.append_session_event(
+        "acme", run.id, "message", _T0,
+        text="⚠️ execução falhou: segredo atribuído (heurística) [eyJh…*** (44 chars)]",
+    )
+    run2 = dataclasses.replace(run, attempt=1)  # simula o retry
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    git, github = _FakeGit(), _FakeGithub()
+    await run_pr_cycle(
+        engine=engine, gateway=_SeqGateway(["", ""]),  # type: ignore[arg-type]
+        github=github, git=git, run=run2, workdir="/work/acme/app",
+        reviewer="review", store=store, now=_T0,
+    )
+    assert engine.started  # rodou
+    assert "APRENDIZADO DA TENTATIVA ANTERIOR" in engine.started[0].prompt
+    assert "eyJh" in engine.started[0].prompt  # carregou o motivo concreto
+
+
+async def test_first_attempt_has_no_learning_block() -> None:
+    # attempt 0: sem histórico de falha → prompt limpo (não inventa aprendizado).
+    store = InMemoryStore()
+    run = await _run(store)  # attempt 0
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    await run_pr_cycle(
+        engine=engine, gateway=_SeqGateway(["", ""]),  # type: ignore[arg-type]
+        github=_FakeGithub(), git=_FakeGit(), run=run, workdir="/work/acme/app",
+        reviewer="review", store=store, now=_T0,
+    )
+    assert "APRENDIZADO DA TENTATIVA ANTERIOR" not in engine.started[0].prompt
+
+
 async def test_process_pr_run_tick_fails_and_warns_on_secret_leak() -> None:
     from roboto.orchestrator.model import RunState
 

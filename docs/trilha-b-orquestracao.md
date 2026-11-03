@@ -64,6 +64,11 @@ stateDiagram-v2
   overloaded — `app/transient.is_transient`) **re-enfileira com backoff** em vez de FAILED terminal
   → quando a condição passa (ex.: recarga de crédito), o daemon **retoma sozinho** (teto de tentativas
   → dead-letter se persistir). Erro permanente (git/PR/bug) segue terminal.
+- **Aprendizado entre tentativas (B/G):** o retry reusa o **mesmo `run.id`**, então o motivo da
+  falha anterior está no feed daquele run. Em `attempt>0`, o ciclo lê a última falha (`⚠️ execução
+  falhou…` / secret-scan) e **injeta no prompt** da nova tentativa (*"NÃO repita a causa…"*) — o motor
+  nasce fresco (relê o repo, não resume a sessão antiga), mas já começa evitando o erro conhecido, em
+  vez de depender de reencontrá-lo. Determinístico (lê o histórico, não é decisão de LLM).
 - **Sem PR duplicado:** o prompt de implement proíbe o motor de abrir PR/rodar `git push`/`gh` — **o
   fleet** abre o PR (commit→push→`open_pr`); senão saíam 2 PRs (um do motor, um do orquestrador).
 
