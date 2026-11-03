@@ -32,7 +32,9 @@ export default function App() {
   const [view, setView] = useState<View>('execs')
   const [selected, setSelected] = useState<number | null>(null)
   const [selectedIssue, setSelectedIssue] = useState<number | null>(null)
-  const [auto, setAuto] = useState(false)
+  // auto-refresh é uma PREFERÊNCIA persistida (localStorage): default LIGADO e lembrado entre abas/
+  // sessões — só fica off se o usuário desligar explicitamente ('0'). Antes resetava a cada navegação.
+  const [auto, setAuto] = useState<boolean>(() => localStorage.getItem('rt_auto') !== '0')
   const [mode, setMode] = useState<Mode>('loading')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [canInstall, install] = useInstallPrompt()
@@ -44,6 +46,11 @@ export default function App() {
       .catch(() => setMode('running'))
   }, [])
 
+  // persiste a preferência de auto-refresh (sobrevive a F5 e a abrir outra aba)
+  useEffect(() => {
+    localStorage.setItem('rt_auto', auto ? '1' : '0')
+  }, [auto])
+
   function save() {
     setToken(token)
     setSaved(true)
@@ -51,8 +58,7 @@ export default function App() {
   function go(v: View) {
     setSelected(null)
     setSelectedIssue(null)
-    setAuto(false)
-    setView(v)
+    setView(v) // NÃO reseta `auto`: a preferência de atualização vale em todas as abas
   }
   const isActive = (v: View) => (v === 'execs' ? view === 'execs' && selected === null : view === v)
 
@@ -147,10 +153,7 @@ export default function App() {
               {view === 'execs' && selected === null && (
                 <ExecList
                   auto={auto}
-                  onSelect={(id) => {
-                    setAuto(false)
-                    setSelected(id)
-                  }}
+                  onSelect={(id) => setSelected(id)}
                 />
               )}
               {view === 'execs' && selected !== null && (
