@@ -22,6 +22,7 @@ from roboto.agents.review import (
     montar_review,
     revisar_pr,
 )
+from roboto.app.autoformat import autoformat
 from roboto.app.code_intel_brief import code_intel_brief
 from roboto.app.comment_poll import BOT_MARKER
 from roboto.app.correction import CycleResult, correction_cycle
@@ -341,6 +342,14 @@ async def run_pr_cycle(
         # correção RESUMINDO a sessão do coder: 1ª tentativa é sessão nova; correções resumem.
         await _engine_turn(prompt, coder.get("native") if feedback else None)
         await git.prepare_branch(branch)
+        # auto-format (F/B, determinismo): o motor costuma esquecer de formatar e o pre-commit hook
+        # (prettier --check) barra o commit. O harness formata os arquivos alterados pré-commit.
+        formatados = await autoformat(workdir)
+        if formatados and store is not None and now is not None:
+            await store.append_session_event(
+                run.tenant, run.id, "message", now,
+                text=f"🎨 auto-format: {len(formatados)} arquivo(s) formatado(s) antes do commit.",
+            )
         await git.commit_all(title if not feedback else f"{title} (correção)")
         # H: secret-scan com AUTO-CORREÇÃO — bloqueia o push e devolve ao motor p/ trocar o literal
         # por placeholder/env, re-escaneando. Esgotou → aborta (o push nunca sai com segredo).

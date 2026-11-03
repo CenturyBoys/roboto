@@ -22,6 +22,7 @@ operação em linguagem natural a cada turno.
 | **Regra de busca** | símbolos → code-intel; texto literal → ripgrep; **evitar** ler arquivo inteiro | prompt do motor |
 | **Brief do code-intel (harness)** | injeta no prompt o **catálogo de tools puxado do próprio MCP** (`tools/list`, auto-mantido) + `repo_map` — reduz a NECESSIDADE de grep/Read cego | `app/code_intel_brief.py` |
 | **`verify` harness-driven** | o harness chama o code-intel (não depende do modelo escolher) antes do PR | `app/verify.py` → trilha D |
+| **Auto-format pré-commit (harness)** | o motor esquece de formatar e o pre-commit hook (`prettier --check`) barra o commit; o harness roda `prettier --write` nos arquivos alterados antes de commitar (determinismo, não depende do modelo). Best-effort: repo sem prettier → no-op | `app/autoformat.py` |
 | **Registro de ferramentas** | `docs/TOOLS.md` pra o fleet não reinventar | `docs/TOOLS.md` |
 
 ## 3. Medir — não por fé (duas camadas)
