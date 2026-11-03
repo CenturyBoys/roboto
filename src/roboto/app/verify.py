@@ -131,6 +131,30 @@ class _McpClient:
         except ValueError:
             return {}
 
+    def list_tools(self, timeout: float) -> list[tuple[str, str]]:
+        """Catálogo de tools do server (padrão MCP `tools/list`): (nome, descrição curta)."""
+        self._id += 1
+        self._send({"jsonrpc": "2.0", "id": self._id, "method": "tools/list", "params": {}})
+        msg = self._read(self._id, timeout) or {}
+        tools = msg.get("result", {}).get("tools", [])
+        out: list[tuple[str, str]] = []
+        for t in tools:
+            if isinstance(t, dict) and t.get("name"):
+                desc = str(t.get("description", "")).strip().splitlines()[0:1]
+                out.append((str(t["name"]), desc[0] if desc else ""))
+        return out
+
+    def call_text(self, name: str, arguments: dict[str, Any], timeout: float) -> str:
+        """`tools/call` genérico que devolve o texto concatenado do resultado (vazio se falhar)."""
+        self._id += 1
+        self._send({
+            "jsonrpc": "2.0", "id": self._id, "method": "tools/call",
+            "params": {"name": name, "arguments": arguments},
+        })
+        msg = self._read(self._id, timeout) or {}
+        blocos = msg.get("result", {}).get("content", [])
+        return " ".join(b.get("text", "") for b in blocos if isinstance(b, dict)).strip()
+
     def close(self) -> None:
         try:
             if self._p.stdin:

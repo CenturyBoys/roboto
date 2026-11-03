@@ -22,6 +22,7 @@ from roboto.agents.review import (
     montar_review,
     revisar_pr,
 )
+from roboto.app.code_intel_brief import code_intel_brief
 from roboto.app.comment_poll import BOT_MARKER
 from roboto.app.correction import CycleResult, correction_cycle
 from roboto.app.deps import blocked_by
@@ -233,6 +234,14 @@ async def run_pr_cycle(
     # os checks como um dev, sem flailar em "como rodar teste" / sem gambiarra de .cjs.
     profile = build_repo_profile(workdir)
     profile_block = f"\n{profile}\n" if profile else ""
+    # code-intel brief (F): injeta o catálogo de tools semânticas (puxado do PRÓPRIO MCP server) +
+    # mapa do repo, pra o motor navegar/editar com code-intel em vez de grep/sed/Read (medido: ele
+    # subusa). Best-effort e gated pelo mesmo flag do MCP do motor; server mudo → "".
+    ci_block = ""
+    if os.environ.get("ROBOTO_CODE_INTEL", "1") not in ("0", "false", "no"):
+        ci_cmd = os.environ.get("ROBOTO_CODE_INTEL_CMD", "code-intel-mcp")
+        brief = await asyncio.to_thread(code_intel_brief, workdir, cmd=ci_cmd)
+        ci_block = f"\n{brief}\n" if brief else ""
     # convenções do repo-alvo (E, determinismo primeiro): o harness LÊ o AGENTS.md e injeta — não
     # manda o motor "ler sozinho" (gasta token F e pode ignorar). Capado pelo orçamento de token.
     conventions = read_agents_conventions(workdir)
@@ -264,7 +273,7 @@ async def run_pr_cycle(
             )
     base_prompt = (
         f"Implemente a issue {run.issue_id} no repo {run.repo} (cwd {workdir}).{contexto}"
-        f"{profile_block}{conventions_block}{memory_block}{aprendizado_block}\n"
+        f"{profile_block}{ci_block}{conventions_block}{memory_block}{aprendizado_block}\n"
         "ESCOPO MÍNIMO: entregue APENAS o que os Critérios de aceite da issue pedem — nada além. "
         "NÃO crie documentos/arquivos extras (ex.: breakdown ou 'update' de épico), NÃO edite o "
         "épico nem outras issues, NÃO toque em código não relacionado, NÃO commite lockfile/deps "
