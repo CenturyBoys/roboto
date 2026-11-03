@@ -233,6 +233,33 @@ async def test_cycle_blocks_push_on_secret_leak() -> None:
     assert github.opened == 0  # não abriu PR
 
 
+async def test_cycle_autofixes_secret_then_pushes() -> None:
+    # H (auto-correção): diff vaza segredo -> motor corrige (diff limpa) e o push SEGUE.
+    store = InMemoryStore()
+    run = await _run(store)
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+
+    class _LeakyThenClean(_FakeGit):
+        async def diff(self, base: str) -> str:
+            # vaza até o motor "corrigir" (após o 2º commit = o de correção) -> então limpa
+            if len(self.commits) < 2:
+                return 'diff --git a/c.py b/c.py\n+TOKEN = "ghp_' + "a" * 36 + '"\n'
+            return "diff --git a/x.py b/x.py\n+edit"
+
+    git, github = _LeakyThenClean(), _FakeGithub()
+    result = await run_pr_cycle(
+        engine=engine, gateway=_SeqGateway(["", ""]),  # type: ignore[arg-type]
+        github=github, git=git, run=run, workdir="/work/acme/app",
+        reviewer="review", store=store, now=_T0,
+    )
+    assert git.pushes  # empurrou: o segredo foi removido pela auto-correção
+    assert github.opened == 1  # PR aberto normalmente
+    assert len(engine.started) >= 2  # rodou o turno de correção (impl + fix)
+    assert result.approved
+    events = await store.session_events(run.id, 0, 50)
+    assert any("secret-scan" in e.text for e in events)  # registrou o bloqueio/retry no feed
+
+
 async def test_process_pr_run_tick_fails_and_warns_on_secret_leak() -> None:
     from roboto.orchestrator.model import RunState
 

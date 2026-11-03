@@ -95,22 +95,35 @@ class GithubPrOps(Protocol):
 
 async def _guard_secrets(
     git: GitOps, base: str, *, store: Store | None, run: Run, now: datetime | None
-) -> None:
-    """Gate de segredo (H): varre o diff LOCAL antes do push; se achar credencial, registra no feed
-    e ABORTA (SecretLeakError) — o segredo nem sai da máquina; o ciclo marca FAILED e avisa."""
+) -> str | None:
+    """Gate de segredo (H): varre o diff LOCAL antes do push. Se achar credencial, registra no feed
+    e DEVOLVE o resumo (o chamador decide: auto-corrigir ou abortar). O segredo nunca é enviado —
+    o push só acontece depois que a varredura volta limpa. Sem vazamento → ``None``."""
     leaks = scan_diff(await git.diff(base))
     if not leaks:
-        return
+        return None
     resumo = "; ".join(f"{leak.pattern} [{leak.redacted}]" for leak in leaks)
     if store is not None and now is not None:
         await store.append_session_event(
             run.tenant, run.id, "message", now,
-            text=(
-                f"🔒 secret-scan BLOQUEOU o push: possível segredo no diff — {resumo}. "
-                "Nada foi enviado; remova o segredo do código e rode de novo."
-            ),
+            text=f"🔒 secret-scan bloqueou o push: possível segredo no diff — {resumo}.",
         )
-    raise SecretLeakError(resumo)
+    return resumo
+
+
+# tentativas de AUTO-CORREÇÃO de segredo (H): o motor recebe o bloqueio e troca o literal por
+# placeholder/env; re-escaneia. Esgotou → aborta (SecretLeakError = último recurso).
+_SECRET_FIX_ATTEMPTS = 2
+
+
+def _secret_fix_prompt(resumo: str) -> str:
+    return (
+        "O secret-scan BLOQUEOU o push: o diff contém algo com cara de segredo/credencial — "
+        f"{resumo}. NÃO é permitido versionar segredo, nem de exemplo. Corrija AGORA: substitua o "
+        "literal por um PLACEHOLDER claramente falso (ex.: 'xxx.yyy.zzz', 'REDACTED') ou leia de "
+        "variável de ambiente/fixture. Mantenha o resto da implementação. Em teste de "
+        "redação, um token FAKE serve igual. Edite os arquivos e pare (não faça commit nem push)."
+    )
 
 
 async def run_pr_cycle(
@@ -259,13 +272,8 @@ async def run_pr_cycle(
     state: dict[str, int] = {}  # guarda o número do PR entre tentativas
     coder: dict[str, str] = {}  # id NATIVO da sessão do coder, p/ RESUMIR na correção (= contexto)
 
-    async def implement(feedback: list[str]) -> PullRequest:
-        prompt = base_prompt
-        if feedback:
-            prompt += "\nCorrija os pontos do review:\n- " + "\n- ".join(feedback)
-        # correção RESUMINDO a sessão do coder: o corretor herda o contexto de quem implementou
-        # (não parte do zero sobre a árvore). 1ª tentativa é sessão nova; as correções resumem.
-        resume = coder.get("native") if feedback else None
+    async def _engine_turn(prompt: str, resume: str | None) -> None:
+        # um turno do motor: edita o repo, alimenta o feed ao vivo (Fatia 2) e mede o token (D10/L).
         spec = RunSpec(
             tenant=run.tenant, repo=run.repo, workdir=workdir, prompt=prompt,
             model=modelo_do_motor, resume_session_id=resume,
@@ -278,7 +286,7 @@ async def run_pr_cycle(
             coder["native"] = native  # fixa p/ a próxima correção resumir o MESMO contexto
         tin = tout = 0
         async for event in guarded_events(engine.events()):  # deixa o motor editar o repo
-            if store is not None and now is not None:  # feed ao vivo do cockpit (trilha O, Fatia 2)
+            if store is not None and now is not None:
                 if event.kind is EngineEventKind.MESSAGE and event.text:
                     await store.append_session_event(
                         run.tenant, run.id, "message", now, text=event.text
@@ -290,25 +298,39 @@ async def run_pr_cycle(
             if event.kind is EngineEventKind.FINISHED:
                 tin, tout = event.tokens_in, event.tokens_out
         if store is not None and now is not None:
-            # sessão do motor (D23): registra a sessão + o id NATIVO do Claude Code (p/ resume)
             session = await store.create_session(run.tenant, run.id, engine.engine, now)
             if native:
                 await store.set_native_session(session.id, native, now)
-            # medição de token (D10/L): uso real do motor
             await store.record_llm_call(
-                tenant=run.tenant,
-                run_id=run.id,
-                provider="openrouter",
-                model="qwen/qwen3-coder",
-                tier="frontier",
-                tokens_in=tin,
-                tokens_out=tout,
-                cost_usd=(tin + tout) / 1_000_000 * _COST_PER_MTOK,
-                now=now,
+                tenant=run.tenant, run_id=run.id, provider="openrouter",
+                model="qwen/qwen3-coder", tier="frontier", tokens_in=tin, tokens_out=tout,
+                cost_usd=(tin + tout) / 1_000_000 * _COST_PER_MTOK, now=now,
             )
+
+    async def implement(feedback: list[str]) -> PullRequest:
+        prompt = base_prompt
+        if feedback:
+            prompt += "\nCorrija os pontos do review:\n- " + "\n- ".join(feedback)
+        # correção RESUMINDO a sessão do coder: 1ª tentativa é sessão nova; correções resumem.
+        await _engine_turn(prompt, coder.get("native") if feedback else None)
         await git.prepare_branch(branch)
         await git.commit_all(title if not feedback else f"{title} (correção)")
-        await _guard_secrets(git, base, store=store, run=run, now=now)  # H: bloqueia antes do push
+        # H: secret-scan com AUTO-CORREÇÃO — bloqueia o push e devolve ao motor p/ trocar o literal
+        # por placeholder/env, re-escaneando. Esgotou → aborta (o push nunca sai com segredo).
+        leak = await _guard_secrets(git, base, store=store, run=run, now=now)
+        fixes = 0
+        while leak and fixes < _SECRET_FIX_ATTEMPTS:
+            fixes += 1
+            if store is not None and now is not None:
+                await store.append_session_event(
+                    run.tenant, run.id, "message", now,
+                    text=f"↻ secret-scan: motor vai remover o literal (tentativa {fixes}).",
+                )
+            await _engine_turn(_secret_fix_prompt(leak), coder.get("native"))
+            await git.commit_all("remove literal com cara de segredo (secret-scan)")
+            leak = await _guard_secrets(git, base, store=store, run=run, now=now)
+        if leak:
+            raise SecretLeakError(leak)  # persistiu após auto-correção → terminal (último recurso)
         # #144: diff vazio = motor não editou nada → FALHA explícita (não revisa "o nada").
         if not (await git.diff(base)).strip():
             raise RuntimeError("motor não editou nada (diff vazio vs base) — nada a revisar")
@@ -590,7 +612,9 @@ async def process_correct_tick(
         )
 
         await git.commit_all(f"fix(review): corrige apontamentos do review (PR #{pr_number})")
-        await _guard_secrets(git, base, store=store, run=run, now=moment)  # H: gate antes do push
+        leak = await _guard_secrets(git, base, store=store, run=run, now=moment)  # H: antes do push
+        if leak:
+            raise SecretLeakError(leak)  # correção vazou segredo → bloqueia (push nunca sai sujo)
         await git.push(branch)  # force-push atualiza o MESMO PR
 
         again = await _review_now()

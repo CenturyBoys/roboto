@@ -37,12 +37,22 @@ O output é proposta → o agente recebe **só as ferramentas que a task exige**
 
 Gate determinístico de segurança: antes de **empurrar** um PR, o harness varre as linhas
 **adicionadas** do diff atrás de credenciais. Achou → **bloqueia o push** (o segredo nem sai da
-máquina), o run vai a `FAILED` e o motivo (redigido) aparece no feed pro humano.
+máquina) e o motivo (redigido) aparece no feed pro humano.
 
 | Peça | O que faz | Onde |
 |---|---|---|
 | scanner | formatos conhecidos (chave privada, AWS, GitHub, Slack, Google, Stripe, sk-*) nas linhas `+` | `app/secret_scan.scan_diff` |
-| gate | varre o diff local nos **dois** pontos de push (impl e correção) e aborta se achar | `app/pr_cycle._guard_secrets` |
+| gate | varre o diff local nos **dois** pontos de push (impl e correção) e bloqueia se achar | `app/pr_cycle._guard_secrets` |
+
+### Auto-correção (guarda robusta, não rígida)
+
+Bloquear está certo; terminar seco não. No ciclo de **implementação**, em vez de ir direto a
+`FAILED`, o bloqueio é **devolvido ao motor**: ele recebe o resumo (redigido) e é instruído a trocar
+o literal por um **placeholder/env** (um teste de redação de PII não precisa de token real) e
+re-escaneia — até `ROBOTO_…`/`_SECRET_FIX_ATTEMPTS` tentativas. Só vira `FAILED` se **persistir**
+após a auto-correção (último recurso). O push **nunca** sai antes de a varredura voltar limpa. (A
+correção de PR — `process_correct_tick` — mantém o bloqueio terminal; o override humano no cockpit
+cobre o caso de falso-positivo legítimo.)
 
 - **Duas camadas:** (1) **formatos canônicos** de credencial (baixíssimo falso-positivo); (2)
   **heurística keyed + entropia** — identificador com cara de segredo (`DB_PASSWORD`, `api_key`…)
