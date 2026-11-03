@@ -1,0 +1,2019 @@
+
+<!doctype html>
+<html lang="pt" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Fleet de agentes cobrindo o ciclo de vida de software no GitHub">
+      
+      
+      
+      
+        <link rel="prev" href="../design/orquestrador/">
+      
+      
+        <link rel="next" href="../status-implementacao/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>Responsabilidades - Potter ⚡ — Continuous Development</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/potter.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="yellow">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#responsabilidades-o-que-esta-montado" class="md-skip">
+          Pular para conteúdo
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Cabeçalho">
+    <a href=".." title="Potter ⚡ — Continuous Development" class="md-header__button md-logo" aria-label="Potter ⚡ — Continuous Development" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Potter ⚡ — Continuous Development
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Responsabilidades
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="yellow"  aria-label="tema claro"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="tema claro" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="yellow"  aria-label="tema escuro"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="tema escuro" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Buscar" placeholder="Buscar" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Pesquisar">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Limpar" aria-label="Limpar" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Inicializando busca
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navegação" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Potter ⚡ — Continuous Development" class="md-nav__button md-logo" aria-label="Potter ⚡ — Continuous Development" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Potter ⚡ — Continuous Development
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Início
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../status/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Estado do projeto
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutoriais
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tutoriais
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-operador/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operador (como usar)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-dev/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dev / arquitetura
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../convencao-diagramas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Convenção de diagramas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Arquitetura
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Arquitetura
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arquitetura/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Visão geral
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design/orquestrador/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Orquestrador
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Responsabilidades
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Responsabilidades
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Índice">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Índice
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#principio-este-repo-e-ia-first" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Princípio: este repo é IA-first
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#camadas-dependencias-so-apontam-pra-baixo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Camadas (dependências só apontam "pra baixo")
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#nucleo-orchestrator-deterministico-sem-rede" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Núcleo (orchestrator/) — determinístico, sem rede
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#agents-agents-unico-lugar-com-llm-de-julgamento" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Agents (agents/) — único lugar com LLM de julgamento
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#app-app-fluxos-orquestra-tudo-deterministico" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        App (app/) — fluxos (orquestra tudo, determinístico)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adapters-io-externo-atras-de-porta" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adapters — IO externo atrás de porta
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#web-runtime" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Web + runtime
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fronteira-de-determinismo-codigo-llm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fronteira de determinismo (código × LLM)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fluxos-quem-chama-quem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fluxos (quem chama quem)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#gapsduvidas-conhecidas-candidatos-a-sua-critica" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gaps/dúvidas conhecidas (candidatos à sua crítica)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../status-implementacao/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Status da implementação
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Trilhas (como funciona)
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Trilhas (como funciona)
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../trilha-0-papeis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    0 — Papéis → agentes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../trilha-a-contratos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    A — Contratos de trabalho
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../trilha-b-orquestracao/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    B — Orquestração e gatilhos
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../trilha-c-skills/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    C — Skills do fleet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../trilha-d-review/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    D — Review de PR
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../trilha-e-padroes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    E — Padrões de código
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../trilha-f-token/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    F — Economia de token
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../trilha-g-memoria/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    G — Memória e second brain
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../trilha-h-qualidade/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    H — Qualidade e segurança
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../trilha-i-roteamento/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    I — Roteamento de modelos
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../trilha-j-escala/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    J — Escala e backpressure
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../trilha-k-runtime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    K — Runtime containerizado
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../trilha-l-custo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    L — Modelo de custo
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../trilha-m-observabilidade/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    M — Observabilidade e Telegram
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fluxos
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Fluxos
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fluxos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Visão geral
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fluxos/01-refinamento/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Refinamento
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fluxos/02-implementacao/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Implementação
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fluxos/03-code-review/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code review
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fluxos/04-breakdown-epico/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Breakdown de épico
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operação
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Operação
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../triggers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Gatilhos
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../telegram-guia/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Telegram
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../TOOLS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ferramentas (code-intel)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Índice">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Índice
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#principio-este-repo-e-ia-first" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Princípio: este repo é IA-first
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#camadas-dependencias-so-apontam-pra-baixo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Camadas (dependências só apontam "pra baixo")
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#nucleo-orchestrator-deterministico-sem-rede" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Núcleo (orchestrator/) — determinístico, sem rede
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#agents-agents-unico-lugar-com-llm-de-julgamento" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Agents (agents/) — único lugar com LLM de julgamento
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#app-app-fluxos-orquestra-tudo-deterministico" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        App (app/) — fluxos (orquestra tudo, determinístico)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adapters-io-externo-atras-de-porta" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adapters — IO externo atrás de porta
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#web-runtime" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Web + runtime
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fronteira-de-determinismo-codigo-llm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fronteira de determinismo (código × LLM)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fluxos-quem-chama-quem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fluxos (quem chama quem)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#gapsduvidas-conhecidas-candidatos-a-sua-critica" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gaps/dúvidas conhecidas (candidatos à sua crítica)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="responsabilidades-o-que-esta-montado">Responsabilidades — o que está MONTADO ⚡<a class="headerlink" href="#responsabilidades-o-que-esta-montado" title="Permanent link">&para;</a></h1>
+<p>Mapa das peças reais do <code>src/roboto</code> com <strong>responsabilidade única</strong> e <strong>fronteiras</strong> ("não faz").
+Feito pra ser <strong>criticado</strong>: se uma peça faz coisa demais, ou a fronteira está borrada, é aqui que aparece.
+Complementa o esquemático em <a href="../arquitetura/"><code>arquitetura.md</code></a>.</p>
+<h2 id="principio-este-repo-e-ia-first">Princípio: este repo é <strong>IA-first</strong><a class="headerlink" href="#principio-este-repo-e-ia-first" title="Permanent link">&para;</a></h2>
+<p>O desenvolvedor principal deste repo é um <strong>agente</strong> — humanos definem, revisam e aprovam.
+Isso molda o desenho (e este doc):</p>
+<ul>
+<li><strong><code>AGENTS.md</code> é o contrato</strong> (as regras do repo vivem lá); os docs são escritos pra serem
+  <strong>consumidos por agente</strong>: navegáveis, <strong>responsabilidade única</strong> por módulo, fronteiras
+  explícitas ("não faz"). Este mapa é o que um agente lê pra saber <strong>onde mexer</strong> sem reler o repo
+  inteiro (economia de token, trilha F).</li>
+<li>O processo força <strong>issue-first + review + gate humano</strong>: o agente não coda sem issue completa
+  (DoR) nem mergeia sozinho (D28/D7). O humano é o aprovador, não o digitador.</li>
+<li><strong>Determinismo onde dá</strong> (roteamento, idempotência, gate, recall), <strong>LLM só no julgamento</strong>
+  (montar issue, revisar, codar) — pra o agente ser barato, auditável e recuperável.</li>
+<li>Ports/adapters em tudo: o agente troca uma peça (motor, canal, modelo) sem tocar no núcleo.</li>
+</ul>
+<h2 id="camadas-dependencias-so-apontam-pra-baixo">Camadas (dependências só apontam "pra baixo")<a class="headerlink" href="#camadas-dependencias-so-apontam-pra-baixo" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>runtime/web            → daemon (ASGI + laços) e console
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>   │
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>app/ (fluxos)          → orquestra núcleo + adapters + agents (DETERMINÍSTICO)
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>   │
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>agents/ (LLM)          → refiner, review  (julgamento/geração)
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>   │
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>orchestrator/ (núcleo) → tipos + Store + outbox  (SEM IO de rede; puro)
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>   ▲
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>adapters/              → channels, llm, github, engines  (IO externo atrás de PORTA)
+</code></pre></div>
+<p>Regra: <strong>núcleo não conhece adapter</strong>; app fala com adapter só pela <strong>porta</strong> (Protocol).</p>
+<h2 id="nucleo-orchestrator-deterministico-sem-rede">Núcleo (<code>orchestrator/</code>) — determinístico, sem rede<a class="headerlink" href="#nucleo-orchestrator-deterministico-sem-rede" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Módulo</th>
+<th>Responsabilidade</th>
+<th>NÃO faz</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>model.py</code></td>
+<td>tipos do domínio (Run, GithubEvent, OutboxItem, Session, Interaction, LlmCall, MemoryFact, RunState)</td>
+<td>nenhum IO, nenhuma regra de negócio</td>
+</tr>
+<tr>
+<td><code>store.py</code></td>
+<td><strong>porta</strong> <code>Store</code> + <code>InMemoryStore</code>: runs, outbox, sessões, interações, llm_call, memória, cursor; idempotência, claim c/ lease, máquina de estados</td>
+<td>não fala com rede/LLM</td>
+</tr>
+<tr>
+<td><code>pg_store.py</code></td>
+<td>adapter Postgres do <code>Store</code> (asyncpg; <code>FOR UPDATE SKIP LOCKED</code>; FTS da memória)</td>
+<td>não tem lógica de fluxo</td>
+</tr>
+<tr>
+<td><code>core.py</code></td>
+<td>lógica pura do núcleo (ex.: <code>publish_outbox</code>, varredura/lease)</td>
+<td>não decide intenção</td>
+</tr>
+<tr>
+<td><code>runner.py</code></td>
+<td><code>RouterPublisher</code> — roteia um efeito do outbox por <code>kind</code> → publisher</td>
+<td>não sabe o que é cada efeito</td>
+</tr>
+<tr>
+<td><code>result.py</code></td>
+<td><code>Result/Ok/Err</code> (sem exceção p/ controle de fluxo)</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<h2 id="agents-agents-unico-lugar-com-llm-de-julgamento">Agents (<code>agents/</code>) — <strong>único lugar com LLM de julgamento</strong><a class="headerlink" href="#agents-agents-unico-lugar-com-llm-de-julgamento" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Módulo</th>
+<th>Responsabilidade</th>
+<th>NÃO faz</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>refiner.py</code></td>
+<td>pedido → rascunho de issue (<code>refine</code>, <code>converse</code> entrevistador); parsing determinístico do output</td>
+<td>não persiste, não cria issue, não fala com GitHub</td>
+</tr>
+<tr>
+<td><code>review.py</code></td>
+<td>gate <strong>estrutural</strong> (DoR, sem LLM) + <strong>juiz semântico</strong> + <strong>review de PR</strong> (reviewer≠autor)</td>
+<td>não mergeia, não edita</td>
+</tr>
+</tbody>
+</table>
+<h2 id="app-app-fluxos-orquestra-tudo-deterministico">App (<code>app/</code>) — fluxos (orquestra tudo, determinístico)<a class="headerlink" href="#app-app-fluxos-orquestra-tudo-deterministico" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Módulo</th>
+<th>Responsabilidade</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>compose.py</code></td>
+<td>monta os adapters (gateway, channel, github, router) a partir do <code>Config</code></td>
+</tr>
+<tr>
+<td><code>commands.py</code></td>
+<td><code>parse_command</code>: intenção <strong>determinística</strong> (help/remember/pick/discuss/list/ideia) — sem LLM</td>
+</tr>
+<tr>
+<td><code>inbound.py</code></td>
+<td><code>dispatch_inbound</code>: roteia a msg → ação; reply-routing por message_id; aprovação (ok→cria/edita)</td>
+</tr>
+<tr>
+<td><code>refine.py</code></td>
+<td>refino conversacional (semente→entrevista→proposta), <code>discuss_issue</code>, <code>start_scope</code>, <code>propose_issue</code></td>
+</tr>
+<tr>
+<td><code>scope.py</code></td>
+<td>motor lê o repo → rascunho fundamentado (<code>run_scope</code> + <code>process_scope_tick</code>)</td>
+</tr>
+<tr>
+<td><code>pr_cycle.py</code></td>
+<td>ciclo issue→motor→git→PR→review→correção (<code>process_pr_run_tick</code>); gate de DoR antes de codar</td>
+</tr>
+<tr>
+<td><code>correction.py</code></td>
+<td>laço implement→review→(repete até max_attempts)</td>
+</tr>
+<tr>
+<td><code>human.py</code></td>
+<td><code>request_human_input</code> + <code>handle_reply</code> (interação humana, D24)</td>
+</tr>
+<tr>
+<td><code>loops.py</code></td>
+<td><code>run_periodic</code>; <code>poll_tick</code> (Telegram: poll→dispatch→responde; cursor)</td>
+</tr>
+<tr>
+<td><code>effects.py</code></td>
+<td>publishers concretos: <code>create_issue</code>, <code>update_issue</code>, <code>telegram_notify</code>, <code>telegram_question</code></td>
+</tr>
+<tr>
+<td><code>metering.py</code></td>
+<td><code>MeteredGateway</code> — grava cada chamada de LLM no <code>llm_call</code></td>
+</tr>
+<tr>
+<td><code>git_ops.py</code></td>
+<td><code>SubprocessGit</code> (branch/commit/push)</td>
+</tr>
+<tr>
+<td><code>engine_loop.py</code></td>
+<td><code>drive_turn</code> (laço do motor p/ o stub; cria session/interaction)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="adapters-io-externo-atras-de-porta">Adapters — IO externo atrás de porta<a class="headerlink" href="#adapters-io-externo-atras-de-porta" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Pasta</th>
+<th>Porta</th>
+<th>Adapter(s)</th>
+<th>Responsabilidade</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>channels/</code></td>
+<td><code>Channel</code></td>
+<td><code>TelegramChannel</code></td>
+<td>receber/enviar msg; cursor persistido</td>
+</tr>
+<tr>
+<td><code>llm/</code></td>
+<td><code>ModelGateway</code>, <code>Transcriber</code></td>
+<td><code>OpenRouterGateway</code>, Whisper, stubs</td>
+<td>chamar modelo / STT (tier→modelo)</td>
+</tr>
+<tr>
+<td><code>github/</code></td>
+<td>—</td>
+<td><code>GithubAppClient</code>, <code>webhook</code></td>
+<td>issues/PR/comment; verify assinatura + opt-in (label/assignee)</td>
+</tr>
+<tr>
+<td><code>engines/</code></td>
+<td><code>CodingEngine</code></td>
+<td><code>ClaudeCodeEngine</code>, <code>StubEngine</code></td>
+<td>motor de código (start/events/respond); matriz de capacidades</td>
+</tr>
+</tbody>
+</table>
+<h2 id="web-runtime">Web + runtime<a class="headerlink" href="#web-runtime" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Módulo</th>
+<th>Responsabilidade</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>web/app.py</code></td>
+<td><code>build_app</code>: console + <code>/webhook</code></td>
+</tr>
+<tr>
+<td><code>web/console.py</code></td>
+<td>rotas JSON (execuções/detalhe/interações/custos/cancel/retry/terminal) + favicon</td>
+</tr>
+<tr>
+<td><code>web/viewer.py</code></td>
+<td>página HTML (marca Potter) que consome os endpoints</td>
+</tr>
+<tr>
+<td><code>runtime.py</code> / <code>__main__.py</code></td>
+<td>daemon: ASGI + laços (poll, outbox, sweep, pr_cycle, scope)</td>
+</tr>
+<tr>
+<td><code>config.py</code></td>
+<td><code>Config</code> + <code>load_config(env)</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="fronteira-de-determinismo-codigo-llm">Fronteira de determinismo (código × LLM)<a class="headerlink" href="#fronteira-de-determinismo-codigo-llm" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Código (determinístico):</strong> roteamento de intenção, idempotência, claim/lease, outbox, gate
+  estrutural de DoR, reply-routing, recall da memória (FTS), máquina de estados.</li>
+<li><strong>LLM (julgamento/geração):</strong> refiner (montar issue), juiz semântico, review de PR, motor (codar).</li>
+<li>Output de LLM é <strong>proposta</strong> → parsing determinístico + gate antes de virar efeito (H).</li>
+</ul>
+<h2 id="fluxos-quem-chama-quem">Fluxos (quem chama quem)<a class="headerlink" href="#fluxos-quem-chama-quem" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Inbound Telegram:</strong> <code>poll_tick → dispatch_inbound → (command | reply | ideia)</code> → efeitos no outbox.</li>
+<li><strong>Scope (issue inteligente):</strong> ideia → run <code>scope</code> → <code>process_scope_tick → run_scope (motor lê repo +
+  recall memória) → propose_issue</code> → aprovação → <code>create_issue</code>.</li>
+<li><strong>Implementar:</strong> <code>pega #N</code> → run <code>impl</code> → <code>process_pr_run_tick → run_pr_cycle</code> (motor→git→PR→review→
+  correção) → <code>verifying</code>; <strong>merge = humano</strong> (D7).</li>
+<li><strong>Outbox:</strong> gravar efeito → commit → <code>publish_outbox</code> efetua (gravar→commit→efetuar, D9).</li>
+</ul>
+<h2 id="gapsduvidas-conhecidas-candidatos-a-sua-critica">Gaps/dúvidas conhecidas (candidatos à sua crítica)<a class="headerlink" href="#gapsduvidas-conhecidas-candidatos-a-sua-critica" title="Permanent link">&para;</a></h2>
+<ol>
+<li><code>pr_cycle</code> e <code>scope</code> <strong>duplicam</strong> a lógica de rodar o motor (start/events/session/llm_call) — dá pra extrair.</li>
+<li><code>engine_loop.drive_turn</code> (stub) e o caminho real (<code>pr_cycle</code>) seguem modelos diferentes de sessão.</li>
+<li>Refino/discussão ainda usam <strong>tier barato</strong> (refiner) — o scope usa o motor forte, mas o chat não.</li>
+<li>Second brain só <strong>lê</strong> (recall); <strong>não escreve</strong> fatos automaticamente (só via <code>lembra:</code>).</li>
+<li><code>terminal</code> (ttyd) é um shell do container, não a sessão do motor (motor roda via SDK headless).</li>
+<li>Multi-empresa (D27): hoje 1 processo = 1 tenant; o control-plane (N containers) não está montado.</li>
+</ol>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Voltar para o topo
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "navigation.tracking", "toc.follow", "search.suggest", "content.code.copy"], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copiado para \u00e1rea de transfer\u00eancia", "clipboard.copy": "Copiar para \u00e1rea de transfer\u00eancia", "search.result.more.one": "mais 1 nesta p\u00e1gina", "search.result.more.other": "# mais nesta p\u00e1gina", "search.result.none": "Nenhum documento encontrado", "search.result.one": "1 documento encontrado", "search.result.other": "# documentos encontrados", "search.result.placeholder": "Digite para iniciar a busca", "search.result.term.missing": "Ausente", "select.version": "Selecione a vers\u00e3o"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.c21346df.min.js"></script>
+      
+    
+  </body>
+</html>

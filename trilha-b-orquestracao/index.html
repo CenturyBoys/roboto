@@ -1,0 +1,1913 @@
+
+<!doctype html>
+<html lang="pt" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Fleet de agentes cobrindo o ciclo de vida de software no GitHub">
+      
+      
+      
+      
+        <link rel="prev" href="../trilha-a-contratos/">
+      
+      
+        <link rel="next" href="../trilha-c-skills/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>B — Orquestração e gatilhos - Potter ⚡ — Continuous Development</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/potter.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="yellow">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#trilha-b-orquestracao-e-gatilhos-como-funciona" class="md-skip">
+          Pular para conteúdo
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Cabeçalho">
+    <a href=".." title="Potter ⚡ — Continuous Development" class="md-header__button md-logo" aria-label="Potter ⚡ — Continuous Development" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Potter ⚡ — Continuous Development
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              B — Orquestração e gatilhos
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="yellow"  aria-label="tema claro"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="tema claro" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="yellow"  aria-label="tema escuro"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="tema escuro" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Buscar" placeholder="Buscar" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Pesquisar">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Limpar" aria-label="Limpar" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Inicializando busca
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navegação" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Potter ⚡ — Continuous Development" class="md-nav__button md-logo" aria-label="Potter ⚡ — Continuous Development" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Potter ⚡ — Continuous Development
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Início
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../status/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Estado do projeto
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutoriais
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tutoriais
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-operador/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operador (como usar)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-dev/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dev / arquitetura
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../convencao-diagramas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Convenção de diagramas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Arquitetura
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Arquitetura
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arquitetura/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Visão geral
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design/orquestrador/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Orquestrador
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../responsabilidades/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Responsabilidades
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../status-implementacao/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Status da implementação
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Trilhas (como funciona)
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Trilhas (como funciona)
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../trilha-0-papeis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    0 — Papéis → agentes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../trilha-a-contratos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    A — Contratos de trabalho
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    B — Orquestração e gatilhos
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    B — Orquestração e gatilhos
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Índice">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Índice
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-o-que-a-trilha-entrega" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. O que a trilha entrega
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-nucleo-run-estados-e-idempotencia" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Núcleo: run, estados e idempotência
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-garantias-de-resiliencia-as-4-pecas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Garantias de resiliência (as 4 peças)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-robustez-do-motor-ligada-a-orquestracao" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Robustez do motor (ligada à orquestração)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-gatilhos-hoje-por-polling-sem-webhook" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Gatilhos — hoje por POLLING (sem webhook)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Gatilhos — hoje por POLLING (sem webhook)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-gatilho-por-atividade-de-pr-com-debounce-166" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.1 Gatilho por atividade de PR, com debounce (#166)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52-review-deterministico-gate-confiavel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.2 Review determinístico (gate confiável)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#53-gatilho-por-comentario-potter-check_suite-166" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.3 Gatilho por comentário @potter + check_suite (#166)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-o-que-ainda-falta-na-b-backlog" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. O que ainda falta na B (backlog)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../trilha-c-skills/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    C — Skills do fleet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../trilha-d-review/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    D — Review de PR
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../trilha-e-padroes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    E — Padrões de código
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../trilha-f-token/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    F — Economia de token
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../trilha-g-memoria/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    G — Memória e second brain
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../trilha-h-qualidade/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    H — Qualidade e segurança
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../trilha-i-roteamento/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    I — Roteamento de modelos
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../trilha-j-escala/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    J — Escala e backpressure
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../trilha-k-runtime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    K — Runtime containerizado
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../trilha-l-custo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    L — Modelo de custo
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../trilha-m-observabilidade/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    M — Observabilidade e Telegram
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fluxos
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Fluxos
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fluxos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Visão geral
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fluxos/01-refinamento/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Refinamento
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fluxos/02-implementacao/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Implementação
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fluxos/03-code-review/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code review
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fluxos/04-breakdown-epico/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Breakdown de épico
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operação
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Operação
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../triggers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Gatilhos
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../telegram-guia/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Telegram
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../TOOLS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ferramentas (code-intel)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Índice">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Índice
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-o-que-a-trilha-entrega" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. O que a trilha entrega
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-nucleo-run-estados-e-idempotencia" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Núcleo: run, estados e idempotência
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-garantias-de-resiliencia-as-4-pecas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Garantias de resiliência (as 4 peças)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-robustez-do-motor-ligada-a-orquestracao" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Robustez do motor (ligada à orquestração)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-gatilhos-hoje-por-polling-sem-webhook" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Gatilhos — hoje por POLLING (sem webhook)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Gatilhos — hoje por POLLING (sem webhook)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-gatilho-por-atividade-de-pr-com-debounce-166" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.1 Gatilho por atividade de PR, com debounce (#166)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52-review-deterministico-gate-confiavel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.2 Review determinístico (gate confiável)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#53-gatilho-por-comentario-potter-check_suite-166" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.3 Gatilho por comentário @potter + check_suite (#166)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-o-que-ainda-falta-na-b-backlog" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. O que ainda falta na B (backlog)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="trilha-b-orquestracao-e-gatilhos-como-funciona">Trilha B — Orquestração e gatilhos (como funciona)<a class="headerlink" href="#trilha-b-orquestracao-e-gatilhos-como-funciona" title="Permanent link">&para;</a></h1>
+<blockquote>
+<p>Documento <strong>operacional</strong> (como o sistema funciona hoje). O <em>porquê</em> / a investigação fica em
+<a href="https://github.com/CenturyBoys/roboto/blob/main/research/B-orquestracao-e-gatilhos.md"><code>research/B-orquestracao-e-gatilhos.md</code></a>.
+<strong>Princípio-âncora:</strong> o núcleo é <strong>agnóstico de plataforma</strong>; GitHub é um <strong>adapter</strong>. A lógica de
+orquestração não conhece GitHub — recebe eventos normalizados e emite efeitos via adapters.</p>
+</blockquote>
+<h2 id="1-o-que-a-trilha-entrega">1. O que a trilha entrega<a class="headerlink" href="#1-o-que-a-trilha-entrega" title="Permanent link">&para;</a></h2>
+<p>Uma <strong>máquina de estados durável</strong> que pega trabalho (evento → <code>run</code>), executa com garantias
+(idempotência, lock, retry) e produz efeitos <strong>exactly-once na prática</strong> (outbox). Mais os
+<strong>gatilhos</strong> que alimentam essa máquina — hoje por <strong>polling</strong> (sem webhook, decisão do dono).</p>
+<h2 id="2-nucleo-run-estados-e-idempotencia">2. Núcleo: run, estados e idempotência<a class="headerlink" href="#2-nucleo-run-estados-e-idempotencia" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong><code>run</code></strong> = unidade de trabalho <code>(tenant, repo, issue_id, agent)</code> com <code>RunState</code>
+  (<code>queued → running → waiting/verifying → done/failed/abandoned</code>). Código: <code>orchestrator/model.py</code>,
+  <code>orchestrator/core.py</code>.</li>
+<li><strong>Idempotência</strong>: todo evento traz <code>idempotency_key</code>; <code>insert_run_if_absent</code> deduplica. Entrega
+  é <em>at-least-once</em> — reprocessar é seguro.</li>
+<li><strong>Claim serializado</strong>: <code>claim_next_queued</code> usa <code>FOR UPDATE SKIP LOCKED</code> (sem corrida entre workers).</li>
+</ul>
+<pre class="mermaid"><code>stateDiagram-v2
+  [*] --&gt; queued
+  queued --&gt; running: claim
+  running --&gt; waiting: aprovação
+  waiting --&gt; running: resposta
+  running --&gt; verifying: PR aberto
+  running --&gt; failed: erro
+  verifying --&gt; done: merge
+  failed --&gt; queued: retry
+  failed --&gt; [*]: DLQ
+  done --&gt; [*]</code></pre>
+<p><em>Legenda:</em> <strong>claim</strong> = lock por (tenant, issue) · <strong>erro</strong> inclui o watchdog de inatividade ·
+<strong>retry</strong> = backoff exponencial · <strong>DLQ</strong> = dead-letter ao esgotar as tentativas.</p>
+<h2 id="3-garantias-de-resiliencia-as-4-pecas">3. Garantias de resiliência (as 4 peças)<a class="headerlink" href="#3-garantias-de-resiliencia-as-4-pecas" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Peça</th>
+<th>O que faz</th>
+<th>Onde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Retry + backoff + dead-letter</strong> (#163)</td>
+<td>run/efeito que falha re-tenta com backoff exponencial (<code>next_attempt_at</code>); esgotou → vai pra <code>dead_letter</code> com contexto; <strong>replay</strong> manual pelo cockpit</td>
+<td><code>orchestrator/core.py</code>, <code>pg_store.py</code>, mig. <code>0009</code></td>
+</tr>
+<tr>
+<td><strong>Concurrency-lock por (tenant, issue)</strong> (#165)</td>
+<td>advisory xact lock + <code>NOT EXISTS (running/waiting/verifying na mesma issue)</code> → serializa runs da MESMA entidade</td>
+<td><code>pg_store.claim_next_queued</code></td>
+</tr>
+<tr>
+<td><strong>Outbox resiliente</strong> (#162)</td>
+<td>um efeito "venenoso" não trava o lote inteiro — os demais publicam</td>
+<td><code>orchestrator/core.publish_outbox</code></td>
+</tr>
+<tr>
+<td><strong>Anti-loop</strong> (#164)</td>
+<td>ação do bot não re-dispara o bot (distinguido por <code>(event_type, action)</code>, não filtro cego)</td>
+<td><code>github/webhook.py</code></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>Outbox (exactly-once na prática):</strong> grava → commit → publica com <code>dedup_key</code>. Efeitos
+(<code>create_issue</code>/<code>update_issue</code>/<code>telegram_notify</code>) passam pelo <code>RouterPublisher</code>.</p>
+</blockquote>
+<h2 id="4-robustez-do-motor-ligada-a-orquestracao">4. Robustez do motor (ligada à orquestração)<a class="headerlink" href="#4-robustez-do-motor-ligada-a-orquestracao" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Watchdog de inatividade</strong>: se o motor fica <code>ENGINE_IDLE_TIMEOUT</code>s sem evento (subprocesso morto
+  sem FINISHED/FAILED), vira <strong>FAILED</strong> em vez de pendurar o run em RUNNING até o lease expirar.
+  <code>app/engine_loop.guarded_events</code>.</li>
+<li><strong>Lease + sweeper</strong>: run RUNNING com lease expirado é re-enfileirado (recuperável em restart) —
+  <strong>exceto</strong> sob intervenção humana ativa (sweeper pula, #157).</li>
+<li><strong>Reconciliar VERIFYING (sem webhook):</strong> um run aprovado fica em <code>VERIFYING</code> até o merge humano;
+  como <code>VERIFYING</code> é <strong>ATIVO</strong>, segurava o lock (tenant, issue) e o WIP indefinidamente. Um laço
+  (<code>app/reconcile.reconcile_verifying</code>, a cada 15s) consulta o PR real: <strong>mergeado → <code>DONE</code></strong>,
+  <strong>fechado sem merge → <code>ABANDONED</code></strong>, aberto → mantém. Acha o PR de runs de <strong>impl</strong> (<code>execution_pr</code>)
+  <strong>e</strong> de <strong>correct</strong> (<code>issue_id</code> = nº do PR) — antes o laço só via impl, então todo <code>correct</code>
+  aprovado ficava preso em <code>verifying</code> pra sempre, vazando o lock.</li>
+<li><strong>Fail-fast do ciclo (#144):</strong> <code>open_pr</code> que falha <strong>não</strong> vira PR nº 0 silencioso — propaga e
+  FALHA o run; <strong>diff vazio</strong> (motor não editou nada) também falha explícito — não se revisa "o nada".</li>
+<li><strong>Git não falha em silêncio:</strong> <code>push</code>/<code>checkout -B</code>/<code>checkout_remote</code>/<code>add</code>/<code>commit</code> usam
+  <code>_git_checked</code> (levanta <code>GitError</code> com stdout+stderr) — antes o returncode era ignorado, então um
+  <code>push</code> falho virava um <strong>422 confuso no <code>open_pr</code></strong> e um <strong><code>commit</code> barrado por pre-commit hook</strong>
+  (prettier/lint/testes) ficava <strong>staged-não-commitado</strong> e virava o enganoso <strong>"motor não editou
+  nada"</strong>. Agora o run falha no passo certo com o motivo real (inclusive o output do hook). O
+  <code>commit</code> só tolera <strong>"nada staged"</strong> (<code>diff --cached --quiet</code>), que é o caso legítimo de "nada a
+  commitar". E o <code>open_pr</code> <strong>surfa o corpo do 422</strong> em vez de chutar "PAT sem permissão".</li>
+<li><strong>Self-assign (#150):</strong> ao pegar um run de <code>impl</code>, o fleet se <strong>atribui como assignee</strong> da issue
+  (<code>github.add_assignee</code>, best-effort) — rastreabilidade de quem assumiu a tarefa.</li>
+<li><strong>Retry em erro TRANSITÓRIO (B/H):</strong> erro de provedor temporário (402 sem crédito, 429, 5xx,
+  overloaded — <code>app/transient.is_transient</code>) <strong>re-enfileira com backoff</strong> em vez de FAILED terminal
+  → quando a condição passa (ex.: recarga de crédito), o daemon <strong>retoma sozinho</strong> (teto de tentativas
+  → dead-letter se persistir). Erro permanente (git/PR/bug) segue terminal.</li>
+<li><strong>Aprendizado entre tentativas (B/G):</strong> o retry reusa o <strong>mesmo <code>run.id</code></strong>, então o motivo da
+  falha anterior está no feed daquele run. Em <code>attempt&gt;0</code>, o ciclo lê a última falha (<code>⚠️ execução
+  falhou…</code> / secret-scan) e <strong>injeta no prompt</strong> da nova tentativa (<em>"NÃO repita a causa…"</em>) — o motor
+  nasce fresco (relê o repo, não resume a sessão antiga), mas já começa evitando o erro conhecido, em
+  vez de depender de reencontrá-lo. Determinístico (lê o histórico, não é decisão de LLM).</li>
+<li><strong>Sem PR duplicado:</strong> o prompt de implement proíbe o motor de abrir PR/rodar <code>git push</code>/<code>gh</code> — <strong>o
+  fleet</strong> abre o PR (commit→push→<code>open_pr</code>); senão saíam 2 PRs (um do motor, um do orquestrador).</li>
+</ul>
+<h2 id="5-gatilhos-hoje-por-polling-sem-webhook">5. Gatilhos — hoje por POLLING (sem webhook)<a class="headerlink" href="#5-gatilhos-hoje-por-polling-sem-webhook" title="Permanent link">&para;</a></h2>
+<p>Decisão do dono: <strong>nada de webhook</strong> (evita URL pública e acoplamento); o daemon <strong>pergunta "o que
+mudou?"</strong> periodicamente. Agnóstico: um <em>adapter de plataforma</em> lista o estado; o núcleo decide.</p>
+<h3 id="51-gatilho-por-atividade-de-pr-com-debounce-166">5.1 Gatilho por atividade de PR, com debounce (#166)<a class="headerlink" href="#51-gatilho-por-atividade-de-pr-com-debounce-166" title="Permanent link">&para;</a></h3>
+<p><code>app/pr_poll.py</code> — a cada ~60s, para cada PR aberto:
+0. <strong>pula PRs de bot</strong> (<code>is_bot_author</code>: <code>*[bot]</code>, renovate, dependabot) — o fleet não revisa/corrige
+   PR de bot de dependência (gastava token à toa; pego na validação ponta-a-ponta);
+1. pega <code>(número, head_sha, autor)</code> via <code>github.list_open_prs</code> (adapter);
+2. <code>decide_pr</code> (lógica <strong>pura</strong>, testável) aplica o <strong>debounce</strong>: se o <code>head_sha</code> mudou, reinicia o
+   relógio; só quando o PR <strong>estabiliza</strong> (≥ <code>ROBOTO_PR_POLL_DEBOUNCE</code>, default <strong>30 min</strong>) e o sha
+   ainda não foi avaliado → <strong>dispara</strong>;
+3. dispara = enfileira um run <strong><code>agent='correct'</code></strong>, que <strong>re-revisa</strong> o PR e, se reprovar, <strong>corrige</strong>
+   (no branch do PR); se aprovar, comenta "nada a ajustar". Humano mergeia (gate).</p>
+<p>Estado por PR (<code>last_seen_sha</code>, <code>last_activity_at</code>, <code>reviewed_sha</code>) vive em <code>pr_review_state</code>
+(mig. <code>0010</code>). Idempotente pelo sha — não re-dispara o mesmo estado.</p>
+<blockquote>
+<p>O passo "corrigir conforme review" é o <code>process_correct_tick</code> (<code>app/pr_cycle.py</code>): checkout da
+branch do PR → review (revisor≠autor) → corrige → force-push → re-review → comenta.</p>
+</blockquote>
+<h3 id="52-review-deterministico-gate-confiavel">5.2 Review determinístico (gate confiável)<a class="headerlink" href="#52-review-deterministico-gate-confiavel" title="Permanent link">&para;</a></h3>
+<p>O juiz roda com <strong><code>temperature=0</code></strong> (<code>llm/openrouter.py</code>, tier JUDGE) + <strong>rubrica de severidade</strong>
+(<code>agents/review.REVIEW_PR_SYSTEM</code>: BLOQUEADOR vs menor; qualquer bloqueador → reprovado). Sem isto o
+mesmo diff dava vereditos diferentes e o gate era não-confiável.</p>
+<h3 id="53-gatilho-por-comentario-potter-check_suite-166">5.3 Gatilho por comentário <code>@potter</code> + check_suite (#166)<a class="headerlink" href="#53-gatilho-por-comentario-potter-check_suite-166" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong><code>@potter &lt;comando&gt;</code></strong> num comentário de issue/PR dispara o run: <code>@potter implementa|refina|revisa</code>
+  → <code>impl</code>/<code>refine</code>/<code>correct</code>. Polling dos comentários (<code>app/comment_poll.py</code>), cursor por repo.</li>
+<li><strong>Anti-loop por MARCADOR</strong> (sem conta de bot): o fleet nunca escreve <code>@potter</code> e assina os próprios
+  comentários com <code>&lt;!-- potter:bot --&gt;</code>; o poller ignora comentário com o marcador.</li>
+<li><strong>check_suite failed:</strong> se o CI do head do PR falhou, o poller <strong>antecipa</strong> o <code>correct</code> (não espera
+  o debounce) — <code>github.checks_failed</code> + <code>decide_pr(ci_failed=True)</code>.</li>
+</ul>
+<pre class="mermaid"><code>flowchart LR
+  subgraph poll["Gatilhos por polling (sem webhook)"]
+    PR[PR mudou] --&gt;|debounce ~30 min| EV[avalia PR]
+    CI[check_suite falhou] --&gt;|antecipa| EV
+    CM["comentário @potter"] --&gt; EV
+  end
+  EV --&gt; COR["run 'correct'"]
+  COR --&gt; V{re-review ≠ autor}
+  V --&gt;|reprova| FIX[corrige + force-push]
+  FIX --&gt; V
+  V --&gt;|aprova| OK[avisa p/ merge humano]</code></pre>
+<h2 id="6-o-que-ainda-falta-na-b-backlog">6. O que ainda falta na B (backlog)<a class="headerlink" href="#6-o-que-ainda-falta-na-b-backlog" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Identidade do bot</strong> via @-mention/comando já cobre o MVP; conta de bot dedicada fica opcional.</li>
+<li><strong>Ambiente alvo:</strong> <strong>daemon na VPS</strong> (a espinha dorsal agnóstica), não GitHub Actions.</li>
+<li>Alimentar os <strong>logs do CI</strong> ao motor na correção de <code>check_suite</code> (hoje dispara o <code>correct</code> genérico).</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Voltar para o topo
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "navigation.tracking", "toc.follow", "search.suggest", "content.code.copy"], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copiado para \u00e1rea de transfer\u00eancia", "clipboard.copy": "Copiar para \u00e1rea de transfer\u00eancia", "search.result.more.one": "mais 1 nesta p\u00e1gina", "search.result.more.other": "# mais nesta p\u00e1gina", "search.result.none": "Nenhum documento encontrado", "search.result.one": "1 documento encontrado", "search.result.other": "# documentos encontrados", "search.result.placeholder": "Digite para iniciar a busca", "search.result.term.missing": "Ausente", "select.version": "Selecione a vers\u00e3o"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.c21346df.min.js"></script>
+      
+    
+  </body>
+</html>

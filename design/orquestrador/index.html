@@ -1,0 +1,1994 @@
+
+<!doctype html>
+<html lang="pt" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Fleet de agentes cobrindo o ciclo de vida de software no GitHub">
+      
+      
+      
+      
+        <link rel="prev" href="../../arquitetura/">
+      
+      
+        <link rel="next" href="../../responsabilidades/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>Orquestrador - Potter ⚡ — Continuous Development</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/potter.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="yellow">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#design-orquestrador-minimo-mvp" class="md-skip">
+          Pular para conteúdo
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Cabeçalho">
+    <a href="../.." title="Potter ⚡ — Continuous Development" class="md-header__button md-logo" aria-label="Potter ⚡ — Continuous Development" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Potter ⚡ — Continuous Development
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Orquestrador
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="yellow"  aria-label="tema claro"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="tema claro" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="yellow"  aria-label="tema escuro"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="tema escuro" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Buscar" placeholder="Buscar" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Pesquisar">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Limpar" aria-label="Limpar" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Inicializando busca
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navegação" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Potter ⚡ — Continuous Development" class="md-nav__button md-logo" aria-label="Potter ⚡ — Continuous Development" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Potter ⚡ — Continuous Development
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Início
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../status/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Estado do projeto
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutoriais
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tutoriais
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorial-operador/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operador (como usar)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorial-dev/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dev / arquitetura
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../convencao-diagramas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Convenção de diagramas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Arquitetura
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Arquitetura
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../arquitetura/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Visão geral
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Orquestrador
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Orquestrador
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Índice">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Índice
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-objetivo-e-escopo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Objetivo e escopo
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-componentes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Componentes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-maquina-de-estados-do-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Máquina de estados do run
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-fluxo-de-dispatch-idempotencia-lock-reconferir" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Fluxo de dispatch (idempotência + lock + reconferir)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-outbox-efeitos-exactly-once" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Outbox (efeitos exactly-once)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-sweeper-run-abandonado" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Sweeper (run abandonado)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-contratos-assinaturas-tudo-result-sem-excecao-p-fluxo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Contratos (assinaturas — tudo Result, sem exceção p/ fluxo)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-tenancy-e-multi-repo-d17" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Tenancy e multi-repo (D17)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-configuracao-env-vault" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Configuração (env / vault)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-invariantes-resumo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Invariantes (resumo)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-o-que-falta-para-fechar-checklist-de-build" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. O que falta para fechar (checklist de build)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../responsabilidades/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Responsabilidades
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../status-implementacao/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Status da implementação
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Trilhas (como funciona)
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Trilhas (como funciona)
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../trilha-0-papeis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    0 — Papéis → agentes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../trilha-a-contratos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    A — Contratos de trabalho
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../trilha-b-orquestracao/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    B — Orquestração e gatilhos
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../trilha-c-skills/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    C — Skills do fleet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../trilha-d-review/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    D — Review de PR
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../trilha-e-padroes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    E — Padrões de código
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../trilha-f-token/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    F — Economia de token
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../trilha-g-memoria/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    G — Memória e second brain
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../trilha-h-qualidade/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    H — Qualidade e segurança
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../trilha-i-roteamento/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    I — Roteamento de modelos
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../trilha-j-escala/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    J — Escala e backpressure
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../trilha-k-runtime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    K — Runtime containerizado
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../trilha-l-custo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    L — Modelo de custo
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../trilha-m-observabilidade/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    M — Observabilidade e Telegram
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fluxos
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Fluxos
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../fluxos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Visão geral
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../fluxos/01-refinamento/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Refinamento
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../fluxos/02-implementacao/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Implementação
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../fluxos/03-code-review/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code review
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../fluxos/04-breakdown-epico/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Breakdown de épico
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operação
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Operação
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../triggers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Gatilhos
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../telegram-guia/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Telegram
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../TOOLS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ferramentas (code-intel)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Índice">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Índice
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-objetivo-e-escopo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Objetivo e escopo
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-componentes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Componentes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-maquina-de-estados-do-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Máquina de estados do run
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-fluxo-de-dispatch-idempotencia-lock-reconferir" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Fluxo de dispatch (idempotência + lock + reconferir)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-outbox-efeitos-exactly-once" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Outbox (efeitos exactly-once)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-sweeper-run-abandonado" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Sweeper (run abandonado)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-contratos-assinaturas-tudo-result-sem-excecao-p-fluxo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Contratos (assinaturas — tudo Result, sem exceção p/ fluxo)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-tenancy-e-multi-repo-d17" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Tenancy e multi-repo (D17)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-configuracao-env-vault" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Configuração (env / vault)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-invariantes-resumo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Invariantes (resumo)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-o-que-falta-para-fechar-checklist-de-build" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. O que falta para fechar (checklist de build)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="design-orquestrador-minimo-mvp">Design · Orquestrador mínimo (MVP)<a class="headerlink" href="#design-orquestrador-minimo-mvp" title="Permanent link">&para;</a></h1>
+<blockquote>
+<p>Fase: IMPLEMENTAÇÃO. Spec do <strong>próximo componente a construir</strong> (spec-driven, D13) — a ser revisada
+antes do código. Aprofunda <code>research/DESIGN-nucleo.md</code> (D8/D9) para o nível de implementação.
+<strong>Schema real = <code>migrations/</code></strong>; erros via <strong><code>Result</code></strong> (D1); <code>tenant</code> em tudo (D17).</p>
+</blockquote>
+<h2 id="1-objetivo-e-escopo">1. Objetivo e escopo<a class="headerlink" href="#1-objetivo-e-escopo" title="Permanent link">&para;</a></h2>
+<p>O orquestrador é a <strong>camada determinística</strong> que recebe eventos do GitHub (e feeds), decide <strong>o que
+roda, quando e onde</strong>, e garante <strong>durabilidade</strong> (nada se perde num crash). <strong>Não é um agente</strong> — não
+chama LLM; só coordena. Agentes rodam nos <strong>runners efêmeros</strong> que ele dispara.</p>
+<p><strong>MVP faz:</strong> ingest de evento (webhook assinado) → idempotência → lock/serialização por issue →
+máquina de estados do run no banco → dispatch para runner → <strong>outbox</strong> para efeitos → <strong>sweeper</strong> de
+run abandonado. Multi-repo de <strong>uma empresa</strong> (1 instância, D17).</p>
+<p><strong>MVP NÃO faz (depois):</strong> durable-execution engine (fica no "leve", D5), grafo de dependência
+completo (começa com <code>blocked-by</code> simples), runner isolado gVisor (chega com PR externo), múltiplos
+tenants no mesmo processo (1 instância por empresa).</p>
+<h2 id="2-componentes">2. Componentes<a class="headerlink" href="#2-componentes" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>flowchart LR
+  gh[["GitHub App · webhook"]]
+  feeds[["Feeds · schedule"]]
+  subgraph orch["Orquestrador · async (Python)"]
+    direction TB
+    ingest["ingest&lt;br/&gt;valida assinatura + normaliza"]
+    idem["idempotencia&lt;br/&gt;head_sha+evento+no"]
+    dep["dependencia&lt;br/&gt;blocked-by"]
+    wip["WIP / backpressure"]
+    disp["dispatcher&lt;br/&gt;escolhe runner T/U"]
+    sweeper["sweeper&lt;br/&gt;lease expirado"]
+    obw["outbox worker&lt;br/&gt;gravar-&gt;commit-&gt;publicar"]
+  end
+  db[("Postgres&lt;br/&gt;run · run_event · outbox")]
+  runner["Runner efemero"]
+  eff[["efeitos&lt;br/&gt;PR · Telegram · evento"]]
+
+  gh --&gt; ingest
+  feeds --&gt; ingest
+  ingest --&gt; idem --&gt; dep --&gt; wip --&gt; disp --&gt; runner
+  disp --&gt; db
+  sweeper --&gt; db
+  sweeper -. re-enfileira .-&gt; disp
+  obw --&gt; db
+  obw --&gt; eff</code></pre>
+<p><strong>O que este desenho decide:</strong>
+- <strong>Pipeline linear com portões</strong> (ingest→idem→dep→wip→disp): cada portão é uma decisão
+  determinística; nenhum chama LLM.
+- <strong>Idempotência ANTES de dependência</strong> (⚠️): entrega é <em>at-least-once</em> — deduplicar antes de agendar
+  evita disparar a mesma task duas vezes.
+- <strong>Sweeper e outbox worker são laços próprios</strong> (não no caminho do evento) — rodam em periodicidade
+  (D3), independentes.</p>
+<h2 id="3-maquina-de-estados-do-run">3. Máquina de estados do run<a class="headerlink" href="#3-maquina-de-estados-do-run" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>stateDiagram-v2
+  [*] --&gt; queued
+  queued --&gt; running: pega + lease
+  running --&gt; waiting: aprovação
+  waiting --&gt; running: resposta
+  running --&gt; verifying: PR aberto
+  verifying --&gt; done: DoD ok
+  verifying --&gt; running: retry
+  running --&gt; failed: erro
+  running --&gt; abandoned: lease expirou
+  abandoned --&gt; queued: re-enfileira
+  done --&gt; [*]
+  failed --&gt; [*]</code></pre>
+<p><em>Legenda:</em> <strong>pega + lease</strong> = o dispatcher reserva o run · <strong>aprovação</strong> = precisa de humano /
+tool-result (revalidado no servidor) · <strong>retry</strong> = falha de gate → re-implementa (<code>attempt++</code>) ·
+<strong>re-enfileira</strong> = o sweeper devolve à fila após o lease expirar (com teto de tentativas).</p>
+<p><strong>Invariante central:</strong> o estado é gravado <strong>ANTES</strong> de qualquer chamada externa — um crash no meio é
+sempre recuperável (resume de estado verificado, H). <code>waiting</code> nunca vive no chat (M).</p>
+<h2 id="4-fluxo-de-dispatch-idempotencia-lock-reconferir">4. Fluxo de dispatch (idempotência + lock + reconferir)<a class="headerlink" href="#4-fluxo-de-dispatch-idempotencia-lock-reconferir" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>sequenceDiagram
+  autonumber
+  participant GH as GitHub App
+  participant O as Orquestrador
+  participant DB as Postgres
+  participant R as Runner
+  GH-&gt;&gt;O: evento (assinado)
+  O-&gt;&gt;O: valida assinatura + normaliza
+  O-&gt;&gt;DB: INSERT run (tenant, idempotency_key) ON CONFLICT DO NOTHING
+  alt conflito (ja visto)
+    O--&gt;&gt;GH: 202 — dedupe, nao dispara de novo
+  else novo
+    O-&gt;&gt;DB: advisory lock por (tenant, issue)
+    O-&gt;&gt;DB: RECONFERE: run ainda = queued?
+    alt outro ja processou
+      O-&gt;&gt;O: solta lock e encerra (lock serializa a rajada, nao elimina)
+    else segue
+      O-&gt;&gt;DB: state=running, lease_until=now()+T  (ANTES do efeito)
+      O-&gt;&gt;R: dispara runner (contexto da issue)
+      O--&gt;&gt;GH: 202
+    end
+  end</code></pre>
+<p>⚠️ <strong>RECONFERIR dentro do lock é obrigatório</strong> (DESIGN-nucleo): quem esperava no lock, sem a segunda
+checagem, refaz o trabalho que o outro já fez.</p>
+<h2 id="5-outbox-efeitos-exactly-once">5. Outbox (efeitos exactly-once)<a class="headerlink" href="#5-outbox-efeitos-exactly-once" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>sequenceDiagram
+  autonumber
+  participant Ag as Runner/Agente
+  participant DB as Postgres
+  participant W as Outbox worker
+  participant X as Efeito (PR/Telegram/evento)
+  rect rgba(128,128,128,0.10)
+  Note over Ag,DB: UMA transacao
+  Ag-&gt;&gt;DB: UPDATE run (estado)
+  Ag-&gt;&gt;DB: INSERT outbox (kind, payload, dedup_key)
+  Ag-&gt;&gt;DB: COMMIT
+  end
+  W-&gt;&gt;DB: SELECT ... WHERE status=pending FOR UPDATE SKIP LOCKED
+  W-&gt;&gt;X: efetua (idempotente no destino via dedup_key)
+  W-&gt;&gt;DB: UPDATE outbox status=sent, sent_at=now()</code></pre>
+<p>⚠️ <strong>Ordem obrigatória: gravar → commit → efetuar.</strong> Efeito antes do commit faria a entrega virar a
+fonte da verdade. <code>PUBLISH</code> ao-vivo (Redis, se houver) fica <strong>fora</strong> da transação.</p>
+<h2 id="6-sweeper-run-abandonado">6. Sweeper (run abandonado)<a class="headerlink" href="#6-sweeper-run-abandonado" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>sequenceDiagram
+  autonumber
+  participant W as Sweeper (periodico)
+  participant DB as Postgres
+  W-&gt;&gt;DB: SELECT run WHERE state=running AND lease_until &lt; now()
+  W-&gt;&gt;DB: state=abandoned, attempt++
+  alt attempt &lt; teto
+    W-&gt;&gt;DB: state=queued (re-enfileira)
+  else estourou
+    W-&gt;&gt;DB: state=failed (motivo: lease estourada)
+  end</code></pre>
+<h2 id="7-contratos-assinaturas-tudo-result-sem-excecao-p-fluxo">7. Contratos (assinaturas — tudo <code>Result</code>, sem exceção p/ fluxo)<a class="headerlink" href="#7-contratos-assinaturas-tudo-result-sem-excecao-p-fluxo" title="Permanent link">&para;</a></h2>
+<p><div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">ingest</span><span class="p">(</span><span class="n">ev</span><span class="p">:</span> <span class="n">GithubEvent</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Result</span><span class="p">[</span><span class="n">RunId</span><span class="p">,</span> <span class="n">IngestError</span><span class="p">]</span>        <span class="c1"># valida+persiste (idempotente)</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">claim_next</span><span class="p">(</span><span class="n">tenant</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Result</span><span class="p">[</span><span class="n">Run</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="n">DbError</span><span class="p">]</span>        <span class="c1"># lock + reconfere</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">dispatch</span><span class="p">(</span><span class="n">run</span><span class="p">:</span> <span class="n">Run</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Result</span><span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="n">DispatchError</span><span class="p">]</span>             <span class="c1"># state=running (antes do efeito) + spawn</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">enqueue_effect</span><span class="p">(</span><span class="n">tx</span><span class="p">,</span> <span class="n">kind</span><span class="p">,</span> <span class="n">payload</span><span class="p">,</span> <span class="n">dedup_key</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Result</span><span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="n">DbError</span><span class="p">]</span>  <span class="c1"># na MESMA tx do estado</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">publish_pending</span><span class="p">(</span><span class="n">limit</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Result</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">DbError</span><span class="p">]</span>           <span class="c1"># outbox worker; retorna nº efetuado</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">sweep</span><span class="p">(</span><span class="n">now</span><span class="p">:</span> <span class="n">datetime</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Result</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">DbError</span><span class="p">]</span>                  <span class="c1"># retorna nº reclamado</span>
+</code></pre></div>
+<code>IngestError</code> inclui <code>InvalidSignature</code>, <code>Duplicate</code> (não é erro fatal — vira 202). Erros de infra
+(DB, rede) → <code>Err</code>, com backoff; nunca derrubam o processo em silêncio.</p>
+<h2 id="8-tenancy-e-multi-repo-d17">8. Tenancy e multi-repo (D17)<a class="headerlink" href="#8-tenancy-e-multi-repo-d17" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>1 instância por empresa</strong>; <strong>GitHub App</strong> instalado na org → webhooks de <strong>N repos</strong>; token
+  por-repo de escopo mínimo.</li>
+<li><code>tenant</code> em <code>run</code>/<code>outbox</code>/<code>llm_call</code>; <code>repo</code> no <code>run</code>. Lock e WIP <strong>por (tenant, issue)</strong> e limite
+  <strong>por repo e por empresa</strong>.</li>
+</ul>
+<h2 id="9-configuracao-env-vault">9. Configuração (env / vault)<a class="headerlink" href="#9-configuracao-env-vault" title="Permanent link">&para;</a></h2>
+<p><code>DATABASE_URL</code> · credenciais do GitHub App (via ansible-vault, D4) · lista de repos do tenant · teto
+de WIP · <code>LEASE_SECONDS</code> · intervalos do sweeper/outbox (D3) · <code>ANSIBLE_VAULT_PASSWORD</code> (CI).</p>
+<h2 id="10-invariantes-resumo">10. Invariantes (resumo)<a class="headerlink" href="#10-invariantes-resumo" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Estado <strong>antes</strong> do efeito externo. 2. <strong>Reconferir dentro do lock.</strong> 3. <strong>gravar→commit→efetuar</strong>
+(outbox). 4. Resume só de estado <strong>verificado</strong>. 5. <code>tenant</code> em tudo. 6. Orquestrador <strong>não chama LLM</strong>.</li>
+</ol>
+<h2 id="11-o-que-falta-para-fechar-checklist-de-build">11. O que falta para fechar (checklist de build)<a class="headerlink" href="#11-o-que-falta-para-fechar-checklist-de-build" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Peça</th>
+<th>Estado</th>
+<th>Nota</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ingest</code> + validação de assinatura do webhook</td>
+<td>⬜</td>
+<td>GitHub App (HMAC)</td>
+</tr>
+<tr>
+<td>tabela/repo de <code>run</code> + INSERT idempotente</td>
+<td>⬜</td>
+<td>usa <code>migrations/0001</code></td>
+</tr>
+<tr>
+<td><code>claim_next</code> (advisory lock + reconferir)</td>
+<td>⬜</td>
+<td><code>pg_try_advisory_lock</code> por (tenant,issue)</td>
+</tr>
+<tr>
+<td><code>dispatch</code> → runner (stub no MVP)</td>
+<td>⬜</td>
+<td>runner real vem no loop núcleo</td>
+</tr>
+<tr>
+<td><code>outbox</code> worker (<code>FOR UPDATE SKIP LOCKED</code>)</td>
+<td>⬜</td>
+<td>efeitos: PR/Telegram</td>
+</tr>
+<tr>
+<td><code>sweeper</code> periódico</td>
+<td>⬜</td>
+<td>lease expirado</td>
+</tr>
+<tr>
+<td>transporte: webhook server (FastAPI) vs Actions</td>
+<td>⬜</td>
+<td>decidir no arranque (B: Actions+runner JIT)</td>
+</tr>
+<tr>
+<td>testes tier-1 de cada contrato (fakes de DB)</td>
+<td>⬜</td>
+<td>determinístico, sem LLM</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<p>Amarra: B (gatilhos/idempotência) · M (outbox/estado/Telegram) · H (resume verificado) · K (runner) ·
+L (<code>llm_call</code> quando o runner chamar modelo) · D17 (tenant). Núcleo lógico: <code>research/DESIGN-nucleo.md</code>.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Voltar para o topo
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "navigation.tracking", "toc.follow", "search.suggest", "content.code.copy"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copiado para \u00e1rea de transfer\u00eancia", "clipboard.copy": "Copiar para \u00e1rea de transfer\u00eancia", "search.result.more.one": "mais 1 nesta p\u00e1gina", "search.result.more.other": "# mais nesta p\u00e1gina", "search.result.none": "Nenhum documento encontrado", "search.result.one": "1 documento encontrado", "search.result.other": "# documentos encontrados", "search.result.placeholder": "Digite para iniciar a busca", "search.result.term.missing": "Ausente", "select.version": "Selecione a vers\u00e3o"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
+      
+    
+  </body>
+</html>
