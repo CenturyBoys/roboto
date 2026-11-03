@@ -8,6 +8,10 @@ from __future__ import annotations
 import asyncio
 
 
+class GitError(RuntimeError):
+    """Falha de um comando git que NÃO pode ser engolida (ex.: push) — o ciclo precisa saber."""
+
+
 class SubprocessGit:
     def __init__(self, workdir: str) -> None:
         self._cwd = workdir
@@ -20,6 +24,17 @@ class SubprocessGit:
         await proc.communicate()
         return proc.returncode or 0
 
+    async def _git_checked(self, *args: str) -> None:
+        """Roda o git e LEVANTA GitError (com o stderr) se falhar — não mascara a falha."""
+        proc = await asyncio.create_subprocess_exec(
+            "git", *args, cwd=self._cwd,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        _, err = await proc.communicate()
+        if (proc.returncode or 0) != 0:
+            detalhe = err.decode(errors="replace").strip()[:300]
+            raise GitError(f"git {args[0]} falhou (code {proc.returncode}): {detalhe}")
+
     async def _git_out(self, *args: str) -> str:
         proc = await asyncio.create_subprocess_exec(
             "git", *args, cwd=self._cwd,
@@ -29,25 +44,29 @@ class SubprocessGit:
         return out.decode(errors="replace") if (proc.returncode or 0) == 0 else ""
 
     async def prepare_branch(self, name: str) -> None:
-        await self._git("checkout", "-B", name)
+        # checked: se o checkout falhar, commit/push iriam pra branch errada em silêncio
+        await self._git_checked("checkout", "-B", name)
 
     async def checkout_remote(self, name: str) -> None:
         """Traz a branch REMOTA e entra NELA — p/ corrigir um PR já aberto (B). NÃO reseta p/ a
         base: o motor edita sobre o estado atual do PR. Sem isto, um `checkout -B` sobre um clone
-        novo (em `develop`) + force-push SOBRESCREVERIA o PR."""
-        await self._git("fetch", "origin", name)
-        await self._git("checkout", "-B", name, f"origin/{name}")
+        novo (em `develop`) + force-push SOBRESCREVERIA o PR. CHECKED: falha aqui é perigosa
+        (force-push no alvo errado), então levanta em vez de seguir no estado errado."""
+        await self._git_checked("fetch", "origin", name)
+        await self._git_checked("checkout", "-B", name, f"origin/{name}")
 
     async def commit_all(self, message: str) -> None:
-        await self._git("add", "-A")
-        # -c define identidade do bot; commit vazio é tolerado (ignora código de saída)
+        await self._git_checked("add", "-A")  # add falho não pode ser engolido
+        # -c define identidade do bot; commit vazio ("nothing to commit") é tolerado — a verificação
+        # de diff-vazio no ciclo (pr_cycle) é quem decide se há algo a revisar.
         await self._git(
             "-c", "user.email=fleet@roboto.dev", "-c", "user.name=roboto",
             "commit", "-m", message,
         )
 
     async def push(self, name: str) -> None:
-        await self._git("push", "-u", "origin", name, "--force")
+        # push NÃO pode falhar em silêncio: branch que não sobe vira 422 confuso no open_pr.
+        await self._git_checked("push", "-u", "origin", name, "--force")
 
     async def log_since(self, base: str) -> str:
         # mensagem COMPLETA (assunto+corpo) de cada commit da branch vs base — o motor escreve um

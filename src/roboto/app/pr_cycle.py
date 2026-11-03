@@ -378,11 +378,9 @@ async def run_pr_cycle(
                     run.repo, title=title, body=await build_pr_body(), head=branch, base=base
                 )
                 # #144: open_pr falho NÃO vira PR nº 0 silencioso — propaga e FALHA o run (senão o
-                # review rodava sobre diff vazio e dava veredito sem valor).
+                # review rodava sobre diff vazio). A msg do adapter traz o motivo real (422).
                 if isinstance(opened, Err):
-                    raise RuntimeError(
-                        f"open_pr falhou (PAT sem 'Pull requests: write'?): {opened.error}"
-                    )
+                    raise RuntimeError(f"open_pr falhou: {opened.error}")
                 state["pr"] = opened.value.number
         number = state["pr"]
         diff = await github.get_pr_diff(run.repo, number)
