@@ -89,6 +89,11 @@ class GithubAppClient:
             resp.raise_for_status()
             data = resp.json()
             return Ok(IssueRef(repo=repo, number=int(data["number"]), url=str(data["html_url"])))
+        except httpx.HTTPStatusError as exc:
+            # inclui o CORPO do GitHub: 422 diz o motivo real (ex.: "No commits between …", "A pull
+            # request already exists"). Antes a msg era um chute de permissão que confundia.
+            detalhe = (exc.response.text or "")[:300]
+            return Err(Error("github", f"open_pr {repo}: {exc.response.status_code} {detalhe}"))
         except httpx.HTTPError as exc:
             return Err(Error("github", f"open_pr {repo}: {exc}"))
         finally:
