@@ -64,11 +64,13 @@ stateDiagram-v2
   aprovado ficava preso em `verifying` pra sempre, vazando o lock.
 - **Fail-fast do ciclo (#144):** `open_pr` que falha **não** vira PR nº 0 silencioso — propaga e
   FALHA o run; **diff vazio** (motor não editou nada) também falha explícito — não se revisa "o nada".
-- **Git não falha em silêncio:** `push`/`checkout -B`/`checkout_remote`/`add` usam `_git_checked`
-  (levanta `GitError` com o stderr) — antes o returncode era ignorado, então um `push` falho virava
-  um **422 confuso no `open_pr`** ("No commits between…"/branch ausente) com mensagem enganosa de
-  permissão. Agora o run falha no passo certo com o motivo real. E o `open_pr` **surfa o corpo do
-  422** (o GitHub diz o porquê) em vez de chutar "PAT sem permissão".
+- **Git não falha em silêncio:** `push`/`checkout -B`/`checkout_remote`/`add`/`commit` usam
+  `_git_checked` (levanta `GitError` com stdout+stderr) — antes o returncode era ignorado, então um
+  `push` falho virava um **422 confuso no `open_pr`** e um **`commit` barrado por pre-commit hook**
+  (prettier/lint/testes) ficava **staged-não-commitado** e virava o enganoso **"motor não editou
+  nada"**. Agora o run falha no passo certo com o motivo real (inclusive o output do hook). O
+  `commit` só tolera **"nada staged"** (`diff --cached --quiet`), que é o caso legítimo de "nada a
+  commitar". E o `open_pr` **surfa o corpo do 422** em vez de chutar "PAT sem permissão".
 - **Self-assign (#150):** ao pegar um run de `impl`, o fleet se **atribui como assignee** da issue
   (`github.add_assignee`, best-effort) — rastreabilidade de quem assumiu a tarefa.
 - **Retry em erro TRANSITÓRIO (B/H):** erro de provedor temporário (402 sem crédito, 429, 5xx,

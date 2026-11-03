@@ -25,15 +25,16 @@ class SubprocessGit:
         return proc.returncode or 0
 
     async def _git_checked(self, *args: str) -> None:
-        """Roda o git e LEVANTA GitError (com o stderr) se falhar — não mascara a falha."""
+        """Roda o git e LEVANTA GitError se falhar — não mascara a falha. Inclui stdout+stderr no
+        motivo (hooks como pre-commit costumam imprimir no stdout)."""
         proc = await asyncio.create_subprocess_exec(
             "git", *args, cwd=self._cwd,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
         )
-        _, err = await proc.communicate()
+        out, err = await proc.communicate()
         if (proc.returncode or 0) != 0:
-            detalhe = err.decode(errors="replace").strip()[:300]
-            raise GitError(f"git {args[0]} falhou (code {proc.returncode}): {detalhe}")
+            saida = (err.decode(errors="replace") + out.decode(errors="replace")).strip()
+            raise GitError(f"git {args[0]} falhou (code {proc.returncode}): {saida[:400]}")
 
     async def _git_out(self, *args: str) -> str:
         proc = await asyncio.create_subprocess_exec(
@@ -57,9 +58,13 @@ class SubprocessGit:
 
     async def commit_all(self, message: str) -> None:
         await self._git_checked("add", "-A")  # add falho não pode ser engolido
-        # -c define identidade do bot; commit vazio ("nothing to commit") é tolerado — a verificação
-        # de diff-vazio no ciclo (pr_cycle) é quem decide se há algo a revisar.
-        await self._git(
+        # "nada staged" (diff --cached --quiet == 0) é o ÚNICO caso tolerado — aí não há o que
+        # commitar e a checagem de diff-vazio do ciclo decide. Se HÁ algo staged, o commit PRECISA
+        # passar: um pre-commit hook que barra (prettier/lint/testes) agora LEVANTA com o motivo,
+        # em vez de ficar staged-não-commitado e virar o enganoso "motor não editou nada".
+        if await self._git("diff", "--cached", "--quiet") == 0:
+            return
+        await self._git_checked(
             "-c", "user.email=fleet@roboto.dev", "-c", "user.name=roboto",
             "commit", "-m", message,
         )

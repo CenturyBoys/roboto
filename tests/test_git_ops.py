@@ -39,6 +39,33 @@ async def test_checkout_remote_raises_when_branch_absent(tmp_path: Path) -> None
         await git.checkout_remote("roboto/nao-existe")
 
 
+def _install_failing_hook(path: Path) -> None:
+    hooks = path / ".githooks"
+    hooks.mkdir()
+    hook = hooks / "pre-commit"
+    hook.write_text('#!/bin/sh\necho "lint falhou: formate o arquivo"\nexit 1\n')
+    hook.chmod(0o755)
+    subprocess.run(["git", "-C", str(path), "config", "core.hooksPath", ".githooks"], check=True)
+
+
+async def test_commit_all_raises_when_pre_commit_hook_blocks(tmp_path: Path) -> None:
+    # falha silenciosa #3: hook que barra o commit NÃO pode virar "diff vazio" — levanta o motivo.
+    _init_repo(tmp_path)
+    _install_failing_hook(tmp_path)
+    (tmp_path / "novo.txt").write_text("conteudo")
+    git = SubprocessGit(str(tmp_path))
+    with pytest.raises(GitError) as exc:
+        await git.commit_all("feat: algo")
+    assert "lint falhou" in str(exc.value)  # o motivo do hook aparece
+
+
+async def test_commit_all_tolerates_nothing_to_commit(tmp_path: Path) -> None:
+    # árvore limpa (nada staged) → NÃO levanta (o ciclo decide o "diff vazio")
+    _init_repo(tmp_path)
+    git = SubprocessGit(str(tmp_path))
+    await git.commit_all("chore: nada mudou")  # não deve levantar
+
+
 async def test_prepare_branch_ok_local(tmp_path: Path) -> None:
     # caminho feliz: checkout -B numa branch local funciona e NÃO levanta
     _init_repo(tmp_path)
