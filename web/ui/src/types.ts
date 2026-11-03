@@ -132,6 +132,24 @@ export interface RefineStep {
   dor?: Dor
 }
 
+// Breakdown de épico (#203): item esqueleto proposto + resposta dos endpoints.
+export interface BreakdownItem {
+  title: string
+  points: string[]
+  depends_on_prev: boolean
+}
+
+export interface BreakdownStep {
+  question: string | null
+  items: BreakdownItem[] | null
+}
+
+export interface CreatedSubIssue {
+  number: number
+  url: string
+  title: string
+}
+
 export interface Terminal {
   terminal_url: string | null
   note?: string
