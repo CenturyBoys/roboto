@@ -77,6 +77,7 @@ nav:
       - Refinamento: fluxos/01-refinamento.md
       - Implementação: fluxos/02-implementacao.md
       - Code review: fluxos/03-code-review.md
+      - Breakdown de épico: fluxos/04-breakdown-epico.md
   - Operação:
       - Gatilhos: triggers.md
       - Telegram: telegram-guia.md

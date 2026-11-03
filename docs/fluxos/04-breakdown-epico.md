@@ -1,0 +1,52 @@
+# Breakdown de épico (refino destrincha épico em sub-issues)
+
+> **Em construção** — feature #203. O refino/definição de issue é o **coração do fleet**; esta
+> trilha o ensina a reconhecer um **épico** e destrinchá-lo **ponto a ponto** em sub-issues
+> **esqueleto**, conversando com o humano nas dúvidas e encadeando por dependência.
+
+## Visão
+
+Hoje o refino é **1→1** (um pedido → uma issue). Um épico é largo demais para uma issue só. A ideia:
+
+1. **Detectar** que a issue é um épico (heurística determinística — não decisão cega de LLM).
+2. Entrar em **modo breakdown**: propor **N sub-issues leves** (título + pontos a cobrir), a decisão
+   do destrinchar **conversada** com o humano.
+3. **Pesquisar na web** quando o texto não basta (validar lib/versão, abordagem) e citar a fonte.
+4. Perguntar (`PERGUNTA:`) o que não dá pra inferir de texto/pesquisa.
+5. Com **OK humano**, materializar as sub-issues no GitHub **encadeadas** (`Depende de #N`), linkadas
+   ao épico. Cada uma é **refinada a fundo 1-a-1** depois, quando for a vez.
+
+O encadeamento pluga direto no **gate de dependência** ([`app/deps.py`](../trilha-j-escala.md)):
+a sub-issue `Depende de #N` fica em `WAITING` até a anterior fechar. E o **DoR gate** garante que um
+esqueleto não é implementado antes de ser refinado — a própria falta de DoR puxa a conversa 1-a-1.
+
+```mermaid
+flowchart TB
+  R[refino conversa] --> D{é épico?}
+  D -->|não| One([1 issue, fluxo normal])
+  D -->|sim| B[modo breakdown: N esqueletos]
+  B --> Q{dúvida?}
+  Q -->|sim| P[PERGUNTA / pesquisa web] --> B
+  Q -->|não| OK{OK humano?}
+  OK -->|sim| M[cria N sub-issues encadeadas - Depende de #N]
+  M --> L[gate segura em ordem · DoR puxa refino 1-a-1]
+```
+
+## O que já existe (incremento 1)
+
+Parte **determinística e testada** em [`agents/breakdown.py`](https://github.com/CenturyBoys/roboto/blob/main/src/roboto/agents/breakdown.py):
+
+- **`is_epic(title, body)`** — heurística: "épico"/"epic" como palavra no título é sinal forte;
+  senão soma sinais do corpo (palavra épico, ≥8 checkboxes, ≥3 cenários/critérios, menção a
+  breakdown) e decide por ≥2 sinais. "epicentro" **não** dispara (casamento por palavra).
+- **`parse_breakdown(text)`** — lê o formato que o motor emite (`ITEM:` + pontos `- `), encadeia
+  sequencialmente (cada item depende do anterior), com `DEPENDE: nenhuma` para quebrar a cadeia.
+- **`skeleton_body(item, prev_number)`** — monta o corpo do esqueleto; a frase `Depende de #N` é a
+  mesma que o gate `blocked_by` reconhece, garantindo o encadeamento ponta a ponta.
+
+## Próximos incrementos
+
+2. Modo breakdown no refiner (prompt + loop conversacional) + instrução de pesquisa na web.
+3. Materializar no GitHub (create + encadeamento + link ao épico).
+4. Painel de breakdown no cockpit (UI) + endpoint.
+5. Dogfood: destrinchar um épico real pela UI.
