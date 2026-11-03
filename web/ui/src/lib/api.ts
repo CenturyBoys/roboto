@@ -1,5 +1,8 @@
 import type {
+  BreakdownItem,
+  BreakdownStep,
   Costs,
+  CreatedSubIssue,
   Execution,
   ExecutionDetail,
   Health,
@@ -58,6 +61,20 @@ export const dispatchEngineRefine = (n: number) =>
 // issue não está pronta (DoR). Local, este é o gatilho (a label é webhook/URL pública, não dispara).
 export const dispatchImplement = (n: number) =>
   api<{ run_id: number }>(`/issues/${n}/implement`, { method: 'POST' })
+// Breakdown de épico (#203): PROPÕE sub-issues esqueleto — não cria nada. 409 se não parece épico.
+export const proposeBreakdown = (n: number, transcript: [string, string][]) =>
+  api<BreakdownStep>(`/issues/${n}/breakdown`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ transcript }),
+  })
+// Materializa os itens confirmados/editados: cria as sub-issues encadeadas e linka no épico.
+export const applyBreakdown = (n: number, items: BreakdownItem[]) =>
+  api<{ created: CreatedSubIssue[] }>(`/issues/${n}/breakdown/apply`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ items }),
+  })
 // Revisar QUALQUER PR aberto (time/bot) com o revisor deepseek; posta o parecer como comentário.
 export const reviewPr = (n: number) =>
   api<{ approved: boolean; issues: string[]; number: number; author: string }>(

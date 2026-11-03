@@ -22,13 +22,15 @@ from starlette.responses import HTMLResponse, JSONResponse, Response, StreamingR
 from starlette.routing import BaseRoute, Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from roboto.agents.refiner import IssueDraft, converse
+from roboto.agents.breakdown import Breakdown, SubIssueSkeleton, is_epic
+from roboto.agents.refiner import IssueDraft, breakdown_converse, converse
 from roboto.agents.review import (
     PullRequest,
     check_issue_readiness,
     montar_review,
     revisar_pr,
 )
+from roboto.app.breakdown_apply import materialize_breakdown
 from roboto.app.budget import assess as assess_budget
 from roboto.app.comment_poll import BOT_MARKER
 from roboto.app.jev_guard import assess as assess_risk
@@ -38,6 +40,7 @@ from roboto.app.session_hub import SessionHub
 from roboto.app.task_class import TaskType, classificar_task
 from roboto.app.tmux_copilot import session_name
 from roboto.app.tool_usage import ToolUsage, summarize
+from roboto.github.app import IssueRef
 from roboto.llm.port import ModelGateway
 from roboto.orchestrator.model import (
     Error,
@@ -102,6 +105,10 @@ class IssueSource(Protocol):
     ) -> Result[list[tuple[int, str, list[str]]], Error]: ...
 
     async def get_issue(self, repo: str, number: int) -> Result[tuple[str, str], Error]: ...
+
+    async def create_issue(
+        self, repo: str, title: str, body: str
+    ) -> Result[IssueRef, Error]: ...
 
     async def update_issue(
         self, repo: str, number: int, *, title: str, body: str
@@ -634,6 +641,71 @@ def console_routes(
         run, _ = await store.insert_run_if_absent(ev, when)
         return JSONResponse({"run_id": run.id})
 
+    async def issue_breakdown_propose(request: Request) -> JSONResponse:
+        # Breakdown de épico (#203): PROPÕE sub-issues esqueleto — NÃO cria nada (OK humano vem no
+        # /apply). Checa que é épico, semeia a conversa com título+corpo + transcript extra.
+        if _unauthorized(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        if issues is None or gateway is None:
+            return JSONResponse({"error": "GitHub/gateway não configurado"}, status_code=409)
+        repo = request.query_params.get("repo") or default_repo
+        number = int(request.path_params["number"])
+        if not repo:
+            return JSONResponse({"error": "repo não configurado"}, status_code=409)
+        got = await issues.get_issue(repo, number)
+        if isinstance(got, Err):
+            return JSONResponse({"error": got.error.message}, status_code=502)
+        title, body = got.value
+        if not is_epic(title, body):
+            return JSONResponse(
+                {"error": "issue não parece um épico (sem sinais p/ destrinchar)"},
+                status_code=409,
+            )
+        payload = await request.json()
+        raw = payload.get("transcript", []) if isinstance(payload, dict) else []
+        extra = [(str(t[0]), str(t[1])) for t in raw if isinstance(t, list) and len(t) == 2]
+        transcript = [("user", f"Épico a destrinchar:\nTítulo: {title}\n\n{body}"), *extra]
+        step = await breakdown_converse(transcript, gateway)
+        if isinstance(step, Err):
+            return JSONResponse({"error": step.error.message}, status_code=502)
+        s = step.value
+        if s.breakdown is not None:
+            items = [
+                {"title": it.title, "points": it.points, "depends_on_prev": it.depends_on_prev}
+                for it in s.breakdown.items
+            ]
+            return JSONResponse({"question": None, "items": items})
+        return JSONResponse({"question": s.question, "items": None})
+
+    async def issue_breakdown_apply(request: Request) -> JSONResponse:
+        # Breakdown de épico (#203): MATERIALIZA os itens confirmados/editados pelo humano — cria as
+        # sub-issues encadeadas (Depende de #N) e linka no épico. Só cria o que o painel enviou.
+        if _unauthorized(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        if issues is None:
+            return JSONResponse({"error": "GitHub não configurado"}, status_code=409)
+        repo = request.query_params.get("repo") or default_repo
+        number = int(request.path_params["number"])
+        if not repo:
+            return JSONResponse({"error": "repo não configurado"}, status_code=409)
+        payload = await request.json()
+        raw_items = payload.get("items", []) if isinstance(payload, dict) else []
+        items: list[SubIssueSkeleton] = []
+        for i, it in enumerate(raw_items):
+            if not isinstance(it, dict) or not str(it.get("title", "")).strip():
+                continue
+            pts = [str(p) for p in it.get("points", []) if str(p).strip()]
+            # 1º item nunca depende; demais: respeita o flag do painel (default: encadeia)
+            dep = bool(it.get("depends_on_prev", True)) and i > 0
+            items.append(SubIssueSkeleton(str(it["title"]).strip(), pts, dep))
+        if not items:
+            return JSONResponse({"error": "nenhum item válido para criar"}, status_code=400)
+        res = await materialize_breakdown(issues, repo, number, Breakdown(items=items))
+        if isinstance(res, Err):
+            return JSONResponse({"error": res.error.message}, status_code=502)
+        created = [{"number": c.number, "url": c.url, "title": c.title} for c in res.value]
+        return JSONResponse({"created": created})
+
     async def review_pr_action(request: Request) -> JSONResponse:
         # Revisar QUALQUER PR aberto (do time/bot, não só do fleet) com o revisor deepseek (JUDGE)
         # e postar o parecer como comentário. reviewer≠autor: o autor é o dono real do PR.
@@ -871,6 +943,8 @@ def console_routes(
         Route("/issues/{number:int}/refine", issue_refine, methods=["POST"]),
         Route("/issues/{number:int}/refine-engine", refine_with_engine, methods=["POST"]),
         Route("/issues/{number:int}/implement", implement_with_engine, methods=["POST"]),
+        Route("/issues/{number:int}/breakdown", issue_breakdown_propose, methods=["POST"]),
+        Route("/issues/{number:int}/breakdown/apply", issue_breakdown_apply, methods=["POST"]),
         Route("/prs/{number:int}/review", review_pr_action, methods=["POST"]),
         Route("/prs/{number:int}/correct", correct_pr_action, methods=["POST"]),
         Route("/executions/{run_id:int}/proposal", proposal),

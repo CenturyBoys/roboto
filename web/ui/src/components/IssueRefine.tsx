@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { dispatchEngineRefine, dispatchImplement, getIssue, refineIssue } from '@/lib/api'
 import type { IssueDetail } from '@/types'
+import { BreakdownPanel } from './BreakdownPanel'
 import { Button } from './ui/button'
 import { Card, CardLabel, CardTitle } from './ui/card'
 import { useToast } from './ui/toast'
@@ -125,6 +126,8 @@ export function IssueRefine({
           só com a issue pronta (DoR) — o motor coda e abre um PR (merge é seu, gate humano).
         </p>
       </Card>
+
+      <BreakdownPanel number={number} />
 
       <Card>
         <CardLabel>Conversa rápida — modelo cego, NÃO lê o repo (só pra ideias leves)</CardLabel>

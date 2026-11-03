@@ -63,7 +63,17 @@ flowchart TB
 - **Fail-fast:** para na 1ª falha de criação (não deixa cadeia pela metade silenciosa); as já criadas
   permanecem e aparecem no comentário do épico.
 
+**Incremento 4 — cockpit (endpoints + painel)**:
+
+- **`POST /issues/{n}/breakdown`** (propor) — checa `is_epic`, roda `breakdown_converse` semeado com
+  título+corpo do épico, devolve `{question}` **ou** `{items}` — **sem criar nada** (409 se não parece
+  épico).
+- **`POST /issues/{n}/breakdown/apply`** (materializar) — recebe os itens **confirmados/editados pelo
+  humano** e chama `materialize_breakdown`. Só cria o que o painel enviou (OK humano no código).
+- **Painel `BreakdownPanel`** no refino: botão *Destrinchar épico* → lista editável (título, pontos,
+  "depende da anterior") → *Criar N sub-issue(s)*; mostra os links das filhas criadas. O *Destrinchar*
+  nunca cria; a criação é um segundo clique explícito.
+
 ## Próximos incrementos
 
-4. Painel de breakdown no cockpit (UI) + endpoint (com o **OK humano** antes de materializar).
-5. Dogfood: destrinchar um épico real pela UI.
+5. Dogfood: destrinchar um épico real (ex.: #66 do arenavalendo) pela UI.
