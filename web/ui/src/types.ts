@@ -64,6 +64,7 @@ export interface ExecutionDetail {
   tool_usage: ToolUsage
   risk: Risk
   live: boolean
+  secret_blocked?: boolean // run falhou barrado pelo secret-scan → oferece override humano
 }
 
 export interface Budget {

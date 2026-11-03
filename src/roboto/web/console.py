@@ -372,6 +372,11 @@ def console_routes(
         pr = await store.get_execution_pr(run.id)
         risk = assess_risk(files_from_diff(pr.diff)) if pr is not None else assess_risk([])
         live = hub is not None and hub.get(run.id) is not None  # co-piloto só em sessão interativa
+        # secret_blocked (H): run falhou barrado pelo secret-scan → UI oferece o override humano
+        ev = await store.session_events(run.id, 0, 500)
+        secret_blocked = run.state is RunState.FAILED and any(
+            "secret-scan" in e.text and "bloqueou" in e.text for e in ev
+        )
         return JSONResponse(
             {
                 "execution": _run_dict(run),
@@ -381,6 +386,7 @@ def console_routes(
                 "tool_usage": _tool_usage_dict(usage),
                 "risk": {"level": risk.level, "reasons": risk.reasons},
                 "live": live,
+                "secret_blocked": secret_blocked,
             }
         )
 
@@ -485,6 +491,19 @@ def console_routes(
         if run is None:
             return JSONResponse({"error": "not found"}, status_code=404)
         await store.set_state(run.id, RunState.QUEUED, datetime.now(UTC), attempt=run.attempt + 1)
+        return JSONResponse({"id": run.id, "state": str(RunState.QUEUED)})
+
+    async def allow_secret_action(request: Request) -> JSONResponse:
+        # Override humano do secret-scan (H/B): operador marca FALSO-POSITIVO e libera o push.
+        # Grava o override (durável) e reenfileira o run — o próximo tick não aborta no scan.
+        if _unauthorized(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        run = await _owned_run(request)
+        if run is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        when = datetime.now(UTC)
+        await store.allow_secret(run.id, when)
+        await store.set_state(run.id, RunState.QUEUED, when, attempt=run.attempt + 1)
         return JSONResponse({"id": run.id, "state": str(RunState.QUEUED)})
 
     async def revert(request: Request) -> JSONResponse:
@@ -955,6 +974,11 @@ def console_routes(
         Route("/executions/{run_id:int}", execution_detail),
         Route("/executions/{run_id:int}/cancel", cancel, methods=["POST"]),
         Route("/executions/{run_id:int}/retry", retry, methods=["POST"]),
+        Route(
+            "/executions/{run_id:int}/allow-secret",
+            allow_secret_action,
+            methods=["POST"],
+        ),
         Route("/executions/{run_id:int}/revert", revert, methods=["POST"]),
         Route("/executions/{run_id:int}/terminal", terminal),
         Route("/executions/{run_id:int}/events", events_stream),
