@@ -29,6 +29,7 @@ from roboto.app.comment_poll import BOT_MARKER
 from roboto.app.correction import CycleResult, correction_cycle
 from roboto.app.deps import blocked_by
 from roboto.app.engine_loop import guarded_events
+from roboto.app.git_ops import GitError
 from roboto.app.jev_guard import assess as assess_risk
 from roboto.app.memory import recall_block
 from roboto.app.repo_profile import (
@@ -405,7 +406,23 @@ async def run_pr_cycle(
                 run.tenant, run.id, "message", now,
                 text=f"🎨 auto-format: {len(formatados)} arquivo(s) formatado(s) antes do commit.",
             )
-        await git.commit_all(title if not feedback else f"{title} (correção)")
+        # commit resiliente ao hook de formatação (#228): se o pre-commit `prettier --check` barrar,
+        # formata e re-tenta UMA vez — o hook é a fonte da verdade (cobre o autoformat proativo não
+        # ter pego, ex.: #51 morreu assim). Outros erros do hook (lint/test) propagam normalmente.
+        _msg = title if not feedback else f"{title} (correção)"
+        try:
+            await git.commit_all(_msg)
+        except GitError as _exc:
+            low = str(_exc).lower()
+            if "prettier" not in low and "code style" not in low:
+                raise
+            refmt = await autoformat(workdir)
+            if refmt and store is not None and now is not None:
+                await store.append_session_event(
+                    run.tenant, run.id, "message", now,
+                    text=f"🎨 commit barrado por formatação → reformatei {len(refmt)} e re-tento.",
+                )
+            await git.commit_all(_msg)  # re-tenta; se barrar de novo, propaga
         # H: secret-scan com AUTO-CORREÇÃO — bloqueia o push e devolve ao motor p/ trocar o literal
         # por placeholder/env, re-escaneando. Esgotou → aborta (o push nunca sai com segredo).
         leak = await _guard_secrets(git, base, store=store, run=run, now=now)
