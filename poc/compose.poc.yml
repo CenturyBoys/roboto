@@ -33,8 +33,15 @@ services:
     ports:
       - "8090:8080" # servidor ASGI (webhook + console) — 8090 no host (8080 ocupada)
       - "7681:7681" # ttyd — terminal web (tmux no container)
+    volumes:
+      # sessões do motor (Claude Code) persistem entre rebuilds → o "Assumir" (resume) sobrevive.
+      # NÃO persiste ~/.claude-code-router (regenerado no boot) p/ evitar PID fantasma. (#219)
+      - claude_sessions:/home/pwuser/.claude
     # /work é efêmero (não-root): o container clona o repo a cada subida em /work/<owner>/<repo>.
     # recursos da máquina: ajuste conforme necessário
     # deploy:
     #   resources:
     #     limits: { cpus: "4", memory: 8g }
+
+volumes:
+  claude_sessions: # histórico das sessões do motor (p/ o "Assumir"/resume sobreviver a rebuild, #219)
