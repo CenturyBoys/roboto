@@ -30,7 +30,11 @@ from roboto.app.deps import blocked_by
 from roboto.app.engine_loop import guarded_events
 from roboto.app.jev_guard import assess as assess_risk
 from roboto.app.memory import recall_block
-from roboto.app.repo_profile import build_repo_profile, read_agents_conventions
+from roboto.app.repo_profile import (
+    build_repo_profile,
+    read_agents_conventions,
+    sample_test_excerpt,
+)
 from roboto.app.secret_scan import SecretLeakError, scan_diff
 from roboto.app.task_class import TaskType, classificar_task
 from roboto.app.tiering import classificar_tier
@@ -235,6 +239,10 @@ async def run_pr_cycle(
     # os checks como um dev, sem flailar em "como rodar teste" / sem gambiarra de .cjs.
     profile = build_repo_profile(workdir)
     profile_block = f"\n{profile}\n" if profile else ""
+    # teste-exemplo (G/#224): mostra o PADRÃO de teste do repo pra o motor NÃO redescobrir "como os
+    # testes são feitos" (medido no feed: gastava turno explorando). Determinístico, best-effort.
+    test_sample = sample_test_excerpt(workdir)
+    test_block = f"\n{test_sample}\n" if test_sample else ""
     # code-intel brief (F): injeta o catálogo de tools semânticas (puxado do PRÓPRIO MCP server) +
     # mapa do repo, pra o motor navegar/editar com code-intel em vez de grep/sed/Read (medido: ele
     # subusa). Best-effort e gated pelo mesmo flag do MCP do motor; server mudo → "".
@@ -274,7 +282,7 @@ async def run_pr_cycle(
             )
     base_prompt = (
         f"Implemente a issue {run.issue_id} no repo {run.repo} (cwd {workdir}).{contexto}"
-        f"{profile_block}{ci_block}{conventions_block}{memory_block}{aprendizado_block}\n"
+        f"{profile_block}{test_block}{ci_block}{conventions_block}{memory_block}{aprendizado_block}\n"
         "ESCOPO MÍNIMO: entregue APENAS o que os Critérios de aceite da issue pedem — nada além. "
         "NÃO crie documentos/arquivos extras (ex.: breakdown ou 'update' de épico), NÃO edite o "
         "épico nem outras issues, NÃO toque em código não relacionado, NÃO commite lockfile/deps "

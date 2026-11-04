@@ -10,6 +10,8 @@ teste" (era o que fazia ele inventar scripts `.cjs` e reinstalar deps à toa).
 from __future__ import annotations
 
 import json
+import os
+from fnmatch import fnmatch
 from pathlib import Path
 
 _ENV_STATUS = Path("/tmp/env-status")  # gravado pelo bootstrap: "✅ PRONTO ..." / "❌ FALHOU ..."
@@ -95,3 +97,57 @@ def build_repo_profile(workdir: str, *, env_status_path: Path = _ENV_STATUS) -> 
     if has_agents:
         lines.append("- Leia o AGENTS.md para as convenções do repo.")
     return "\n".join(lines)
+
+
+# --- teste-exemplo (G): o motor NÃO redescobre "como os testes são feitos" — o harness mostra -----
+
+_TEST_GLOBS = (
+    "test_*.py", "*_test.py", "*.test.ts", "*.spec.ts", "*.test.tsx",
+    "*.test.js", "*.spec.js", "*.test.jsx",
+)
+_SKIP_DIRS = frozenset({
+    "node_modules", ".git", "dist", "build", ".venv", "venv", "__pycache__",
+    "vendor", ".next", "coverage", ".turbo",
+})
+_TEST_SAMPLE_MAX = 1200
+
+
+def format_test_sample(rel_path: str, content: str, *, max_chars: int = _TEST_SAMPLE_MAX) -> str:
+    """Bloco do teste-exemplo (PURA, testável). Vazio se não há conteúdo."""
+    excerpt = content.strip()
+    if not excerpt:
+        return ""
+    if len(excerpt) > max_chars:
+        excerpt = excerpt[:max_chars].rstrip() + "\n… (truncado)"
+    return (
+        f"EXEMPLO DE TESTE DO REPO ({rel_path}) — SIGA ESTE PADRÃO (framework, estrutura, nomes, "
+        f"mocking); NÃO reinvente nem crie runner avulso:\n```\n{excerpt}\n```"
+    )
+
+
+def _find_test_file(root: Path, *, max_dirs: int = 2000) -> Path | None:
+    """Teste representativo mais RASO (determinístico): poda dirs pesados/ocultos; cap de dirs."""
+    seen = 0
+    for dirpath, dirnames, filenames in os.walk(root):
+        seen += 1
+        if seen > max_dirs:
+            break
+        dirnames[:] = sorted(d for d in dirnames if d not in _SKIP_DIRS and not d.startswith("."))
+        for fn in sorted(filenames):
+            if any(fnmatch(fn, g) for g in _TEST_GLOBS):
+                return Path(dirpath) / fn
+    return None
+
+
+def sample_test_excerpt(workdir: str, *, max_chars: int = _TEST_SAMPLE_MAX) -> str:
+    """Acha 1 teste-exemplo do repo e devolve o bloco pro prompt. Best-effort ("" se não há)."""
+    root = Path(workdir)
+    found = _find_test_file(root)
+    if found is None:
+        return ""
+    try:
+        content = found.read_text(errors="replace")
+        rel = str(found.relative_to(root))
+    except (OSError, ValueError):
+        return ""
+    return format_test_sample(rel, content, max_chars=max_chars)
