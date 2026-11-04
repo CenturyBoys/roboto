@@ -10,11 +10,10 @@ dela. Esta função é **pura** (sem I/O): o glue (`runtime`) só a chama; o tes
 
 from __future__ import annotations
 
-# alwaysLoad: tools do code-intel NÃO-deferidas (#229 exp) — carregadas upfront, sem o ToolSearch.
-# Modelos fracos não navegam o fluxo deferir→ToolSearch→invocar (medido: qwen `<function=>`, GLM
-# loopou, devstral nem tentou). Diretas, um motor que acerta o formato (devstral) pode finalmente
-# usá-las. Custa +tokens (catálogo upfront); aceitável p/ o ganho de navegação semântica.
-_CODE_INTEL: dict[str, object] = {"command": "code-intel-mcp", "alwaysLoad": True}
+# NOTA (#230, experimento 2026-11-04): testamos `alwaysLoad:true` (code-intel NÃO-deferido) — o
+# devstral AINDA deu code_intel=0. A causa é PREFERÊNCIA do modelo, não a deferência. Revertido:
+# alwaysLoad custava +tokens (catálogo upfront) sem ganho. Code-intel é harness-driven (verify/inject).
+_CODE_INTEL: dict[str, object] = {"command": "code-intel-mcp"}
 
 
 def build_mcp_servers(

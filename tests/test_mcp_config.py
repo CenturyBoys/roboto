@@ -7,7 +7,7 @@ from roboto.app.mcp_config import build_mcp_servers
 
 def test_impl_so_code_intel_sem_web() -> None:
     servers = build_mcp_servers(code_intel=True)
-    assert servers == {"code-intel": {"command": "code-intel-mcp", "alwaysLoad": True}}
+    assert servers == {"code-intel": {"command": "code-intel-mcp"}}
 
 
 def test_refino_com_chave_ganha_tavily() -> None:
@@ -24,7 +24,7 @@ def test_refino_com_chave_ganha_tavily() -> None:
 def test_web_sem_chave_nao_adiciona_tavily() -> None:
     # degrada silencioso: refino sem busca, não quebra
     servers = build_mcp_servers(code_intel=True, tavily_key="", web=True)
-    assert servers == {"code-intel": {"command": "code-intel-mcp", "alwaysLoad": True}}
+    assert servers == {"code-intel": {"command": "code-intel-mcp"}}
 
 
 def test_web_so_entra_quando_pedido() -> None:
