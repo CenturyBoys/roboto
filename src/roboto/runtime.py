@@ -18,9 +18,11 @@ from datetime import UTC, datetime
 
 from roboto.app.compose import build_adapters
 from roboto.app.loops import poll_tick, process_refine_tick, process_run_tick, run_periodic
+from roboto.app.mcp_config import build_mcp_servers
 from roboto.app.session_hub import SessionHub
 from roboto.config import BOOTSTRAP_KEYS, Config, load_config, settable_from_env
 from roboto.engines.stub import StubEngine
+from roboto.llm.decide import Decider
 from roboto.orchestrator.core import publish_outbox, sweep
 from roboto.orchestrator.model import Run, RunState
 from roboto.orchestrator.pg_store import PostgresStore
@@ -56,11 +58,12 @@ async def _run_daemon(config: Config, store: Store) -> None:
             return False  # ocupado pelo ciclo batch
         use_tmux = config.copilot_mode == "tmux"
         hub.open(run.id)  # abre já: a próxima mensagem do chat acha a LiveSession (sem corrida)
-        mcp: dict[str, object] | None = (
-            {"code-intel": {"command": "code-intel-mcp"}} if config.code_intel else None
-        )
         # refino é read-only (lê p/ fundamentar, não implementa) — vale nos dois drivers
         read_only = run.agent == "refine"
+        # busca web (Tavily) só no refino (H): fundamentar a issue com fontes externas (#203)
+        mcp: dict[str, object] | None = build_mcp_servers(
+            code_intel=config.code_intel, tavily_key=config.tavily_api_key, web=read_only
+        )
 
         # injeta o contexto da issue (repo + #N + corpo) ANTES da mensagem do humano — senão o
         # motor não sabe de qual issue a conversa trata, mesmo o chat tendo sido aberto nela.
@@ -167,9 +170,8 @@ async def _run_daemon(config: Config, store: Store) -> None:
 
         # imagem roda NÃO-root -> bypassPermissions (full-auto: git/pnpm/abrir PR).
         # code-intel (ide_cc) ligado por config -> navegação semântica, menos token (F).
-        mcp: dict[str, object] | None = (
-            {"code-intel": {"command": "code-intel-mcp"}} if config.code_intel else None
-        )
+        # impl NÃO recebe busca web (least-privilege, H) — só o refiner (abaixo).
+        mcp: dict[str, object] | None = build_mcp_servers(code_intel=config.code_intel)
         # Modelo FIXO (ccr→OpenRouter/Qwen): sem isto o CLI cai no default (claude-opus-*), que o
         # ccr não roteia → a query falha com "selected model ... may not exist". O co-piloto já
         # fixava; o batch (impl/refino) precisa do mesmo pino.
@@ -189,13 +191,26 @@ async def _run_daemon(config: Config, store: Store) -> None:
         # fecha a brecha por política determinística, não só pelo prompt "read-only por prompt".
         from roboto.app.tool_policy import disallowed_tools_for
 
+        # refiner: só code-intel. A busca web é HARNESS-DRIVEN (pre-step no process_refine_tick
+        # roda o Tavily e injeta as fontes no prompt) — modelo local não invoca MCP de forma
+        # confiável (#203, teste 2026-11-04: GLM travou no ToolSearch).
+        refine_mcp = build_mcp_servers(code_intel=config.code_intel)
         refiner_engine = ClaudeCodeEngine(
             model=config.refine_model or engine_model,  # REFINE_MODEL: raciocínio forte no refino
             permission_mode="bypassPermissions",
             disallowed_tools=disallowed_tools_for("refine"),
-            mcp_servers=mcp,
+            mcp_servers=refine_mcp,
             max_turns=60,
         )
+        # Jev (degrau-2): decide a CRITICIDADE da pesquisa web no refino (trilha I/#222). Vazio =
+        # sem Jev → o gate cai no keyword determinístico (degrau-1). Isolado atrás da porta Decider.
+        refine_decider: Decider | None = None
+        if config.jev_model:
+            from roboto.llm.jev import JevDecider
+
+            refine_decider = JevDecider(
+                api_key=config.models.openrouter_api_key, model=config.jev_model
+            )
 
         # second brain (G/D32): grava o PERFIL do repo (como operar) uma vez no boot — o motor não
         # começa cru. Determinístico (lê package.json/workspace); o prompt de impl injeta direto.
@@ -212,6 +227,8 @@ async def _run_daemon(config: Config, store: Store) -> None:
             await process_refine_tick(
                 refiner_engine, store, adapters.github,
                 tenant=config.tenant, chat_id=config.chat_id, now=_now,
+                tavily_key=config.tavily_api_key, gateway=adapters.gateway,
+                decider=refine_decider,
             )
 
         async def _run_claude() -> None:

@@ -15,9 +15,11 @@ from roboto.agents.refiner import IssueDraft
 from roboto.agents.review import check_issue_readiness
 from roboto.app.engine_loop import TurnOutcome, drive_turn
 from roboto.app.inbound import IssueLister, dispatch_inbound
+from roboto.app.web_research import research_block, research_is_critical
 from roboto.channels.model import OutboundMessage
 from roboto.channels.port import Channel
 from roboto.engines.port import CodingEngine
+from roboto.llm.decide import Decider
 from roboto.llm.port import ModelGateway, Transcriber
 from roboto.orchestrator.model import RunState
 from roboto.orchestrator.store import Store
@@ -66,7 +68,9 @@ def _refine_prompt(repo: str, issue_id: str, contexto: str, correction: str = ""
         f"IMPORTANTE: emita o CORPO FINAL da issue — e NADA MAIS — entre as linhas "
         f"`{ISSUE_BODY_START}` e `{ISSUE_BODY_END}`, cada marcador sozinho em sua própria linha. "
         "Dentro dos marcadores vá direto ao markdown da issue (sem 'vou propor', sem comentários, "
-        "sem cercas de código). Qualquer explicação sua deve ficar FORA dos marcadores."
+        "sem cercas de código). Qualquer explicação sua deve ficar FORA dos marcadores.\n\n"
+        "Se o contexto trouxer uma seção `## Fontes (pesquisa web ...)`, BASEIE a decisão nessas "
+        "fontes e CITE as URLs no corpo — a pesquisa já foi feita; não tente buscar de novo."
     )
     return base + correction
 
@@ -111,6 +115,9 @@ async def process_refine_tick(
     chat_id: str,
     now: Callable[[], datetime],
     lease_seconds: int = 1800,
+    tavily_key: str = "",
+    gateway: ModelGateway | None = None,
+    decider: Decider | None = None,
 ) -> None:
     """Refino ENGINE-SCOPED (trilha O, Fatia 6/C): o motor LÊ o repo e propõe a issue fundamentada.
 
@@ -129,6 +136,15 @@ async def process_refine_tick(
         if isinstance(got, Ok):
             title, corpo = got.value
             contexto = f"\n\nIssue atual — título: {title}\nCorpo atual:\n{corpo}"
+            # pesquisa web HARNESS-DRIVEN (determinismo): gate em 2 degraus (keyword + Jev) decide a
+            # CRITICIDADE; se crítica, o harness roda o Tavily e INJETA as fontes (modelo lê e cita,
+            # não invoca tool — #203/#222).
+            if tavily_key and await research_is_critical(title, corpo, decider=decider):
+                block = await research_block(
+                    title, corpo, tavily_key=tavily_key, gateway=gateway
+                )
+                if block:
+                    contexto += "\n\n" + block
 
     # (b) DoR shift-left no refino: o motor VALIDA o próprio rascunho antes de propor e, se
     # reprovar, recebe o motivo (missing) e corrige — sem round-trip humano (determinismo primeiro).

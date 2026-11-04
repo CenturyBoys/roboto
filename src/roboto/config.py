@@ -76,6 +76,12 @@ class Config:
     # teto de saída por chamada no gateway (L/K): reduz a reserva upfront da OpenRouter (evita 402
     # em request grande). 0 = sem cap. ROBOTO_MAX_TOKENS.
     max_tokens: int = 0
+    # chave da busca web (Tavily) usada SÓ no refino (MCP, least-privilege — ver app/mcp_config).
+    # Vazio = refino sem busca web. TAVILY_API_KEY. Futuro: SearXNG self-host (ambiente local).
+    tavily_api_key: str = ""
+    # Jev (System One) como DECISOR degrau-2 (trilha I): modelo via OpenRouter (ex.:
+    # typesafe/jev-router). Vazio = sem Jev → gate cai no keyword determinístico. JEV_MODEL.
+    jev_model: str = ""
 
 
 _REQUIRED = (
@@ -119,6 +125,8 @@ SETTABLE_KEYS: tuple[str, ...] = (
     "ROBOTO_BUDGET_USD",
     "ROBOTO_WIP_LIMIT",
     "ROBOTO_MAX_TOKENS",
+    "TAVILY_API_KEY",
+    "JEV_MODEL",
 )
 
 
@@ -227,5 +235,7 @@ def load_config(env: Mapping[str, str]) -> Result[Config, Error]:
             budget_usd_month=budget_usd,
             wip_limit=int(wip_raw),
             max_tokens=int(maxtok_raw),
+            tavily_api_key=env.get("TAVILY_API_KEY", ""),
+            jev_model=env.get("JEV_MODEL", ""),
         )
     )
