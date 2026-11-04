@@ -22,8 +22,13 @@ envsubst < /opt/roboto/poc/ccr.config.json > "$HOME/.claude-code-router/config.j
 
 # 2) sobe o ccr (porta 3456) e espera a PORTA responder; aponta o Claude Code para ele.
 #    Retry de verdade: o `ccr start` às vezes race/falha no boot — reemite até a porta subir.
-for _ in $(seq 1 20); do
+#    PID FANTASMA: se um boot anterior deixou o .pid (volume persistente / crash), o `ccr start`
+#    acha que já roda e NÃO sobe → o motor toma ECONNREFUSED. Limpa o resíduo antes e a cada tentativa.
+rm -f "$HOME/.claude-code-router/.claude-code-router.pid" 2>/dev/null || true
+pkill -f claude-code-router 2>/dev/null || true
+for _ in $(seq 1 30); do
   curl -s -o /dev/null http://127.0.0.1:3456 && break
+  rm -f "$HOME/.claude-code-router/.claude-code-router.pid" 2>/dev/null || true
   ccr start >/tmp/ccr.log 2>&1 &
   sleep 2
 done
