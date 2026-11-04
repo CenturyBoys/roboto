@@ -10,6 +10,7 @@ gate ``app/deps.py:blocked_by`` (issue dependente fica em WAITING até a anterio
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 
 # --- detecção de épico (determinística) --------------------------------------------------------
@@ -112,14 +113,43 @@ def parse_breakdown(text: str) -> Breakdown:
     return Breakdown(items=items)
 
 
+_RESEARCH_HEADER = "## 🔎 Pesquisa (fazer ANTES de propor — use a busca web; CITE as URLs)"
+_RESEARCH_VERB = re.compile(
+    r"^(pesquisar|investigar|levantar|escolher\s+entre|comparar|avaliar)\s+", re.IGNORECASE
+)
+
+
+def _research_seed_queries(points: list[str], is_research: Callable[[str, str], bool]) -> list[str]:
+    """Pontos que sinalizam pesquisa viram queries-semente (tira o verbo de comando)."""
+    out: list[str] = []
+    for p in points:
+        if is_research("", p):
+            out.append(_RESEARCH_VERB.sub("", p).strip() or p)
+    return out
+
+
 def skeleton_body(item: SubIssueSkeleton, prev_number: int | None) -> str:
     """Corpo da sub-issue ESQUELETO. ``Depende de #N`` casa com o gate (app/deps.py) e segura a
-    issue em WAITING até a anterior fechar. Marca que ainda falta refino 1-a-1 (DoR)."""
+    issue em WAITING até a anterior fechar. Marca que ainda falta refino 1-a-1 (DoR).
+
+    Pesquisa NÃO é obrigatória: só semeia o bloco ``🔎 Pesquisa`` quando a sub-issue é de DECISÃO
+    que depende de validação externa (mesma régua conservadora de
+    ``app/web_research.needs_research`` — convenção/boas-práticas/trade-off, não todo "pesquisar").
+    Aí o refino harness-driven dispara a busca e usa as queries-semente (senão um LLM gera).
+    Import lazy p/ evitar o ciclo agents↔app (app/__init__ importa agents).
+    """
+    from roboto.app.web_research import needs_research
+
     parts = ["## Pontos a cobrir"]
     if item.points:
         parts.extend(f"- {p}" for p in item.points)
     else:
         parts.append("- (a detalhar)")
+    if needs_research(item.title, "\n".join(item.points)):
+        block = [_RESEARCH_HEADER]
+        for i, q in enumerate(_research_seed_queries(item.points, needs_research), 1):
+            block.append(f"{i}. {q}")
+        parts.append("\n" + "\n".join(block))
     if item.depends_on_prev and prev_number is not None:
         parts.append(f"\nDepende de #{prev_number}")
     parts.append("\n> Esqueleto do breakdown — refinar a fundo (DoR) antes de implementar.")

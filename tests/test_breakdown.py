@@ -90,3 +90,27 @@ def test_skeleton_body_primeiro_item_sem_dependencia() -> None:
     body = skeleton_body(item, prev_number=None)
     assert blocked_by(body) == []
     assert "(a detalhar)" in body  # sem pontos → placeholder
+
+
+def test_skeleton_body_semeia_pesquisa_em_decisao() -> None:
+    # sub-issue de DECISÃO (convenção) → semeia o bloco 🔎 + queries-semente dos pontos de pesquisa
+    item = SubIssueSkeleton(
+        title="Definir convenção de versão",
+        points=["Pesquisar melhores práticas de versionamento", "Escolher entre prefixo e header"],
+        depends_on_prev=False,
+    )
+    body = skeleton_body(item, prev_number=None)
+    assert "🔎 Pesquisa" in body
+    assert "1. melhores práticas de versionamento" in body  # tirou o verbo "Pesquisar"
+    assert "2. prefixo e header" in body  # tirou "Escolher entre"
+
+
+def test_skeleton_body_sem_pesquisa_em_tarefa_comum() -> None:
+    # pesquisa NÃO é obrigatória: tarefa de implementação não ganha o bloco 🔎
+    item = SubIssueSkeleton(
+        title="Implementar endpoint de versão",
+        points=["Criar rota /version", "Retornar JSON"],
+        depends_on_prev=True,
+    )
+    body = skeleton_body(item, prev_number=10)
+    assert "🔎" not in body
