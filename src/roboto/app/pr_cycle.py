@@ -309,7 +309,7 @@ async def run_pr_cycle(
         "exige atualizar a doc (.md/docs/ADR) no MESMO commit. "
         "Faça UM self-check rápido: lint/typecheck + o TESTE do(s) arquivo(s) que você mudou (ex.: "
         "`vitest run <caminho-do-seu-teste>`). Se passar, ótimo; se o ambiente NÃO deixar rodar "
-        "(infra/DB ausente, lentidão) ou um teste PRÉ-EXISTENTE falhar por infra, **NÃO insista** — "
+        "(infra/DB ausente, lentidão) ou um teste PRÉ-EXISTENTE falhar por infra, NÃO insista — "
         "CONCLUA e deixe os arquivos prontos (evita estourar o limite de "
         "turnos). NÃO rode a suíte inteira (`pnpm test`). A validação final é o verify do harness "
         "(tipos) + a CI do PR (suíte completa com infra). "
