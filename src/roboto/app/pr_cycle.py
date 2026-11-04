@@ -307,11 +307,12 @@ async def run_pr_cycle(
         "apenas MENCIONE no fim — NÃO crie arquivo nem issue por conta própria. "
         "Siga TODAS as regras do AGENTS.md — inclusive doc-in-sync (§5): mudança de regra/domínio "
         "exige atualizar a doc (.md/docs/ADR) no MESMO commit. "
-        "Rode lint/typecheck e os TESTES **APENAS dos arquivos que você mudou** (ex.: "
-        "`vitest run <caminho-do-seu-teste>`), e corrija ESSES até passarem ANTES de concluir. "
-        "NÃO rode a suíte inteira (`pnpm test`): é lenta e testes PRÉ-EXISTENTES que exigem infra "
-        "(banco/DB, serviços) NÃO são sua responsabilidade — não tente fazê-los passar; a CI do PR "
-        "valida a suíte completa com infra. "
+        "Faça UM self-check rápido: lint/typecheck + o TESTE do(s) arquivo(s) que você mudou (ex.: "
+        "`vitest run <caminho-do-seu-teste>`). Se passar, ótimo; se o ambiente NÃO deixar rodar "
+        "(infra/DB ausente, lentidão) ou um teste PRÉ-EXISTENTE falhar por infra, **NÃO insista nem "
+        "fique reexecutando** — CONCLUA e deixe os arquivos prontos (evita estourar o limite de "
+        "turnos). NÃO rode a suíte inteira (`pnpm test`). A validação final é o verify do harness "
+        "(tipos) + a CI do PR (suíte completa com infra). "
         "NÃO abra PR, NÃO rode `git push`, `gh pr create` nem a API de PR do GitHub — o FLEET faz "
         "isso por você (commit + push + PR). Só IMPLEMENTE e deixe os arquivos prontos; abrir PR "
         "aqui cria PR DUPLICADO. "
@@ -617,9 +618,9 @@ def _correct_prompt(repo: str, pr_number: int, workdir: str, issues: list[str]) 
     return (
         f"Corrija os APONTAMENTOS do review no PR #{pr_number} do repo {repo} (cwd {workdir}). "
         "Você está NA branch do PR, com o código já implementado — faça SÓ os ajustes abaixo, sem "
-        "reimplementar nem sair do escopo. Rode lint/typecheck e os testes APENAS dos arquivos que "
-        "mexeu (não a suíte inteira) e corrija ESSES até passarem ANTES de concluir. Pontos do "
-        "review:\n- " + "\n- ".join(issues)
+        "reimplementar nem sair do escopo. Self-check rápido (lint/typecheck + teste SÓ dos arquivos "
+        "que mexeu, não a suíte); se o ambiente não deixar rodar (infra/DB), NÃO insista — conclua. "
+        "Pontos do review:\n- " + "\n- ".join(issues)
     )
 
 
