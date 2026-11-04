@@ -32,6 +32,9 @@ RUN curl -fsSL https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_
 
 # Claude Code CLI + claude-code-router (validar nomes/versões dos pacotes npm)
 RUN npm install -g @anthropic-ai/claude-code @musistudio/claude-code-router
+# tavily-mcp: busca web no refino (MCP, só o refiner — ver src/roboto/app/mcp_config). Pré-instalado
+# global p/ o npx usar o local (sem baixar em runtime no 1º refino). Chave via TAVILY_API_KEY (env).
+RUN npm install -g tavily-mcp
 # tsgo (TypeScript nativo): o code-intel SPAWNA `tsgo` p/ analisar TS. Sem ele, toda chamada
 # semântica em .ts dava "falha ao spawnar tsgo" → o motor caía no Bash e NUNCA usava o code-intel.
 RUN npm install -g @typescript/native-preview && tsgo --version 2>/dev/null || true

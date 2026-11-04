@@ -13,11 +13,16 @@ from datetime import datetime
 
 from roboto.agents.refiner import IssueDraft
 from roboto.agents.review import check_issue_readiness
+from roboto.app.code_intel_brief import code_intel_brief
 from roboto.app.engine_loop import TurnOutcome, drive_turn
 from roboto.app.inbound import IssueLister, dispatch_inbound
+from roboto.app.memory import recall_block
+from roboto.app.repo_profile import read_agents_conventions
+from roboto.app.web_research import research_block, research_is_critical
 from roboto.channels.model import OutboundMessage
 from roboto.channels.port import Channel
 from roboto.engines.port import CodingEngine
+from roboto.llm.decide import Decider
 from roboto.llm.port import ModelGateway, Transcriber
 from roboto.orchestrator.model import RunState
 from roboto.orchestrator.store import Store
@@ -66,7 +71,9 @@ def _refine_prompt(repo: str, issue_id: str, contexto: str, correction: str = ""
         f"IMPORTANTE: emita o CORPO FINAL da issue — e NADA MAIS — entre as linhas "
         f"`{ISSUE_BODY_START}` e `{ISSUE_BODY_END}`, cada marcador sozinho em sua própria linha. "
         "Dentro dos marcadores vá direto ao markdown da issue (sem 'vou propor', sem comentários, "
-        "sem cercas de código). Qualquer explicação sua deve ficar FORA dos marcadores."
+        "sem cercas de código). Qualquer explicação sua deve ficar FORA dos marcadores.\n\n"
+        "Se o contexto trouxer uma seção `## Fontes (pesquisa web ...)`, BASEIE a decisão nessas "
+        "fontes e CITE as URLs no corpo — a pesquisa já foi feita; não tente buscar de novo."
     )
     return base + correction
 
@@ -111,6 +118,10 @@ async def process_refine_tick(
     chat_id: str,
     now: Callable[[], datetime],
     lease_seconds: int = 1800,
+    tavily_key: str = "",
+    gateway: ModelGateway | None = None,
+    decider: Decider | None = None,
+    code_intel: bool = False,
 ) -> None:
     """Refino ENGINE-SCOPED (trilha O, Fatia 6/C): o motor LÊ o repo e propõe a issue fundamentada.
 
@@ -129,6 +140,34 @@ async def process_refine_tick(
         if isinstance(got, Ok):
             title, corpo = got.value
             contexto = f"\n\nIssue atual — título: {title}\nCorpo atual:\n{corpo}"
+            # pesquisa web HARNESS-DRIVEN (determinismo): gate em 2 degraus (keyword + Jev) decide a
+            # CRITICIDADE; se crítica, o harness roda o Tavily e INJETA as fontes (modelo lê e cita,
+            # não invoca tool — #203/#222).
+            if tavily_key and await research_is_critical(title, corpo, decider=decider):
+                block = await research_block(
+                    title, corpo, tavily_key=tavily_key, gateway=gateway
+                )
+                if block:
+                    contexto += "\n\n" + block
+
+    # convenções do repo-alvo (E) + recall da memória (G): mesmas injeções do impl. O refino decide
+    # ESCOPO melhor conhecendo as convenções do repo e as decisões/fatos passados — harness injeta
+    # (determinístico), em vez de depender do modelo "ler o AGENTS.md" ou "lembrar". Best-effort.
+    conventions = read_agents_conventions(f"/work/{run.repo}")
+    if conventions:
+        contexto += "\n\n" + conventions
+    memory = await recall_block(store, tenant, f"{title} {contexto}"[:2000])
+    if memory:
+        contexto += "\n\nMEMÓRIA RELEVANTE (second brain — decisões/fatos anteriores):\n" + memory
+
+    # code-intel brief (F): injeta catálogo de tools semânticas + repo_map no prompt do refino —
+    # mesmo motivo do impl (modelo subusa navegação; o harness reduz o navegar às cegas). Antes só
+    # o impl recebia; o refiner navegava quase cego (medido: 0 code-intel). Best-effort (server
+    # mudo → ""). Fora da thread do evento (síncrono) via to_thread.
+    if code_intel:
+        brief = await asyncio.to_thread(code_intel_brief, f"/work/{run.repo}")
+        if brief:
+            contexto += "\n\n" + brief
 
     # (b) DoR shift-left no refino: o motor VALIDA o próprio rascunho antes de propor e, se
     # reprovar, recebe o motivo (missing) e corrige — sem round-trip humano (determinismo primeiro).

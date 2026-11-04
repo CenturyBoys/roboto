@@ -24,13 +24,19 @@ from roboto.agents.review import (
 )
 from roboto.app.autoformat import autoformat
 from roboto.app.code_intel_brief import code_intel_brief
+from roboto.app.code_intel_diag import code_intel_diagnostics
 from roboto.app.comment_poll import BOT_MARKER
 from roboto.app.correction import CycleResult, correction_cycle
 from roboto.app.deps import blocked_by
 from roboto.app.engine_loop import guarded_events
+from roboto.app.git_ops import GitError
 from roboto.app.jev_guard import assess as assess_risk
 from roboto.app.memory import recall_block
-from roboto.app.repo_profile import build_repo_profile, read_agents_conventions
+from roboto.app.repo_profile import (
+    build_repo_profile,
+    read_agents_conventions,
+    sample_test_excerpt,
+)
 from roboto.app.secret_scan import SecretLeakError, scan_diff
 from roboto.app.task_class import TaskType, classificar_task
 from roboto.app.tiering import classificar_tier
@@ -50,6 +56,7 @@ _MAX_RUN_ATTEMPTS = 3  # teto de re-tentativas em erro transitório (B) antes de
 
 class GitOps(Protocol):
     async def prepare_branch(self, name: str) -> None: ...
+    async def reset_to_base(self, base: str) -> None: ...  # limpa /work p/ a base (isolamento #225)
     async def checkout_remote(self, name: str) -> None: ...  # entra na branch REMOTA do PR (B)
     async def commit_all(self, message: str) -> None: ...
     async def push(self, name: str) -> None: ...
@@ -125,6 +132,21 @@ def _secret_fix_prompt(resumo: str) -> str:
         "literal por um PLACEHOLDER claramente falso (ex.: 'xxx.yyy.zzz', 'REDACTED') ou leia de "
         "variável de ambiente/fixture. Mantenha o resto da implementação. Em teste de "
         "redação, um token FAKE serve igual. Edite os arquivos e pare (não faça commit nem push)."
+    )
+
+
+_DIAG_FIX_ATTEMPTS = 2  # correções harness-driven por diagnostics do code-intel (#226)
+# extensões p/ inferir a linguagem no validate_build (suporta ts/js/py/rust/csharp/dart). Ampliar
+# p/ inferência pelo tipo do repo (go, etc.) é follow-up (#227).
+_DIAG_EXTS = (".ts", ".tsx", ".js", ".jsx", ".py", ".rs", ".cs", ".dart")
+
+
+def _diag_fix_prompt(diag: str) -> str:
+    return (
+        "O build AINDA tem erros (diagnostics do code-intel, no disco). Corrija EXATAMENTE estes — "
+        "não chute, não reescreva o que já está certo:\n\n"
+        f"{diag}\n\n"
+        "Edite os arquivos e pare (não faça commit nem push)."
     )
 
 
@@ -235,6 +257,10 @@ async def run_pr_cycle(
     # os checks como um dev, sem flailar em "como rodar teste" / sem gambiarra de .cjs.
     profile = build_repo_profile(workdir)
     profile_block = f"\n{profile}\n" if profile else ""
+    # teste-exemplo (G/#224): mostra o PADRÃO de teste do repo pra o motor NÃO redescobrir "como os
+    # testes são feitos" (medido no feed: gastava turno explorando). Determinístico, best-effort.
+    test_sample = sample_test_excerpt(workdir, hints=f"{pr_title} {contexto}")
+    test_block = f"\n{test_sample}\n" if test_sample else ""
     # code-intel brief (F): injeta o catálogo de tools semânticas (puxado do PRÓPRIO MCP server) +
     # mapa do repo, pra o motor navegar/editar com code-intel em vez de grep/sed/Read (medido: ele
     # subusa). Best-effort e gated pelo mesmo flag do MCP do motor; server mudo → "".
@@ -274,7 +300,7 @@ async def run_pr_cycle(
             )
     base_prompt = (
         f"Implemente a issue {run.issue_id} no repo {run.repo} (cwd {workdir}).{contexto}"
-        f"{profile_block}{ci_block}{conventions_block}{memory_block}{aprendizado_block}\n"
+        f"{profile_block}{test_block}{ci_block}{conventions_block}{memory_block}{aprendizado_block}\n"
         "ESCOPO MÍNIMO: entregue APENAS o que os Critérios de aceite da issue pedem — nada além. "
         "NÃO crie documentos/arquivos extras (ex.: breakdown ou 'update' de épico), NÃO edite o "
         "épico nem outras issues, NÃO toque em código não relacionado, NÃO commite lockfile/deps "
@@ -282,8 +308,12 @@ async def run_pr_cycle(
         "apenas MENCIONE no fim — NÃO crie arquivo nem issue por conta própria. "
         "Siga TODAS as regras do AGENTS.md — inclusive doc-in-sync (§5): mudança de regra/domínio "
         "exige atualizar a doc (.md/docs/ADR) no MESMO commit. "
-        "Rode os checks do repo (lint, typecheck, testes, doc-sync) e corrija até passarem "
-        "ANTES de concluir. "
+        "Faça UM self-check rápido: lint/typecheck + o TESTE do(s) arquivo(s) que você mudou (ex.: "
+        "`vitest run <caminho-do-seu-teste>`). Se passar, ótimo; se o ambiente NÃO deixar rodar "
+        "(infra/DB ausente, lentidão) ou um teste PRÉ-EXISTENTE falhar por infra, NÃO insista — "
+        "CONCLUA e deixe os arquivos prontos (evita estourar o limite de "
+        "turnos). NÃO rode a suíte inteira (`pnpm test`). A validação final é o verify do harness "
+        "(tipos) + a CI do PR (suíte completa com infra). "
         "NÃO abra PR, NÃO rode `git push`, `gh pr create` nem a API de PR do GitHub — o FLEET faz "
         "isso por você (commit + push + PR). Só IMPLEMENTE e deixe os arquivos prontos; abrir PR "
         "aqui cria PR DUPLICADO. "
@@ -339,9 +369,35 @@ async def run_pr_cycle(
         prompt = base_prompt
         if feedback:
             prompt += "\nCorrija os pontos do review:\n- " + "\n- ".join(feedback)
+        else:
+            # isolamento por run (#225): limpa o /work p/ a base ANTES do motor — senão herda a
+            # árvore do run anterior no /work compartilhado (PR contaminado, ex.: #250). Só na 1ª
+            # tentativa: correções (feedback) editam SOBRE o trabalho já feito, não resetam.
+            await git.reset_to_base(base)
         # correção RESUMINDO a sessão do coder: 1ª tentativa é sessão nova; correções resumem.
         await _engine_turn(prompt, coder.get("native") if feedback else None)
         await git.prepare_branch(branch)
+        # diagnostics HARNESS-DRIVEN (#226): o motor subusa o code-intel p/ entender erro de build
+        # (medido #46: tsc no braço). O harness roda validate_build e injeta os erros ESTRUTURADOS
+        # p/ o motor corrigir com precisão. Gated + BEST-EFFORT (nunca derruba o ciclo) + bounded.
+        if os.environ.get("ROBOTO_CODE_INTEL", "1") not in ("0", "false", "no"):
+            try:
+                # árvore de trabalho (não o diff commitado, vazio pré-commit — bug #226)
+                changed = await git.working_changes()  # type: ignore[attr-defined]
+                amostra = next((f for f in changed if f.endswith(_DIAG_EXTS)), "")
+                diag = await asyncio.to_thread(code_intel_diagnostics, workdir, amostra)
+                dtries = 0
+                while diag and dtries < _DIAG_FIX_ATTEMPTS:
+                    dtries += 1
+                    if store is not None and now is not None:
+                        await store.append_session_event(
+                            run.tenant, run.id, "message", now,
+                            text=f"↻ diagnostics (code-intel): corrigindo build (try {dtries}).",
+                        )
+                    await _engine_turn(_diag_fix_prompt(diag), coder.get("native"))
+                    diag = await asyncio.to_thread(code_intel_diagnostics, workdir, amostra)
+            except Exception:  # noqa: BLE001 — diagnostics é best-effort; não derruba o ciclo
+                pass
         # auto-format (F/B, determinismo): o motor costuma esquecer de formatar e o pre-commit hook
         # (prettier --check) barra o commit. O harness formata os arquivos alterados pré-commit.
         formatados = await autoformat(workdir)
@@ -350,7 +406,23 @@ async def run_pr_cycle(
                 run.tenant, run.id, "message", now,
                 text=f"🎨 auto-format: {len(formatados)} arquivo(s) formatado(s) antes do commit.",
             )
-        await git.commit_all(title if not feedback else f"{title} (correção)")
+        # commit resiliente ao hook de formatação (#228): se o pre-commit `prettier --check` barrar,
+        # formata e re-tenta UMA vez — o hook é a fonte da verdade (cobre o autoformat proativo não
+        # ter pego, ex.: #51 morreu assim). Outros erros do hook (lint/test) propagam normalmente.
+        _msg = title if not feedback else f"{title} (correção)"
+        try:
+            await git.commit_all(_msg)
+        except GitError as _exc:
+            low = str(_exc).lower()
+            if "prettier" not in low and "code style" not in low:
+                raise
+            refmt = await autoformat(workdir)
+            if refmt and store is not None and now is not None:
+                await store.append_session_event(
+                    run.tenant, run.id, "message", now,
+                    text=f"🎨 commit barrado por formatação → reformatei {len(refmt)} e re-tento.",
+                )
+            await git.commit_all(_msg)  # re-tenta; se barrar de novo, propaga
         # H: secret-scan com AUTO-CORREÇÃO — bloqueia o push e devolve ao motor p/ trocar o literal
         # por placeholder/env, re-escaneando. Esgotou → aborta (o push nunca sai com segredo).
         leak = await _guard_secrets(git, base, store=store, run=run, now=now)
@@ -563,8 +635,9 @@ def _correct_prompt(repo: str, pr_number: int, workdir: str, issues: list[str]) 
     return (
         f"Corrija os APONTAMENTOS do review no PR #{pr_number} do repo {repo} (cwd {workdir}). "
         "Você está NA branch do PR, com o código já implementado — faça SÓ os ajustes abaixo, sem "
-        "reimplementar nem sair do escopo. Rode os checks do repo e corrija até passarem ANTES de "
-        "concluir. Pontos do review:\n- " + "\n- ".join(issues)
+        "reimplementar nem sair do escopo. Self-check rápido (lint/typecheck + teste SÓ do que "
+        "mexeu, não a suíte); se o ambiente não deixar rodar (infra/DB), NÃO insista — conclua. "
+        "Pontos do review:\n- " + "\n- ".join(issues)
     )
 
 

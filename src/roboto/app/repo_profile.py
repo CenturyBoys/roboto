@@ -10,6 +10,9 @@ teste" (era o que fazia ele inventar scripts `.cjs` e reinstalar deps à toa).
 from __future__ import annotations
 
 import json
+import os
+import re
+from fnmatch import fnmatch
 from pathlib import Path
 
 _ENV_STATUS = Path("/tmp/env-status")  # gravado pelo bootstrap: "✅ PRONTO ..." / "❌ FALHOU ..."
@@ -95,3 +98,80 @@ def build_repo_profile(workdir: str, *, env_status_path: Path = _ENV_STATUS) -> 
     if has_agents:
         lines.append("- Leia o AGENTS.md para as convenções do repo.")
     return "\n".join(lines)
+
+
+# --- teste-exemplo (G): o motor NÃO redescobre "como os testes são feitos" — o harness mostra -----
+
+_TEST_GLOBS = (
+    "test_*.py", "*_test.py", "*.test.ts", "*.spec.ts", "*.test.tsx",
+    "*.test.js", "*.spec.js", "*.test.jsx",
+)
+_SKIP_DIRS = frozenset({
+    "node_modules", ".git", "dist", "build", ".venv", "venv", "__pycache__",
+    "vendor", ".next", "coverage", ".turbo",
+})
+_TEST_SAMPLE_MAX = 1200
+
+
+def format_test_sample(rel_path: str, content: str, *, max_chars: int = _TEST_SAMPLE_MAX) -> str:
+    """Bloco do teste-exemplo (PURA, testável). Vazio se não há conteúdo."""
+    excerpt = content.strip()
+    if not excerpt:
+        return ""
+    if len(excerpt) > max_chars:
+        excerpt = excerpt[:max_chars].rstrip() + "\n… (truncado)"
+    return (
+        f"EXEMPLO DE TESTE DO REPO ({rel_path}) — SIGA ESTE PADRÃO (framework, estrutura, nomes, "
+        f"mocking); NÃO reinvente nem crie runner avulso:\n```\n{excerpt}\n```"
+    )
+
+
+def _test_files(root: Path, *, max_dirs: int = 3000, cap: int = 300) -> list[Path]:
+    """Lista testes (bounded): poda dirs pesados/ocultos; cap de dirs e de arquivos."""
+    out: list[Path] = []
+    seen = 0
+    for dirpath, dirnames, filenames in os.walk(root):
+        seen += 1
+        if seen > max_dirs or len(out) >= cap:
+            break
+        dirnames[:] = sorted(d for d in dirnames if d not in _SKIP_DIRS and not d.startswith("."))
+        for fn in sorted(filenames):
+            if any(fnmatch(fn, g) for g in _TEST_GLOBS):
+                out.append(Path(dirpath) / fn)
+    return out
+
+
+def _tokens(text: str) -> set[str]:
+    """Tokens de ≥3 chars (minúsculos) — casa termos da issue com partes do path do teste."""
+    return {t for t in re.split(r"[^a-z0-9]+", text.lower()) if len(t) >= 3}
+
+
+def _pick_test_file(files: list[Path], root: Path, hints: str) -> Path | None:
+    """Escolhe por RELEVÂNCIA: sobreposição de tokens do path do teste com os termos da issue.
+    Empate / sem hints → determinístico (mais raso, depois alfabético) = o 1º estável de antes."""
+    if not files:
+        return None
+    hint_tokens = _tokens(hints)
+
+    def key(p: Path) -> tuple[int, int, str]:
+        rel = str(p.relative_to(root))
+        score = len(_tokens(rel) & hint_tokens) if hint_tokens else 0
+        return (-score, len(p.parts), rel)  # relevância desc → raso → alfabético
+
+    return sorted(files, key=key)[0]
+
+
+def sample_test_excerpt(workdir: str, *, hints: str = "", max_chars: int = _TEST_SAMPLE_MAX) -> str:
+    """Acha 1 teste-exemplo e devolve o bloco pro prompt. Com `hints` (texto da issue), prefere o
+    teste mais RELEVANTE (path casa com os termos da issue); sem hints, o mais raso/alfabético.
+    Best-effort ("" se não há teste)."""
+    root = Path(workdir)
+    chosen = _pick_test_file(_test_files(root), root, hints)
+    if chosen is None:
+        return ""
+    try:
+        content = chosen.read_text(errors="replace")
+        rel = str(chosen.relative_to(root))
+    except (OSError, ValueError):
+        return ""
+    return format_test_sample(rel, content, max_chars=max_chars)

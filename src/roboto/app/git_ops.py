@@ -48,6 +48,17 @@ class SubprocessGit:
         # checked: se o checkout falhar, commit/push iriam pra branch errada em silêncio
         await self._git_checked("checkout", "-B", name)
 
+    async def reset_to_base(self, base: str) -> None:
+        """Limpa o /work para a BASE — chamar ANTES do motor editar (isolamento por run, #225).
+
+        /work é compartilhado entre runs (lock é por (tenant, issue)); sem isto um run HERDA a
+        árvore suja do anterior → PR contaminado (ex.: PR #250 saiu com o ADR do run do #243).
+        `reset --hard` zera o tracked p/ a base; `clean -fd` remove o untracked (arquivos novos do
+        run anterior). NÃO chamar depois do motor (apagaria as edições dele)."""
+        await self._git_checked("fetch", "origin", base)
+        await self._git_checked("reset", "--hard", f"origin/{base}")
+        await self._git_checked("clean", "-fd")
+
     async def checkout_remote(self, name: str) -> None:
         """Traz a branch REMOTA e entra NELA — p/ corrigir um PR já aberto (B). NÃO reseta p/ a
         base: o motor edita sobre o estado atual do PR. Sem isto, um `checkout -B` sobre um clone
@@ -84,6 +95,19 @@ class SubprocessGit:
         """Arquivos alterados na branch vs a base (p/ o verify determinístico focar só neles)."""
         out = await self._git_out("diff", "--name-only", f"origin/{base}...HEAD")
         return [ln for ln in out.splitlines() if ln.strip()]
+
+    async def working_changes(self) -> list[str]:
+        """Arquivos alterados na ÁRVORE DE TRABALHO, INCLUINDO untracked (`git status --porcelain`).
+        Usar ANTES do 1º commit — `changed_files` (diff commitado) vem vazio aí (#226)."""
+        out = await self._git_out("status", "--porcelain")
+        files: list[str] = []
+        for ln in out.splitlines():
+            p = ln[3:].strip()  # "XY path"
+            if "->" in p:  # rename: "antigo -> novo"
+                p = p.split("->")[-1].strip()
+            if p:
+                files.append(p.strip('"'))
+        return files
 
     async def show(self, ref: str, path: str) -> str:
         """Conteúdo do arquivo num ref (ex.: a base); "" se não existe lá (arquivo novo)."""
