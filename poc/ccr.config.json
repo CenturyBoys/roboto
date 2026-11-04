@@ -6,15 +6,15 @@
       "name": "openrouter",
       "api_base_url": "https://openrouter.ai/api/v1/chat/completions",
       "api_key": "${OPENROUTER_API_KEY}",
-      "models": ["google/gemini-3.1-flash-lite", "qwen/qwen3-coder-next", "qwen/qwen3-coder-flash", "deepseek/deepseek-r1-0528", "anthropic/claude-sonnet-4.6", "z-ai/glm-4.6"],
+      "models": ["qwen/qwen3-coder-30b-a3b-instruct", "qwen/qwen3-coder-flash", "z-ai/glm-4.5-air", "z-ai/glm-4.6", "openai/gpt-oss-120b", "google/gemini-3.1-flash-lite", "qwen/qwen3-coder-next", "deepseek/deepseek-r1-0528", "anthropic/claude-sonnet-4.6"],
       "transformer": { "use": ["openrouter"] }
     }
   ],
   "Router": {
-    "default": "openrouter,google/gemini-3.1-flash-lite",
-    "background": "openrouter,google/gemini-3.1-flash-lite",
-    "think": "openrouter,google/gemini-3.1-flash-lite",
-    "longContext": "openrouter,google/gemini-3.1-flash-lite",
+    "default": "openrouter,qwen/qwen3-coder-30b-a3b-instruct",
+    "background": "openrouter,qwen/qwen3-coder-30b-a3b-instruct",
+    "think": "openrouter,qwen/qwen3-coder-30b-a3b-instruct",
+    "longContext": "openrouter,qwen/qwen3-coder-flash",
     "longContextThreshold": 60000
   }
 }

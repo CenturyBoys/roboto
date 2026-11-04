@@ -98,6 +98,49 @@ saída muito menor — é o que justifica reservar Claude só para o topo.
 3. Pinar o **modelo mais barato que passa o limiar de qualidade** da etapa (right-sizing).
 4. **Re-rodar periodicamente** — o ranking vira rápido; o mapa é **vivo**, não fixo.
 
+## Caminho self-host (ambiente local futuro) + validação via OpenRouter
+
+> Contexto (decisão de direção, 2026-11-04): além do tier aberto na nuvem, queremos no futuro um
+> **ambiente local com ~128 GB de VRAM** rodando nossos próprios modelos; o fleet consome esses
+> endpoints. "Local vs nuvem" **não é reescrita** — todo motor local (vLLM, SGLang, llama.cpp,
+> Ollama, LM Studio) expõe **API OpenAI-compatible**, igual ao OpenRouter. Troca = `base_url` + slug
+> no ccr. Isso habilita roteamento **híbrido por papel e custo**: alto volume (impl/refino) → local
+> (custo marginal ~zero); decisão cara (review/juiz) → local de raciocínio **ou** fallback nuvem.
+
+**Regra de capacidade:** pesos ~4-bit ≈ 0,6 GB/1B; 8-bit ≈ 1 GB/1B. MoE ocupa memória pelo
+**total** de parâmetros, mas roda na **velocidade dos ativos**. Sobra ainda serve pro KV cache.
+
+**Candidatos que cabem em 128 GB (com folga de contexto):**
+
+| Papel | Modelo | Tamanho (~Q4) | Nota |
+|---|---|---|---|
+| Motor (impl/refino) | **Qwen3-Coder-30B-A3B** | MoE 30B/3B ativo (~20 GB) | Rápido, coding + tool-calling; melhor custo/benefício local |
+| Motor (denso) | Qwen2.5-Coder-32B | 32B (~20 GB) | Forte em código no tamanho |
+| Motor (agêntico) | Devstral Small (Mistral) | 24B (~15 GB) | Afinado p/ fluxo SWE/tool-use |
+| Motor/tudo-em-um | gpt-oss-120B | MoE 117B/5B (~65 GB) | Raciocínio + código fortes |
+| Review/juiz | **GLM-4.5-Air** | MoE 106B/12B (~60 GB) | Raciocínio híbrido + agêntico — régua de erros |
+| Review (leve) | QwQ-32B / DeepSeek-R1-Distill-Qwen-32B | 32B (~20 GB) | Raciocínio dedicado, footprint pequeno |
+
+**Não cabe em 128 GB → fica cloud-only (OpenRouter):** DeepSeek-R1/V3 full (671B), Qwen3-Coder-480B,
+Kimi K2 (~1T), Llama 4 Maverick (400B). São os "topo de linha abertos" — acesso por token quando a
+qualidade justifica.
+
+**Stack de inferência depende do hardware:** rig **NVIDIA** → vLLM/SGLang (throughput, FP8, batching
+— serve o fleet em paralelo); **Mac** (memória unificada) → MLX/llama.cpp/Ollama (simples, mas sem
+paralelismo real — 1 agente por vez). *(Pendente confirmar qual dos dois é o alvo.)*
+
+**Validar AGORA pelo OpenRouter (mesmo peso → migração local 1:1), slugs/preços 2026-11-04:**
+
+| Papel | Slug OpenRouter | Contexto | in / out (por Mtok) |
+|---|---|---|---|
+| Motor | `qwen/qwen3-coder-30b-a3b-instruct` | 262k | $0.15 / $0.60 |
+| Motor (1M ctx) | `qwen/qwen3-coder-flash` | 1M | $0.20 / $0.97 |
+| Review/juiz | `z-ai/glm-4.5-air` | 131k | $0.13 / $0.85 |
+| Review (comparação) | `z-ai/glm-4.6` | 205k | $0.50 / $2.00 |
+
+Ou seja: dá pra rodar o ciclo SDLC inteiro do PoC por centavos e pinar os modelos pelo golden set
+(acima) **antes** de investir em hardware local.
+
 ## Riscos
 - **Jev é vendor novo e vira dependência transversal (A/D/H/I)** → **isolar atrás de uma interface/
   adapter trocável**, manter fallback (judge frontier barato) e **validar nos nossos casos antes de
@@ -121,6 +164,8 @@ estruturadas + **`jev-guard`** como guardrail de tool call, com fallback de judg
 - [ ] Mapa operação→tier concreto (tabela por etapa do fleet).
 - [ ] Jev já liberado via OpenRouter (autorizado pelo CTO) — qual judge frontier fica de fallback?
 - [ ] Self-host de roteamento para projetos privados futuros?
+- [ ] Ambiente local ~128 GB: **rig NVIDIA (vLLM/SGLang) ou Mac (memória unificada)?** — muda o motor de inferência e o paralelismo do fleet.
+- [ ] Rodar golden set em `qwen/qwen3-coder-30b-a3b-instruct` (motor) e `z-ai/glm-4.5-air` (review) via OpenRouter antes de comprar hardware.
 
 ---
 
