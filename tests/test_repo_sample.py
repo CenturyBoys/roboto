@@ -41,3 +41,17 @@ def test_sample_test_excerpt_vazio_sem_teste(tmp_path: Path) -> None:
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "main.py").write_text("print('hi')")
     assert sample_test_excerpt(str(tmp_path)) == ""
+
+
+def test_sample_test_excerpt_escolhe_por_relevancia(tmp_path: Path) -> None:
+    # dois testes; o hint da issue (menciona "payments") deve puxar o de payments, não o de auth
+    (tmp_path / "auth").mkdir()
+    (tmp_path / "auth" / "test_login.py").write_text("def test_login():\n    assert True\n")
+    (tmp_path / "payments").mkdir()
+    (tmp_path / "payments" / "test_charge.py").write_text("def test_charge():\n    assert True\n")
+
+    rel = sample_test_excerpt(str(tmp_path), hints="Implementar reembolso no módulo de payments")
+    assert "payments/test_charge.py" in rel
+    # sem hint, cai no determinístico (auth vem antes alfabeticamente)
+    neutro = sample_test_excerpt(str(tmp_path))
+    assert "auth/test_login.py" in neutro

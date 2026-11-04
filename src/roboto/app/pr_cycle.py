@@ -241,7 +241,7 @@ async def run_pr_cycle(
     profile_block = f"\n{profile}\n" if profile else ""
     # teste-exemplo (G/#224): mostra o PADRÃO de teste do repo pra o motor NÃO redescobrir "como os
     # testes são feitos" (medido no feed: gastava turno explorando). Determinístico, best-effort.
-    test_sample = sample_test_excerpt(workdir)
+    test_sample = sample_test_excerpt(workdir, hints=f"{pr_title} {contexto}")
     test_block = f"\n{test_sample}\n" if test_sample else ""
     # code-intel brief (F): injeta o catálogo de tools semânticas (puxado do PRÓPRIO MCP server) +
     # mapa do repo, pra o motor navegar/editar com code-intel em vez de grep/sed/Read (medido: ele

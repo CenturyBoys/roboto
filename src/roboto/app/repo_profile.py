@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from fnmatch import fnmatch
 from pathlib import Path
 
@@ -125,29 +126,52 @@ def format_test_sample(rel_path: str, content: str, *, max_chars: int = _TEST_SA
     )
 
 
-def _find_test_file(root: Path, *, max_dirs: int = 2000) -> Path | None:
-    """Teste representativo mais RASO (determinístico): poda dirs pesados/ocultos; cap de dirs."""
+def _test_files(root: Path, *, max_dirs: int = 3000, cap: int = 300) -> list[Path]:
+    """Lista testes (bounded): poda dirs pesados/ocultos; cap de dirs e de arquivos."""
+    out: list[Path] = []
     seen = 0
     for dirpath, dirnames, filenames in os.walk(root):
         seen += 1
-        if seen > max_dirs:
+        if seen > max_dirs or len(out) >= cap:
             break
         dirnames[:] = sorted(d for d in dirnames if d not in _SKIP_DIRS and not d.startswith("."))
         for fn in sorted(filenames):
             if any(fnmatch(fn, g) for g in _TEST_GLOBS):
-                return Path(dirpath) / fn
-    return None
+                out.append(Path(dirpath) / fn)
+    return out
 
 
-def sample_test_excerpt(workdir: str, *, max_chars: int = _TEST_SAMPLE_MAX) -> str:
-    """Acha 1 teste-exemplo do repo e devolve o bloco pro prompt. Best-effort ("" se não há)."""
+def _tokens(text: str) -> set[str]:
+    """Tokens de ≥3 chars (minúsculos) — casa termos da issue com partes do path do teste."""
+    return {t for t in re.split(r"[^a-z0-9]+", text.lower()) if len(t) >= 3}
+
+
+def _pick_test_file(files: list[Path], root: Path, hints: str) -> Path | None:
+    """Escolhe por RELEVÂNCIA: sobreposição de tokens do path do teste com os termos da issue.
+    Empate / sem hints → determinístico (mais raso, depois alfabético) = o 1º estável de antes."""
+    if not files:
+        return None
+    hint_tokens = _tokens(hints)
+
+    def key(p: Path) -> tuple[int, int, str]:
+        rel = str(p.relative_to(root))
+        score = len(_tokens(rel) & hint_tokens) if hint_tokens else 0
+        return (-score, len(p.parts), rel)  # relevância desc → raso → alfabético
+
+    return sorted(files, key=key)[0]
+
+
+def sample_test_excerpt(workdir: str, *, hints: str = "", max_chars: int = _TEST_SAMPLE_MAX) -> str:
+    """Acha 1 teste-exemplo e devolve o bloco pro prompt. Com `hints` (texto da issue), prefere o
+    teste mais RELEVANTE (path casa com os termos da issue); sem hints, o mais raso/alfabético.
+    Best-effort ("" se não há teste)."""
     root = Path(workdir)
-    found = _find_test_file(root)
-    if found is None:
+    chosen = _pick_test_file(_test_files(root), root, hints)
+    if chosen is None:
         return ""
     try:
-        content = found.read_text(errors="replace")
-        rel = str(found.relative_to(root))
+        content = chosen.read_text(errors="replace")
+        rel = str(chosen.relative_to(root))
     except (OSError, ValueError):
         return ""
     return format_test_sample(rel, content, max_chars=max_chars)
