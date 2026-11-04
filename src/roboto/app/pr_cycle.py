@@ -24,6 +24,7 @@ from roboto.agents.review import (
 )
 from roboto.app.autoformat import autoformat
 from roboto.app.code_intel_brief import code_intel_brief
+from roboto.app.code_intel_diag import code_intel_diagnostics
 from roboto.app.comment_poll import BOT_MARKER
 from roboto.app.correction import CycleResult, correction_cycle
 from roboto.app.deps import blocked_by
@@ -130,6 +131,21 @@ def _secret_fix_prompt(resumo: str) -> str:
         "literal por um PLACEHOLDER claramente falso (ex.: 'xxx.yyy.zzz', 'REDACTED') ou leia de "
         "variável de ambiente/fixture. Mantenha o resto da implementação. Em teste de "
         "redação, um token FAKE serve igual. Edite os arquivos e pare (não faça commit nem push)."
+    )
+
+
+_DIAG_FIX_ATTEMPTS = 2  # correções harness-driven por diagnostics do code-intel (#226)
+# extensões p/ inferir a linguagem no validate_build (suporta ts/js/py/rust/csharp/dart). Ampliar
+# p/ inferência pelo tipo do repo (go, etc.) é follow-up (#227).
+_DIAG_EXTS = (".ts", ".tsx", ".js", ".jsx", ".py", ".rs", ".cs", ".dart")
+
+
+def _diag_fix_prompt(diag: str) -> str:
+    return (
+        "O build AINDA tem erros (diagnostics do code-intel, no disco). Corrija EXATAMENTE estes — "
+        "não chute, não reescreva o que já está certo:\n\n"
+        f"{diag}\n\n"
+        "Edite os arquivos e pare (não faça commit nem push)."
     )
 
 
@@ -356,6 +372,26 @@ async def run_pr_cycle(
         # correção RESUMINDO a sessão do coder: 1ª tentativa é sessão nova; correções resumem.
         await _engine_turn(prompt, coder.get("native") if feedback else None)
         await git.prepare_branch(branch)
+        # diagnostics HARNESS-DRIVEN (#226): o motor subusa o code-intel p/ entender erro de build
+        # (medido #46: tsc no braço). O harness roda validate_build e injeta os erros ESTRUTURADOS
+        # p/ o motor corrigir com precisão. Gated + BEST-EFFORT (nunca derruba o ciclo) + bounded.
+        if os.environ.get("ROBOTO_CODE_INTEL", "1") not in ("0", "false", "no"):
+            try:
+                changed = await git.changed_files(base)  # type: ignore[attr-defined]
+                amostra = next((f for f in changed if f.endswith(_DIAG_EXTS)), "")
+                diag = await asyncio.to_thread(code_intel_diagnostics, workdir, amostra)
+                dtries = 0
+                while diag and dtries < _DIAG_FIX_ATTEMPTS:
+                    dtries += 1
+                    if store is not None and now is not None:
+                        await store.append_session_event(
+                            run.tenant, run.id, "message", now,
+                            text=f"↻ diagnostics (code-intel): corrigindo build (try {dtries}).",
+                        )
+                    await _engine_turn(_diag_fix_prompt(diag), coder.get("native"))
+                    diag = await asyncio.to_thread(code_intel_diagnostics, workdir, amostra)
+            except Exception:  # noqa: BLE001 — diagnostics é best-effort; não derruba o ciclo
+                pass
         # auto-format (F/B, determinismo): o motor costuma esquecer de formatar e o pre-commit hook
         # (prettier --check) barra o commit. O harness formata os arquivos alterados pré-commit.
         formatados = await autoformat(workdir)
