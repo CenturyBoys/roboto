@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from pathlib import Path
 
 # extensões que o prettier formata (p/ não chamar o prettier em binário/imagem/etc.)
@@ -51,6 +52,32 @@ def prettier_targets(changed: list[str]) -> list[str]:
     return out
 
 
+def _nearest_workspace(workdir: str, file: str) -> str:
+    """Workspace do arquivo = dir ancestral mais próximo com `package.json` (relativo ao workdir).
+    '' = raiz. No monorepo é onde vive o prettier/config que o hook usa. Pura (só checa arquivo)."""
+    root = Path(workdir)
+    d = (root / file).parent
+    while True:
+        if (d / "package.json").exists():
+            rel = os.path.relpath(d, root)
+            return "" if rel == "." else rel
+        if d.resolve() == root.resolve() or root.resolve() not in d.resolve().parents:
+            return ""
+        d = d.parent
+
+
+def prettier_groups(workdir: str, targets: list[str]) -> dict[str, list[str]]:
+    """Agrupa os alvos pelo WORKSPACE (monorepo #228): roda o prettier de cada workspace, com os
+    paths relativos a ele — senão o prettier da raiz não casa com a config do workspace e o hook
+    `--check` barra o commit. Chave '' = raiz. Pura."""
+    groups: dict[str, list[str]] = {}
+    for f in targets:
+        ws = _nearest_workspace(workdir, f)
+        rel = os.path.relpath(f, ws) if ws else f
+        groups.setdefault(ws, []).append(rel)
+    return groups
+
+
 async def _changed_files(workdir: str) -> list[str]:
     proc = await asyncio.create_subprocess_exec(
         "git", "status", "--porcelain", cwd=workdir,
@@ -76,11 +103,18 @@ async def autoformat(workdir: str) -> list[str]:
         targets = prettier_targets(await _changed_files(workdir))
         if not targets:
             return []
-        proc = await asyncio.create_subprocess_exec(
-            "pnpm", "exec", "prettier", "--write", "--ignore-unknown", *targets,
-            cwd=workdir, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-        )
-        await proc.communicate()
-        return targets if (proc.returncode or 0) == 0 else []
+        # monorepo (#228): roda o prettier POR workspace, no cwd dele — resolve o binário + a config
+        # locais (a mesma do pre-commit `--check`). Da raiz não casava → o hook barrava o commit.
+        done: list[str] = []
+        for ws, files in prettier_groups(workdir, targets).items():
+            cwd = str(Path(workdir) / ws) if ws else workdir
+            proc = await asyncio.create_subprocess_exec(
+                "pnpm", "exec", "prettier", "--write", "--ignore-unknown", *files,
+                cwd=cwd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            )
+            await proc.communicate()
+            if (proc.returncode or 0) == 0:
+                done.extend(f if not ws else f"{ws}/{f}" for f in files)
+        return done
     except Exception:  # noqa: BLE001 — best-effort: formatação nunca derruba o ciclo
         return []

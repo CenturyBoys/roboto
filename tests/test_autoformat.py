@@ -43,3 +43,15 @@ async def test_autoformat_noop_sem_prettier(tmp_path: Path) -> None:
     # repo sem prettier → não tenta formatar, devolve [] (best-effort, não levanta)
     (tmp_path / "package.json").write_text(json.dumps({"name": "x"}), encoding="utf-8")
     assert await autoformat(str(tmp_path)) == []
+
+
+def test_prettier_groups_monorepo(tmp_path: Path) -> None:
+    # #228: arquivo em apps/web/ agrupa no workspace (path relativo a ele); raiz fica em ''
+    (tmp_path / "package.json").write_text("{}")
+    (tmp_path / "apps" / "web").mkdir(parents=True)
+    (tmp_path / "apps" / "web" / "package.json").write_text("{}")
+    from roboto.app.autoformat import prettier_groups
+
+    g = prettier_groups(str(tmp_path), ["apps/web/src/x.ts", "scripts/root.ts"])
+    assert g["apps/web"] == ["src/x.ts"]  # workspace: path relativo ao workspace
+    assert g[""] == ["scripts/root.ts"]  # raiz (nenhum package.json mais próximo que a raiz)
