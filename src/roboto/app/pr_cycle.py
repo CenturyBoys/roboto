@@ -309,8 +309,8 @@ async def run_pr_cycle(
         "exige atualizar a doc (.md/docs/ADR) no MESMO commit. "
         "Faça UM self-check rápido: lint/typecheck + o TESTE do(s) arquivo(s) que você mudou (ex.: "
         "`vitest run <caminho-do-seu-teste>`). Se passar, ótimo; se o ambiente NÃO deixar rodar "
-        "(infra/DB ausente, lentidão) ou um teste PRÉ-EXISTENTE falhar por infra, **NÃO insista nem "
-        "fique reexecutando** — CONCLUA e deixe os arquivos prontos (evita estourar o limite de "
+        "(infra/DB ausente, lentidão) ou um teste PRÉ-EXISTENTE falhar por infra, **NÃO insista** — "
+        "CONCLUA e deixe os arquivos prontos (evita estourar o limite de "
         "turnos). NÃO rode a suíte inteira (`pnpm test`). A validação final é o verify do harness "
         "(tipos) + a CI do PR (suíte completa com infra). "
         "NÃO abra PR, NÃO rode `git push`, `gh pr create` nem a API de PR do GitHub — o FLEET faz "
@@ -618,8 +618,8 @@ def _correct_prompt(repo: str, pr_number: int, workdir: str, issues: list[str]) 
     return (
         f"Corrija os APONTAMENTOS do review no PR #{pr_number} do repo {repo} (cwd {workdir}). "
         "Você está NA branch do PR, com o código já implementado — faça SÓ os ajustes abaixo, sem "
-        "reimplementar nem sair do escopo. Self-check rápido (lint/typecheck + teste SÓ dos arquivos "
-        "que mexeu, não a suíte); se o ambiente não deixar rodar (infra/DB), NÃO insista — conclua. "
+        "reimplementar nem sair do escopo. Self-check rápido (lint/typecheck + teste SÓ do que "
+        "mexeu, não a suíte); se o ambiente não deixar rodar (infra/DB), NÃO insista — conclua. "
         "Pontos do review:\n- " + "\n- ".join(issues)
     )
 
