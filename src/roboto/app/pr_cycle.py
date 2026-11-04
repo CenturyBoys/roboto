@@ -377,7 +377,8 @@ async def run_pr_cycle(
         # p/ o motor corrigir com precisão. Gated + BEST-EFFORT (nunca derruba o ciclo) + bounded.
         if os.environ.get("ROBOTO_CODE_INTEL", "1") not in ("0", "false", "no"):
             try:
-                changed = await git.changed_files(base)  # type: ignore[attr-defined]
+                # árvore de trabalho (não o diff commitado, vazio pré-commit — bug #226)
+                changed = await git.working_changes()  # type: ignore[attr-defined]
                 amostra = next((f for f in changed if f.endswith(_DIAG_EXTS)), "")
                 diag = await asyncio.to_thread(code_intel_diagnostics, workdir, amostra)
                 dtries = 0

@@ -96,6 +96,19 @@ class SubprocessGit:
         out = await self._git_out("diff", "--name-only", f"origin/{base}...HEAD")
         return [ln for ln in out.splitlines() if ln.strip()]
 
+    async def working_changes(self) -> list[str]:
+        """Arquivos alterados na ÁRVORE DE TRABALHO, INCLUINDO untracked (`git status --porcelain`).
+        Usar ANTES do 1º commit — `changed_files` (diff commitado) vem vazio aí (#226)."""
+        out = await self._git_out("status", "--porcelain")
+        files: list[str] = []
+        for ln in out.splitlines():
+            p = ln[3:].strip()  # "XY path"
+            if "->" in p:  # rename: "antigo -> novo"
+                p = p.split("->")[-1].strip()
+            if p:
+                files.append(p.strip('"'))
+        return files
+
     async def show(self, ref: str, path: str) -> str:
         """Conteúdo do arquivo num ref (ex.: a base); "" se não existe lá (arquivo novo)."""
         return await self._git_out("show", f"{ref}:{path}")

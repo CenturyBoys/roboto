@@ -25,3 +25,16 @@ def test_trunca_diag_longo() -> None:
     out = format_diagnostics(raw, max_chars=200)
     assert "truncado" in out
     assert len(out) < 500
+
+
+def test_descarta_erro_de_uso_da_tool() -> None:
+    # #226 bug: validate_build sem file/lang devolve "faltou 'lang' ou 'file'" — NÃO é diagnóstico
+    assert format_diagnostics("faltou 'lang' ou 'file' para inferir a linguagem") == ""
+    assert format_diagnostics("Error: missing 'file' attribute") == ""
+
+
+def test_diagnostics_sem_file_nem_lang_nao_chama_tool() -> None:
+    # guard: sem dica de linguagem, não chama validate_build (evita o erro de uso) → ""
+    from roboto.app.code_intel_diag import code_intel_diagnostics
+
+    assert code_intel_diagnostics("/tmp/qualquer", "") == ""

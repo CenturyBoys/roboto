@@ -45,6 +45,9 @@ class _FakeGit:
     async def reset_to_base(self, base: str) -> None:
         self.reset_bases.append(base)  # #225: isolamento por run (limpa /work p/ a base)
 
+    async def working_changes(self) -> list[str]:
+        return []  # #226: árvore de trabalho (fake vazio — diag best-effort)
+
     async def checkout_remote(self, name: str) -> None:
         self.checked_out.append(name)
 

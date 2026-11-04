@@ -19,13 +19,16 @@ _ERR_SIGNAL = re.compile(
     r"has no exported|does not exist",
     re.IGNORECASE,
 )
+# erro de USO do próprio validate_build (ex.: "faltou 'lang' ou 'file'") — NÃO é diagnóstico de
+# build; injetar isso mandou o motor caçar erro fantasma (#226 bug). Descarta.
+_USAGE_ERR = re.compile(r"(faltou|missing|requer|required|obrigat).{0,24}('?lang'?|'?file'?)", re.I)
 _DIAG_MAX = 1800
 
 
 def format_diagnostics(raw: str, *, max_chars: int = _DIAG_MAX) -> str:
-    """Bloco dos diagnostics (PURA, testável). Vazio se não há sinal de erro (build ok / ruído)."""
+    """Bloco dos diagnostics (PURA, testável). Vazio se build ok, ruído, ou erro de USO da tool."""
     raw = raw.strip()
-    if not raw or not _ERR_SIGNAL.search(raw):
+    if not raw or _USAGE_ERR.search(raw) or not _ERR_SIGNAL.search(raw):
         return ""
     if len(raw) > max_chars:
         raw = raw[:max_chars].rstrip() + "\n…(truncado)"
@@ -47,6 +50,8 @@ def code_intel_diagnostics(
 
     SÍNCRONO (use asyncio.to_thread). `file`/`lang` inferem a linguagem. Best-effort: handshake mudo
     ou exceção → "" (nunca derruba o ciclo)."""
+    if not file and not lang:
+        return ""  # sem dica de linguagem, validate_build só dá erro de uso — não chamar (#226)
     cli = None
     try:
         cli = _McpClient(cmd, project)
