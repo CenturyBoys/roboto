@@ -12,7 +12,7 @@ from __future__ import annotations
 
 # NOTA (#230, experimento 2026-11-04): testamos `alwaysLoad:true` (code-intel NÃO-deferido) — o
 # devstral AINDA deu code_intel=0. A causa é PREFERÊNCIA do modelo, não a deferência. Revertido:
-# alwaysLoad custava +tokens (catálogo upfront) sem ganho. Code-intel é harness-driven (verify/inject).
+# alwaysLoad custava +tokens (catálogo upfront) sem ganho. Code-intel segue harness-driven.
 _CODE_INTEL: dict[str, object] = {"command": "code-intel-mcp"}
 
 
