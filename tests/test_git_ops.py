@@ -73,3 +73,36 @@ async def test_prepare_branch_ok_local(tmp_path: Path) -> None:
     await git.prepare_branch("feature/x")  # não deve levantar
     branch = (await git._git_out("rev-parse", "--abbrev-ref", "HEAD")).strip()
     assert branch == "feature/x"
+
+
+def _init_origin_clone(tmp_path: Path) -> Path:
+    """Cria um 'origin' com a base 'develop' e clona em /work — cenário do runner."""
+    origin = tmp_path / "origin"
+    _init_repo(origin)
+    subprocess.run(["git", "-C", str(origin), "branch", "-M", "develop"], check=True)
+    work = tmp_path / "work"
+    subprocess.run(["git", "clone", "-q", str(origin), str(work)], check=True)
+    subprocess.run(["git", "-C", str(work), "config", "user.email", "t@t"], check=True)
+    subprocess.run(["git", "-C", str(work), "config", "user.name", "t"], check=True)
+    return work
+
+
+def _simulate_dirty_run(work: Path) -> None:
+    """Run anterior deixou no /work: 1 commit (tracked) + 1 arquivo untracked."""
+    (work / "adr.md").write_text("ADR do run A")
+    subprocess.run(["git", "-C", str(work), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(work), "commit", "-qm", "run A"], check=True)
+    (work / "lixo.txt").write_text("stray do run A")  # untracked
+
+
+async def test_reset_to_base_limpa_contaminacao_do_run_anterior(tmp_path: Path) -> None:
+    # #225: run A deixou commit + untracked no /work; reset_to_base volta à base LIMPA p/ o run B
+    work = _init_origin_clone(tmp_path)
+    _simulate_dirty_run(work)
+
+    git = SubprocessGit(str(work))
+    await git.reset_to_base("develop")
+
+    assert not (work / "adr.md").exists()  # tracked do run A: some no reset --hard
+    assert not (work / "lixo.txt").exists()  # untracked: some no clean -fd
+    assert (work / "a.txt").exists()  # base intacta

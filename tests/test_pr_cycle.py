@@ -37,9 +37,13 @@ class _FakeGit:
         self.diff_text = "diff --git a/x.py b/x.py\n+edit"
         self.reverts: list[tuple[str, str, str]] = []  # revert (H): (base, source, revert_branch)
         self.revert_ok = True  # o teste de conflito seta False
+        self.reset_bases: list[str] = []  # #225: bases p/ onde o run limpou o /work
 
     async def prepare_branch(self, name: str) -> None:
         self.branches.append(name)
+
+    async def reset_to_base(self, base: str) -> None:
+        self.reset_bases.append(base)  # #225: isolamento por run (limpa /work p/ a base)
 
     async def checkout_remote(self, name: str) -> None:
         self.checked_out.append(name)

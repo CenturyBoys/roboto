@@ -54,6 +54,7 @@ _MAX_RUN_ATTEMPTS = 3  # teto de re-tentativas em erro transitório (B) antes de
 
 class GitOps(Protocol):
     async def prepare_branch(self, name: str) -> None: ...
+    async def reset_to_base(self, base: str) -> None: ...  # limpa /work p/ a base (isolamento #225)
     async def checkout_remote(self, name: str) -> None: ...  # entra na branch REMOTA do PR (B)
     async def commit_all(self, message: str) -> None: ...
     async def push(self, name: str) -> None: ...
@@ -347,6 +348,11 @@ async def run_pr_cycle(
         prompt = base_prompt
         if feedback:
             prompt += "\nCorrija os pontos do review:\n- " + "\n- ".join(feedback)
+        else:
+            # isolamento por run (#225): limpa o /work p/ a base ANTES do motor — senão herda a
+            # árvore do run anterior no /work compartilhado (PR contaminado, ex.: #250). Só na 1ª
+            # tentativa: correções (feedback) editam SOBRE o trabalho já feito, não resetam.
+            await git.reset_to_base(base)
         # correção RESUMINDO a sessão do coder: 1ª tentativa é sessão nova; correções resumem.
         await _engine_turn(prompt, coder.get("native") if feedback else None)
         await git.prepare_branch(branch)

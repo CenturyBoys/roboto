@@ -48,6 +48,17 @@ class SubprocessGit:
         # checked: se o checkout falhar, commit/push iriam pra branch errada em silêncio
         await self._git_checked("checkout", "-B", name)
 
+    async def reset_to_base(self, base: str) -> None:
+        """Limpa o /work para a BASE — chamar ANTES do motor editar (isolamento por run, #225).
+
+        /work é compartilhado entre runs (lock é por (tenant, issue)); sem isto um run HERDA a
+        árvore suja do anterior → PR contaminado (ex.: PR #250 saiu com o ADR do run do #243).
+        `reset --hard` zera o tracked p/ a base; `clean -fd` remove o untracked (arquivos novos do
+        run anterior). NÃO chamar depois do motor (apagaria as edições dele)."""
+        await self._git_checked("fetch", "origin", base)
+        await self._git_checked("reset", "--hard", f"origin/{base}")
+        await self._git_checked("clean", "-fd")
+
     async def checkout_remote(self, name: str) -> None:
         """Traz a branch REMOTA e entra NELA — p/ corrigir um PR já aberto (B). NÃO reseta p/ a
         base: o motor edita sobre o estado atual do PR. Sem isto, um `checkout -B` sobre um clone
