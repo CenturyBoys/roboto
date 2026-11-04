@@ -16,6 +16,8 @@ from roboto.agents.review import check_issue_readiness
 from roboto.app.code_intel_brief import code_intel_brief
 from roboto.app.engine_loop import TurnOutcome, drive_turn
 from roboto.app.inbound import IssueLister, dispatch_inbound
+from roboto.app.memory import recall_block
+from roboto.app.repo_profile import read_agents_conventions
 from roboto.app.web_research import research_block, research_is_critical
 from roboto.channels.model import OutboundMessage
 from roboto.channels.port import Channel
@@ -147,6 +149,16 @@ async def process_refine_tick(
                 )
                 if block:
                     contexto += "\n\n" + block
+
+    # convenções do repo-alvo (E) + recall da memória (G): mesmas injeções do impl. O refino decide
+    # ESCOPO melhor conhecendo as convenções do repo e as decisões/fatos passados — harness injeta
+    # (determinístico), em vez de depender do modelo "ler o AGENTS.md" ou "lembrar". Best-effort.
+    conventions = read_agents_conventions(f"/work/{run.repo}")
+    if conventions:
+        contexto += "\n\n" + conventions
+    memory = await recall_block(store, tenant, f"{title} {contexto}"[:2000])
+    if memory:
+        contexto += "\n\nMEMÓRIA RELEVANTE (second brain — decisões/fatos anteriores):\n" + memory
 
     # code-intel brief (F): injeta catálogo de tools semânticas + repo_map no prompt do refino —
     # mesmo motivo do impl (modelo subusa navegação; o harness reduz o navegar às cegas). Antes só
