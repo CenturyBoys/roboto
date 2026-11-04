@@ -13,6 +13,7 @@ from datetime import datetime
 
 from roboto.agents.refiner import IssueDraft
 from roboto.agents.review import check_issue_readiness
+from roboto.app.code_intel_brief import code_intel_brief
 from roboto.app.engine_loop import TurnOutcome, drive_turn
 from roboto.app.inbound import IssueLister, dispatch_inbound
 from roboto.app.web_research import research_block, research_is_critical
@@ -118,6 +119,7 @@ async def process_refine_tick(
     tavily_key: str = "",
     gateway: ModelGateway | None = None,
     decider: Decider | None = None,
+    code_intel: bool = False,
 ) -> None:
     """Refino ENGINE-SCOPED (trilha O, Fatia 6/C): o motor LÊ o repo e propõe a issue fundamentada.
 
@@ -145,6 +147,15 @@ async def process_refine_tick(
                 )
                 if block:
                     contexto += "\n\n" + block
+
+    # code-intel brief (F): injeta catálogo de tools semânticas + repo_map no prompt do refino —
+    # mesmo motivo do impl (modelo subusa navegação; o harness reduz o navegar às cegas). Antes só
+    # o impl recebia; o refiner navegava quase cego (medido: 0 code-intel). Best-effort (server
+    # mudo → ""). Fora da thread do evento (síncrono) via to_thread.
+    if code_intel:
+        brief = await asyncio.to_thread(code_intel_brief, f"/work/{run.repo}")
+        if brief:
+            contexto += "\n\n" + brief
 
     # (b) DoR shift-left no refino: o motor VALIDA o próprio rascunho antes de propor e, se
     # reprovar, recebe o motivo (missing) e corrige — sem round-trip humano (determinismo primeiro).

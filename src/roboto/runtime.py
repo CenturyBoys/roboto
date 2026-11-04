@@ -228,7 +228,7 @@ async def _run_daemon(config: Config, store: Store) -> None:
                 refiner_engine, store, adapters.github,
                 tenant=config.tenant, chat_id=config.chat_id, now=_now,
                 tavily_key=config.tavily_api_key, gateway=adapters.gateway,
-                decider=refine_decider,
+                decider=refine_decider, code_intel=config.code_intel,
             )
 
         async def _run_claude() -> None:
