@@ -41,7 +41,7 @@ class ClaudeCodeEngine:
         # WIP salvo no /work) em vez de FAILED. 0 = sem resume (comportamento antigo).
         max_resumes: int = 0,
         # thinking budget: liga o reasoning (ccr mapeia thinking→reasoning). NECESSÁRIO p/ modelos
-        # reasoning-mandatory via OpenRouter (ex.: gpt-oss, senão 400 "reasoning cannot be disabled").
+        # reasoning-mandatory via OpenRouter (ex.: gpt-oss — senão 400 "cannot be disabled").
         max_thinking_tokens: int = 0,
     ) -> None:
         self._model = model
