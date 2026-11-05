@@ -17,6 +17,13 @@ from roboto.orchestrator.model import Engine, Error
 from roboto.result import Ok, Result
 
 
+def _is_max_turns(subtype: str, result: str) -> bool:
+    """O ResultMessage de erro é 'bateu o max_turns'? (p/ decidir resume vs FAILED, #232). Pura."""
+    s = (subtype or "").lower()
+    r = (result or "").lower()
+    return "max_turn" in s or "maximum number of turns" in r or "maximum turns" in r
+
+
 class ClaudeCodeEngine:
     def __init__(
         self,
@@ -30,6 +37,9 @@ class ClaudeCodeEngine:
         disallowed_tools: list[str] | None = None,
         mcp_servers: dict[str, object] | None = None,  # ex.: code-intel (ide_cc) — F, menos token
         max_turns: int = 0,  # teto de turnos (0 = sem teto); backstop contra sprawl/runaway (token)
+        # resume-on-max_turns (#232): ao bater o max_turns, RESUME a sessão (continua de onde parou,
+        # WIP salvo no /work) em vez de FAILED. 0 = sem resume (comportamento antigo).
+        max_resumes: int = 0,
     ) -> None:
         self._model = model
         self._permission_mode = permission_mode
@@ -37,6 +47,7 @@ class ClaudeCodeEngine:
         self._disallowed_tools = disallowed_tools or []
         self._mcp_servers = mcp_servers
         self._max_turns = max_turns
+        self._max_resumes = max_resumes
         self._spec: RunSpec | None = None
         self._session_id = ""
 
@@ -58,41 +69,62 @@ class ClaudeCodeEngine:
             return
         from claude_agent_sdk import ClaudeAgentOptions, query  # lazy; validar versão no PoC
 
-        options = ClaudeAgentOptions(
-            cwd=self._spec.workdir,
-            permission_mode=self._permission_mode,
-            allowed_tools=self._allowed_tools,
-            disallowed_tools=self._disallowed_tools,  # least privilege por task (H)
-            resume=self._spec.resume_session_id or None,
-            # modelo por-run (spec.model) tem precedência sobre o fixo do construtor: deixa o
-            # right-sizing escolher o tier (forte/barato) por tarefa (ver app/tiering.py).
-            model=(self._spec.model or self._model) or None,
-            mcp_servers=self._mcp_servers,  # code-intel (navegação semântica, F)
-            max_turns=self._max_turns or None,
-        )
-        async for message in query(prompt=self._spec.prompt, options=options):
-            name = type(message).__name__
-            if name == "AssistantMessage":
-                for block in getattr(message, "content", []) or []:
-                    if hasattr(block, "text"):
-                        yield EngineEvent(EngineEventKind.MESSAGE, text=str(block.text))
-                    elif hasattr(block, "name"):  # tool_use
-                        yield EngineEvent(EngineEventKind.TOOL_CALL, tool=str(block.name))
-            elif name == "ResultMessage":
-                self._session_id = str(getattr(message, "session_id", "") or "")
-                usage = getattr(message, "usage", {}) or {}
-                subtype = str(getattr(message, "subtype", "success"))
-                if subtype != "success":  # ResultMessage usa subtype, não is_error
-                    yield EngineEvent(
-                        EngineEventKind.FAILED,
-                        text=str(getattr(message, "result", "") or subtype),
+        resume_id = self._spec.resume_session_id or None
+        prompt = self._spec.prompt
+        resumes_left = self._max_resumes
+        tin_acc = tout_acc = 0  # tokens acumulam entre os segmentos (resume)
+        while True:
+            options = ClaudeAgentOptions(
+                cwd=self._spec.workdir,
+                permission_mode=self._permission_mode,
+                allowed_tools=self._allowed_tools,
+                disallowed_tools=self._disallowed_tools,  # least privilege por task (H)
+                resume=resume_id,
+                # modelo por-run (spec.model) tem precedência sobre o fixo do construtor: deixa o
+                # right-sizing escolher o tier (forte/barato) por tarefa (ver app/tiering.py).
+                model=(self._spec.model or self._model) or None,
+                mcp_servers=self._mcp_servers,  # code-intel (navegação semântica, F)
+                max_turns=self._max_turns or None,
+            )
+            hit_max = False
+            async for message in query(prompt=prompt, options=options):
+                name = type(message).__name__
+                if name == "AssistantMessage":
+                    for block in getattr(message, "content", []) or []:
+                        if hasattr(block, "text"):
+                            yield EngineEvent(EngineEventKind.MESSAGE, text=str(block.text))
+                        elif hasattr(block, "name"):  # tool_use
+                            yield EngineEvent(EngineEventKind.TOOL_CALL, tool=str(block.name))
+                elif name == "ResultMessage":
+                    self._session_id = str(getattr(message, "session_id", "") or "")
+                    usage = getattr(message, "usage", {}) or {}
+                    tin_acc += int(usage.get("input_tokens", 0) or 0)
+                    tout_acc += int(usage.get("output_tokens", 0) or 0)
+                    subtype = str(getattr(message, "subtype", "success"))
+                    result_text = str(getattr(message, "result", "") or "")
+                    can_resume = (
+                        resumes_left > 0
+                        and bool(self._session_id)
+                        and _is_max_turns(subtype, result_text)
                     )
-                else:
-                    yield EngineEvent(
-                        EngineEventKind.FINISHED,
-                        tokens_in=int(usage.get("input_tokens", 0) or 0),
-                        tokens_out=int(usage.get("output_tokens", 0) or 0),
-                    )
+                    if subtype == "success":
+                        yield EngineEvent(
+                            EngineEventKind.FINISHED, tokens_in=tin_acc, tokens_out=tout_acc
+                        )
+                    elif can_resume:
+                        hit_max = True  # RESUME (#232): não falha; WIP salvo no /work
+                    else:
+                        yield EngineEvent(EngineEventKind.FAILED, text=result_text or subtype)
+            if hit_max:
+                resumes_left -= 1
+                resume_id = self._session_id
+                prompt = (
+                    "Você bateu o limite de turnos ANTES de concluir, mas seu trabalho JÁ ESTÁ "
+                    "salvo no repo. CONTINUE de onde parou: NÃO recomece nem re-explore — finalize "
+                    "só o que falta (ajuste final + self-check rápido do que mudou) e termine."
+                )
+                continue
+            break
         # TODO(PoC): aprovação por ação (can_use_tool -> NEEDS_APPROVAL) e interrupção real
         # (ClaudeSDKClient.interrupt; query() não cancela). Ver N2/N3.
 

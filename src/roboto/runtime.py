@@ -181,7 +181,9 @@ async def _run_daemon(config: Config, store: Store) -> None:
         # max_turns=80: implementação é mais longa que o refino (editar + rodar checks + corrigir),
         # mas ainda um backstop contra flail infinito (ex.: loop tentando instalar deps).
         claude = ClaudeCodeEngine(
-            model=engine_model, permission_mode="bypassPermissions", mcp_servers=mcp, max_turns=80
+            model=engine_model, permission_mode="bypassPermissions", mcp_servers=mcp,
+            max_turns=120,  # folga p/ motor verborrágico (devstral explora muito); #232
+            max_resumes=2,  # ao bater o teto, RESUME e conclui (WIP no /work) em vez de FAILED
         )
         # motor dedicado ao refino (read-only por prompt): evita corrida com o ciclo de PR.
         # max_turns=60: refino é LER+PROPOR; o PROMPT força parar em ~10 consultas, mas issues de
