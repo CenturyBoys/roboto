@@ -150,6 +150,20 @@ def _diag_fix_prompt(diag: str) -> str:
     )
 
 
+_HOOK_FIX_ATTEMPTS = 2  # correções harness-driven quando um hook de pre-commit barra o commit
+
+
+def _hook_fix_prompt(saida: str) -> str:
+    return (
+        "O COMMIT foi BLOQUEADO por um hook de pre-commit do repo (regra do projeto, INEGOCIÁVEL). "
+        "Abaixo a saída do hook — faça EXATAMENTE o que ele exige (ex.: criar/atualizar o doc da "
+        "rota/comportamento novo no MESMO commit, corrigir lint/i18n/tipo), sem mexer no que já "
+        "está certo:\n\n"
+        f"{saida}\n\n"
+        "Edite os arquivos necessários e pare (NÃO faça commit nem push — o harness re-tenta)."
+    )
+
+
 async def run_pr_cycle(
     *,
     engine: CodingEngine,
@@ -407,23 +421,38 @@ async def run_pr_cycle(
                 run.tenant, run.id, "message", now,
                 text=f"🎨 auto-format: {len(formatados)} arquivo(s) formatado(s) antes do commit.",
             )
-        # commit resiliente ao hook de formatação (#228): se o pre-commit `prettier --check` barrar,
-        # formata e re-tenta UMA vez — o hook é a fonte da verdade (cobre o autoformat proativo não
-        # ter pego, ex.: #51 morreu assim). Outros erros do hook (lint/test) propagam normalmente.
+        # commit resiliente ao pre-commit hook: a saída do hook é a fonte da verdade (determinismo).
+        # - formatação (#228, prettier --check): o harness formata e re-tenta (não gasta o motor).
+        # - qualquer OUTRO hook (doc-sync, lint, i18n, tipo): devolve a saída ao motor p/ corrigir e
+        #   re-tenta — bounded. Era o buraco que matava motor bom (#57: doc-sync exige doc da rota
+        #   nova; o motor tinha implementado tudo, só faltava o doc).
         _msg = title if not feedback else f"{title} (correção)"
-        try:
-            await git.commit_all(_msg)
-        except GitError as _exc:
-            low = str(_exc).lower()
-            if "prettier" not in low and "code style" not in low:
-                raise
-            refmt = await autoformat(workdir)
-            if refmt and store is not None and now is not None:
-                await store.append_session_event(
-                    run.tenant, run.id, "message", now,
-                    text=f"🎨 commit barrado por formatação → reformatei {len(refmt)} e re-tento.",
-                )
-            await git.commit_all(_msg)  # re-tenta; se barrar de novo, propaga
+        fmt_tries = hook_tries = 0
+        while True:
+            try:
+                await git.commit_all(_msg)
+                break
+            except GitError as _exc:
+                low = str(_exc).lower()
+                if ("prettier" in low or "code style" in low) and fmt_tries < 1:
+                    fmt_tries += 1
+                    refmt = await autoformat(workdir)
+                    if refmt and store is not None and now is not None:
+                        await store.append_session_event(
+                            run.tenant, run.id, "message", now,
+                            text=f"🎨 commit barrado por formatação → reformatei {len(refmt)}.",
+                        )
+                    continue
+                if hook_tries < _HOOK_FIX_ATTEMPTS:
+                    hook_tries += 1
+                    if store is not None and now is not None:
+                        await store.append_session_event(
+                            run.tenant, run.id, "message", now,
+                            text=f"↻ commit barrado por hook → motor corrige (try {hook_tries}).",
+                        )
+                    await _engine_turn(_hook_fix_prompt(str(_exc)), coder.get("native"))
+                    continue
+                raise  # esgotou as tentativas de correção → propaga (FAILED)
         # H: secret-scan com AUTO-CORREÇÃO — bloqueia o push e devolve ao motor p/ trocar o literal
         # por placeholder/env, re-escaneando. Esgotou → aborta (o push nunca sai com segredo).
         leak = await _guard_secrets(git, base, store=store, run=run, now=now)
