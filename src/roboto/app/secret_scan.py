@@ -45,6 +45,22 @@ _ASSIGN = re.compile(
 # entropia (bits/char) acima da qual o valor "parece aleatório" (segredo), não palavra/placeholder.
 _ENTROPY_MIN = 3.5
 
+# arquivos de teste/fixture: o segredo é FAKE por design (ex.: token:"nod…" num route.test.ts).
+# A heurística KEYED+entropia (propensa a falso-positivo) NÃO roda aqui; os formatos canônicos
+# (_PATTERNS, ~0 FP) seguem valendo em TODO lugar — um ghp_/AKIA real num teste ainda vaza.
+_TEST_PATH = re.compile(
+    r"""(?ix)
+    (?:^|/)(?:tests?|__tests__|__mocks__|fixtures?|e2e)(?:/|$)  # dir: tests/ spec/ fixtures/
+    | \.(?:test|spec|e2e)\.[a-z0-9]+$                           # foo.test.ts x.int.test.ts
+    | (?:^|/)test_[^/]*\.py$ | _test\.py$                       # pytest: test_x.py | x_test.py
+    """
+)
+
+
+def _is_test_path(path: str) -> bool:
+    """O arquivo do diff é de teste/fixture? (segredo fake por design — pula a heurística)."""
+    return bool(_TEST_PATH.search(path))
+
 
 def _shannon_bits_per_char(s: str) -> float:
     if not s:
@@ -76,9 +92,16 @@ def scan_diff(diff: str) -> list[SecretFinding]:
     """Varre as linhas ADICIONADAS de um diff unificado e devolve as credenciais encontradas."""
     findings: list[SecretFinding] = []
     seen: set[tuple[str, str]] = set()
+    in_test = False  # contexto de arquivo: a heurística de entropia não roda em arquivo de teste
     for line in diff.splitlines():
-        if not line.startswith("+") or line.startswith("+++"):
-            continue  # só o que o PR INTRODUZ; ignora contexto, remoções e cabeçalho de arquivo
+        if line.startswith("+++"):
+            # cabeçalho de arquivo (+++ b/path | +++ /dev/null): só atualiza o contexto.
+            path = line[4:].strip()
+            path = path[2:] if path.startswith(("a/", "b/")) else path
+            in_test = _is_test_path(path)
+            continue
+        if not line.startswith("+"):
+            continue  # só o que o PR INTRODUZ; ignora contexto e remoções
         added = line[1:]
         for name, rx in _PATTERNS:
             m = rx.search(added)
@@ -90,6 +113,9 @@ def scan_diff(diff: str) -> list[SecretFinding]:
                 seen.add(key)
                 findings.append(SecretFinding(pattern=name, redacted=redacted))
         # camada KEYED + entropia: chave com cara de segredo atribuída a valor de alta entropia.
+        # Pula em arquivo de teste/fixture (valor fake por design) — evita o FP que matou o run #56.
+        if in_test:
+            continue
         am = _ASSIGN.search(added)
         if am and _shannon_bits_per_char(am.group(1)) >= _ENTROPY_MIN:
             redacted = _redact(am.group(1))
