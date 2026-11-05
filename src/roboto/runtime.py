@@ -184,6 +184,8 @@ async def _run_daemon(config: Config, store: Store) -> None:
             model=engine_model, permission_mode="bypassPermissions", mcp_servers=mcp,
             max_turns=120,  # folga p/ motor verborrágico (devstral explora muito); #232
             max_resumes=2,  # ao bater o teto, RESUME e conclui (WIP no /work) em vez de FAILED
+            # liga reasoning p/ modelos reasoning-mandatory via ccr (gpt-oss); 0 = desligado
+            max_thinking_tokens=int(os.environ.get("ROBOTO_THINKING_TOKENS", "0") or "0"),
         )
         # motor dedicado ao refino (read-only por prompt): evita corrida com o ciclo de PR.
         # max_turns=60: refino é LER+PROPOR; o PROMPT força parar em ~10 consultas, mas issues de

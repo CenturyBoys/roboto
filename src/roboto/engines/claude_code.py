@@ -40,6 +40,9 @@ class ClaudeCodeEngine:
         # resume-on-max_turns (#232): ao bater o max_turns, RESUME a sessão (continua de onde parou,
         # WIP salvo no /work) em vez de FAILED. 0 = sem resume (comportamento antigo).
         max_resumes: int = 0,
+        # thinking budget: liga o reasoning (ccr mapeia thinking→reasoning). NECESSÁRIO p/ modelos
+        # reasoning-mandatory via OpenRouter (ex.: gpt-oss, senão 400 "reasoning cannot be disabled").
+        max_thinking_tokens: int = 0,
     ) -> None:
         self._model = model
         self._permission_mode = permission_mode
@@ -48,6 +51,7 @@ class ClaudeCodeEngine:
         self._mcp_servers = mcp_servers
         self._max_turns = max_turns
         self._max_resumes = max_resumes
+        self._max_thinking_tokens = max_thinking_tokens
         self._spec: RunSpec | None = None
         self._session_id = ""
 
@@ -85,6 +89,7 @@ class ClaudeCodeEngine:
                 model=(self._spec.model or self._model) or None,
                 mcp_servers=self._mcp_servers,  # code-intel (navegação semântica, F)
                 max_turns=self._max_turns or None,
+                max_thinking_tokens=self._max_thinking_tokens or None,  # liga reasoning (gpt-oss)
             )
             hit_max = False
             async for message in query(prompt=prompt, options=options):
