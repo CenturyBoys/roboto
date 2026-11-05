@@ -303,6 +303,51 @@ class GithubAppClient:
             if owns:
                 await client.aclose()
 
+    async def check_failures(self, repo: str, number: int) -> Result[str, Error]:
+        """Resumo LEGÍVEL dos checks que FALHARAM no head do PR (nome + anotações file:line: msg),
+        p/ ALIMENTAR a correção com o ERRO REAL da CI — não só a opinião do juiz, que lê o diff e
+        pode não ver, ex.: um erro de tipo do tsc (#233). '' se nada falhou."""
+        owns = self._client is None
+        client = (
+            self._client if self._client is not None else httpx.AsyncClient(timeout=self._timeout)
+        )
+        try:
+            token = await self._installation_token(client)
+            hdr = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
+            pr = await client.get(f"{self._api}/repos/{repo}/pulls/{number}", headers=hdr)
+            pr.raise_for_status()
+            sha = str(((pr.json() or {}).get("head") or {}).get("sha", ""))
+            if not sha:
+                return Ok("")
+            cr = await client.get(
+                f"{self._api}/repos/{repo}/commits/{sha}/check-runs", headers=hdr
+            )
+            cr.raise_for_status()
+            partes: list[str] = []
+            for r in cr.json().get("check_runs", []):
+                if r.get("conclusion") not in ("failure", "timed_out"):
+                    continue
+                out = r.get("output") or {}
+                resumo = (out.get("summary") or out.get("title") or "").strip()
+                linhas = [f"✖ {r.get('name', 'check')}" + (f": {resumo}" if resumo else "")]
+                if out.get("annotations_count"):  # anotações = erros estruturados (os TSxxxx etc.)
+                    url = f"{self._api}/repos/{repo}/check-runs/{r.get('id')}/annotations"
+                    an = await client.get(url, headers=hdr)
+                    if an.status_code == 200:
+                        for a in (an.json() or [])[:20]:
+                            msg = (a.get("message") or "").strip().splitlines()
+                            linhas.append(
+                                f"  {a.get('path', '')}:{a.get('start_line', '')} "
+                                f"{msg[0] if msg else ''}"
+                            )
+                partes.append("\n".join(linhas))
+            return Ok("\n".join(partes)[:2000])
+        except httpx.HTTPError as exc:
+            return Err(Error("github", f"check_failures {repo}#{number}: {exc}"))
+        finally:
+            if owns:
+                await client.aclose()
+
     async def update_issue(
         self, repo: str, number: int, *, title: str, body: str
     ) -> Result[None, Error]:

@@ -84,6 +84,9 @@ class GithubPrOps(Protocol):
 
     async def comment_pr(self, repo: str, number: int, body: str) -> Result[None, Error]: ...
 
+    # resumo dos checks que FALHARAM no head do PR (erro REAL da CI p/ alimentar a correção, #233)
+    async def check_failures(self, repo: str, number: int) -> Result[str, Error]: ...
+
     # abre/fecha a issue — reverter um PR reabre a issue p/ o fleet refazer (recuperação, H)
     async def set_issue_state(
         self, repo: str, number: int, state: str
@@ -661,6 +664,12 @@ async def process_pr_run_tick(
         )
 
 
+# bound de auto-correção por PR (#233). VALIDADO pela literatura: o ganho da auto-correção se
+# concentra nas ~2 primeiras rodadas (76–95%); além de ~4 cai a zero (falta de CONTEXTO, não de
+# tentativas). "Três é o número mágico" (arXiv 2607.05197, 2604.10508). Alinha com max_attempts=3.
+_CORRECT_MAX_ATTEMPTS = 3
+
+
 def _correct_prompt(repo: str, pr_number: int, workdir: str, issues: list[str]) -> str:
     return (
         f"Corrija os APONTAMENTOS do review no PR #{pr_number} do repo {repo} (cwd {workdir}). "
@@ -723,18 +732,44 @@ async def process_correct_tick(
         await git.checkout_remote(branch)  # estado do PR na árvore ANTES de editar (B: seguro)
 
         verdict = await _review_now()
-        if verdict.approved:
+        # CI VERMELHA é AUTORITATIVA (#233): lê o erro REAL (tsc/lint) e alimenta a correção — o
+        # juiz lê só o diff e pode não ver o erro de tipo (deixou o #252 vermelho e "aprovado").
+        cf = await github.check_failures(run.repo, pr_number)
+        ci_errs = cf.value if isinstance(cf, Ok) else ""
+
+        if verdict.approved and not ci_errs:
             await github.comment_pr(
-                run.repo, pr_number, "✅ Correção: nada a ajustar — o review já está aprovado."
+                run.repo, pr_number, "✅ Correção: nada a ajustar — review aprovado e CI verde."
             )
             await store.append_session_event(
-                run.tenant, run.id, "message", moment, text="✅ review aprovado — nada a corrigir"
+                run.tenant, run.id, "message", moment,
+                text="✅ review aprovado + CI verde — nada a corrigir",
             )
             await store.set_state(run.id, RunState.DONE, moment)
             return
 
-        # motor corrige NA branch do PR (código já implementado) com os apontamentos do review
-        prompt = _correct_prompt(run.repo, pr_number, workdir, verdict.issues)
+        # bound por PR: esgotou as tentativas e a CI SEGUE vermelha → para e escala p/ humano (não
+        # fica corrigindo em loop — o ganho zera por falta de contexto, não de tentativas).
+        prior = await store.count_runs(run.tenant, run.repo, str(pr_number), "correct")
+        if prior > _CORRECT_MAX_ATTEMPTS and ci_errs:
+            await github.comment_pr(
+                run.repo,
+                pr_number,
+                f"🚩 Correção automática parada após {_CORRECT_MAX_ATTEMPTS} tentativas — a CI "
+                f"segue vermelha. Precisa de olhar humano.\n{BOT_MARKER}",
+            )
+            await store.append_session_event(
+                run.tenant, run.id, "message", moment,
+                text=f"🚩 bound de correção ({_CORRECT_MAX_ATTEMPTS}) atingido — escala p/ humano",
+            )
+            await store.set_state(run.id, RunState.FAILED, moment)
+            return
+
+        # motor corrige NA branch do PR: CI vermelha PRIMEIRO (autoritativa), depois o review
+        issues = list(verdict.issues)
+        if ci_errs:
+            issues = [f"A CI do repo REPROVOU — corrija EXATAMENTE isto:\n{ci_errs}"] + issues
+        prompt = _correct_prompt(run.repo, pr_number, workdir, issues)
         await engine.start(
             RunSpec(tenant=run.tenant, repo=run.repo, workdir=workdir, prompt=prompt)
         )
@@ -764,15 +799,19 @@ async def process_correct_tick(
         await git.push(branch)  # force-push atualiza o MESMO PR
 
         again = await _review_now()
-        body = (
-            "✅ Correção aplicada — review re-aprovado."
-            if again.approved
-            else "🔁 Correção aplicada; ainda restam pontos:\n- " + "\n- ".join(again.issues)
-        )
+        if ci_errs:
+            # a CI re-roda async no commit novo; o poller re-avalia (bounded). Fica pendente.
+            body = "🔁 Correção da CI aplicada — a CI vai re-rodar no novo commit."
+            final = RunState.VERIFYING
+        elif again.approved:
+            body = "✅ Correção aplicada — review re-aprovado."
+            final = RunState.VERIFYING
+        else:
+            body = "🔁 Correção aplicada; ainda restam pontos:\n- " + "\n- ".join(again.issues)
+            final = RunState.FAILED
         await github.comment_pr(
             run.repo, pr_number, body + f"\n\n_(correção do fleet, reviewer≠autor)_\n{BOT_MARKER}"
         )
-        final = RunState.VERIFYING if again.approved else RunState.FAILED
         await store.set_state(run.id, final, moment)
     except Exception as exc:  # noqa: BLE001 — falha não pode deixar o run preso em RUNNING
         await store.set_state(run.id, RunState.FAILED, moment)

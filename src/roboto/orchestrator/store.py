@@ -165,6 +165,9 @@ class Store(Protocol):
 
     async def count_runs_by_state(self, tenant: str) -> dict[str, int]: ...
 
+    # nº de runs de um agente p/ um alvo (repo+issue_id) — bound de auto-correção por PR (#233)
+    async def count_runs(self, tenant: str, repo: str, issue_id: str, agent: str) -> int: ...
+
     async def get_app_config(self) -> dict[str, str]: ...
 
     async def set_app_config(self, values: dict[str, str], now: datetime) -> None: ...
@@ -642,6 +645,16 @@ class InMemoryStore:
             if r.tenant == tenant:
                 counts[str(r.state)] = counts.get(str(r.state), 0) + 1
         return counts
+
+    async def count_runs(self, tenant: str, repo: str, issue_id: str, agent: str) -> int:
+        return sum(
+            1
+            for r in self._runs.values()
+            if r.tenant == tenant
+            and r.repo == repo
+            and r.issue_id == issue_id
+            and r.agent == agent
+        )
 
     async def get_app_config(self) -> dict[str, str]:
         return dict(self._app_config)
