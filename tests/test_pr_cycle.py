@@ -722,6 +722,40 @@ async def test_correct_tick_prettier_barra_reformata_e_segue() -> None:
     assert store._runs[run.id].state is RunState.VERIFYING  # type: ignore[attr-defined]
 
 
+async def test_correct_tick_rereview_recebe_contexto_previo() -> None:
+    # convergência (#254): o RE-review tem de receber os pontos anteriores como contexto_previo —
+    # senão revisa do zero e inventa bloqueadores novos a cada rodada, e o PR nunca fecha.
+    store = InMemoryStore()
+    ev = GithubEvent(
+        tenant="acme", repo="acme/app", issue_id="221", agent="correct", idempotency_key="cx"
+    )
+    await store.insert_run_if_absent(ev, _T0)
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+
+    class _CapturingGateway:
+        def __init__(self, replies: list[str]) -> None:
+            self._replies = list(replies)
+            self.calls: list[list[ChatMessage]] = []
+
+        async def complete(
+            self, messages: list[ChatMessage], tier: Tier
+        ) -> Result[Completion, Error]:
+            self.calls.append(messages)
+            return Ok(Completion(text=self._replies.pop(0), model="stub"))
+
+    gw = _CapturingGateway([_FIND_REPROVA, ""])  # review inicial reprova → corrige → re-review ok
+    git, github = _FakeGit(), _FakeGithub()
+    await process_correct_tick(
+        engine, gw, github, store,  # type: ignore[arg-type]
+        tenant="acme", workdir_root="/work", reviewer="review",
+        git_factory=lambda ws: git, now=lambda: _T0,
+    )
+    # a 2ª chamada ao juiz (re-review) deve carregar o ponto anterior ("falta teste")
+    assert len(gw.calls) == 2
+    rereview_txt = " ".join(m.content for m in gw.calls[1])
+    assert "falta teste" in rereview_txt
+
+
 async def test_correct_tick_approved_pr_is_noop() -> None:
     # PR já aprovado no review -> não edita, não dá push, comenta "nada a corrigir", vai a DONE.
     store = InMemoryStore()
