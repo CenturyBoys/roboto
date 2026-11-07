@@ -27,6 +27,7 @@ from roboto.agents.refiner import IssueDraft, breakdown_converse, converse
 from roboto.agents.review import (
     PullRequest,
     check_issue_readiness,
+    check_issue_size,
     montar_review,
     revisar_pr,
 )
@@ -851,6 +852,14 @@ def console_routes(
         if not verdict.ready:
             return JSONResponse(
                 {"error": "issue não está pronta (DoR)", "missing": verdict.missing},
+                status_code=409,
+            )
+        # right-sizing (#239): issue tamanho-ÉPICO trava o coder/review (raiz = escopo). Bloqueia
+        # implementar como uma issue só; o operador quebra em sub-issues antes.
+        size = check_issue_size(IssueDraft(title=title, body=body))
+        if size.oversized:
+            return JSONResponse(
+                {"error": f"issue parece épico — {size.reason}", "criterios": size.criterios},
                 status_code=409,
             )
         # guard: recusa se já há impl ATIVO pra esta issue (evita duplo-clique / dois runs).

@@ -49,6 +49,13 @@ class ReadinessVerdict:
 
 
 @dataclass(frozen=True)
+class SizeVerdict:
+    oversized: bool  # parece ÉPICO (não cabe em 1 PR) → quebrar em sub-issues
+    criterios: int = 0
+    reason: str = ""
+
+
+@dataclass(frozen=True)
 class ReviewVerdict:
     approved: bool
     issues: list[str] = field(default_factory=list)
@@ -116,6 +123,26 @@ def check_issue_readiness(draft: IssueDraft) -> ReadinessVerdict:
     if "critérios de aceite" in body and "- [ ]" not in aceite:
         missing.append("critério de aceite verificável (item '- [ ]' sob 'Critérios de aceite')")
     return ReadinessVerdict(ready=not missing, missing=missing)
+
+
+# acima disto a issue cheira a ÉPICO: muitos critérios = muitos entregáveis = não cabe em 1 PR.
+# Conservador e TUNÁVEL. Raiz dos runaways do coder: refino que cria tarefa grande demais (#239).
+_MAX_ACEITE = 7
+
+
+def check_issue_size(draft: IssueDraft) -> SizeVerdict:
+    """Right-sizing (tier 1, sem LLM): a issue cabe em 1 PR ou é um épico? Heurística determinística
+    pelo nº de Critérios de aceite (proxy de entregáveis). Oversized → quebrar em sub-issues (#239).
+    Conservador: só dispara BEM acima do normal (issue focada tem ~3–6 critérios)."""
+    aceite = _section_text(draft.body, "Critérios de aceite")
+    n = aceite.count("- [ ]")
+    if n > _MAX_ACEITE:
+        return SizeVerdict(
+            oversized=True,
+            criterios=n,
+            reason=f"{n} critérios de aceite (> {_MAX_ACEITE}) — épico, quebre em sub-issues",
+        )
+    return SizeVerdict(oversized=False, criterios=n)
 
 
 def _parse_verdict(text: str) -> ReviewVerdict:
