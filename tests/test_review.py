@@ -9,6 +9,7 @@ from roboto.agents.review import (
     PullRequest,
     aprovado_por_findings,
     check_issue_readiness,
+    check_issue_size,
     formatar_finding,
     montar_review,
     resumo_review,
@@ -32,6 +33,28 @@ def test_complete_issue_is_ready() -> None:
     verdict = check_issue_readiness(IssueDraft(title="feat: x", body=_READY_BODY))
     assert verdict.ready is True
     assert verdict.missing == []
+
+
+def test_issue_size_ok_quando_focada() -> None:
+    # issue focada (poucos critérios) NÃO é oversized
+    s = check_issue_size(IssueDraft(title="feat: x", body=_READY_BODY))
+    assert s.oversized is False and s.criterios == 1
+
+
+def test_issue_size_oversized_quando_epico() -> None:
+    # muitos critérios de aceite = parece épico → quebrar em sub-issues (#239)
+    criterios = "\n".join(f"- [ ] entregável {i}" for i in range(9))
+    body = f"## Contexto\nx\n## Escopo\ny\n## Critérios de aceite\n{criterios}\n## DoD\n- [ ] ci"
+    s = check_issue_size(IssueDraft(title="feat: rotas versionadas", body=body))
+    assert s.oversized is True and s.criterios == 9 and "épico" in s.reason
+
+
+def test_issue_size_so_conta_criterios_de_aceite_nao_dod() -> None:
+    # os '- [ ]' do DoD não contam — só os de Critérios de aceite
+    dod = "\n".join(f"- [ ] dod {i}" for i in range(20))
+    body = f"## Contexto\nx\n## Escopo\ny\n## Critérios de aceite\n- [ ] um\n## DoD\n{dod}"
+    s = check_issue_size(IssueDraft(title="feat: x", body=body))
+    assert s.oversized is False and s.criterios == 1
 
 
 def test_checkbox_under_subsection_is_ready() -> None:

@@ -12,7 +12,7 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime
 
 from roboto.agents.refiner import IssueDraft
-from roboto.agents.review import check_issue_readiness
+from roboto.agents.review import check_issue_readiness, check_issue_size
 from roboto.app.code_intel_brief import code_intel_brief
 from roboto.app.engine_loop import TurnOutcome, drive_turn
 from roboto.app.inbound import IssueLister, dispatch_inbound
@@ -221,6 +221,12 @@ async def process_refine_tick(
         nota = f"⚠️ DoR ainda incompleto após correção: {'; '.join(verdict.missing)}"
     else:
         nota = "Proposta emitida (sem marcadores para validar o DoR)."
+    # right-sizing (#239): issue BEM ESTRUTURADA mas tamanho-ÉPICO passa no DoR e depois trava o
+    # coder/review (raiz = escopo, não modelo). Avisa pra quebrar em sub-issues (determinístico).
+    if body:
+        size = check_issue_size(IssueDraft(title=title, body=body))
+        if size.oversized:
+            nota += f"\n\n⚠️ Right-sizing: {size.reason}. NÃO implemente como uma issue só."
     await store.append_session_event(run.tenant, run.id, "message", now(), text=nota)
     if verdict is not None and verdict.ready and body:
         # second brain (Fatia 1): grava a DECISÃO de escopo do refino — greppável; o refino/impl de
