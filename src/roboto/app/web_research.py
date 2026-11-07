@@ -66,16 +66,19 @@ _RESEARCH_QUESTION = (
 async def research_is_critical(
     title: str, body: str, *, decider: Decider | None = None, min_confidence: float = 0.6
 ) -> bool:
-    """Gate de pesquisa em DOIS degraus: (1) `needs_research` keyword pré-filtra barato; (2) se há
-    `decider` (Jev), ele confirma a CRITICIDADE (só pesquisa se decision=True e confiança ≥ limiar).
-    Sem decider, ou se ele falhar, cai no keyword — degrada, nunca bloqueia (determinismo 1º)."""
-    if not needs_research(title, body):
-        return False  # degrau-1 já descarta o grosso (barato, zero token)
+    """Gate de pesquisa (AFROUXADO p/ permitir busca além do vocabulário fixo).
+
+    SEM `decider`: decide pelo keyword determinístico (`needs_research`) — fallback barato.
+    COM `decider` (Jev): ele julga a CRITICIDADE de QUALQUER issue — o keyword NÃO é mais pré-gate
+    duro (antes descartava tudo que não batesse palavra; agora o Jev vê toda issue e decide). Só
+    pesquisa se decision=True e confiança ≥ limiar. Se o Jev falhar, cai no keyword. Degrada,
+    nunca bloqueia (determinismo 1º)."""
+    keyword_hit = needs_research(title, body)
     if decider is None:
-        return True  # sem Jev: keyword decide
+        return keyword_hit  # sem Jev: keyword decide (fallback)
     verdict = await decider.decide(_RESEARCH_QUESTION, f"Título: {title}\n\n{body}")
     if isinstance(verdict, Err):
-        return True  # Jev falhou → fallback no keyword (não bloqueia o refino)
+        return keyword_hit  # Jev falhou → cai no keyword (não bloqueia o refino)
     return verdict.value.decision and verdict.value.confidence >= min_confidence
 
 

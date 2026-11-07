@@ -29,6 +29,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 RUN curl -fsSL https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64 \
       -o /usr/local/bin/ttyd && chmod +x /usr/local/bin/ttyd
+# gh (GitHub CLI): o agente que PODE rodar shell (impl/correção) consulta issues/PRs do alvo
+# (`gh issue view #N`) e o operador usa no terminal web. Autentica via GH_TOKEN no entrypoint.
+# Versão PINADA (determinismo): bump = trocar a tag. Binário do release (sem o apt-repo da GitHub).
+ENV GH_CLI_VERSION=2.63.2
+RUN curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_CLI_VERSION}/gh_${GH_CLI_VERSION}_linux_amd64.tar.gz" \
+      | tar -xz -C /tmp \
+    && mv "/tmp/gh_${GH_CLI_VERSION}_linux_amd64/bin/gh" /usr/local/bin/gh \
+    && rm -rf "/tmp/gh_${GH_CLI_VERSION}_linux_amd64" \
+    && gh --version
 
 # Claude Code CLI + claude-code-router (validar nomes/versões dos pacotes npm)
 RUN npm install -g @anthropic-ai/claude-code @musistudio/claude-code-router
@@ -75,9 +84,10 @@ USER pwuser
 # ide_cc (code-intel MCP): navegação/edição semântica verificada = menos token (F). Em ~/.local/bin.
 # PILAR da economia de token: o build FALHA se não instalar (antes `|| echo` degradava SILENCIOSO —
 # a imagem subia sem code-intel e o motor lia arquivo inteiro sem ninguém perceber).
-# Versão PINADA (determinismo primeiro): script E binário na mesma tag (v0.9.0 — agent-tooling:
-# verifier, repo_map, symbol_bundle, readOnlyHint; aditivo, sem breaking). Bump = trocar aqui.
-ENV IDE_CC_VERSION=v0.9.0
+# Versão PINADA (determinismo primeiro): script E binário na mesma tag. v0.9.1 (fix #18/PR #19):
+# validate_build do TypeScript passa a honrar TYPESCRIPT_CHECK_CMD (antes só rust/dart/csharp/python
+# tinham default; TS errava "sem comando de build" e mandava o motor caçar fantasma). Bump = trocar aqui.
+ENV IDE_CC_VERSION=v0.9.1
 ENV PATH="/home/pwuser/.local/bin:$PATH"
 RUN curl -fsSL "https://raw.githubusercontent.com/CenturyBoys/ide_cc/${IDE_CC_VERSION}/install.sh" \
       | VERSION="${IDE_CC_VERSION}" INSTALL_LSP=1 bash \

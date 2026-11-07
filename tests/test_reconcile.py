@@ -51,6 +51,15 @@ async def test_impl_run_merged_via_execution_pr() -> None:
     assert store._runs[rid].state is RunState.DONE  # type: ignore[attr-defined]
 
 
+async def test_merge_grava_decisao_no_second_brain() -> None:
+    # Fatia 1: merge → DONE também registra a DECISÃO "implementada e mergeada" (greppável)
+    store = InMemoryStore()
+    await _verifying(store, "correct", "238", "k-mem")
+    await reconcile_verifying(store, _Github({238}, set()), tenant="acme", now=_T0)
+    facts = await store.recall("acme", "implementada mergeada", 5)
+    assert any(f.kind == "decisão" and f.ref == "#238" for f in facts)
+
+
 async def test_closed_without_merge_abandons() -> None:
     store = InMemoryStore()
     rid = await _verifying(store, "correct", "999", "k3")

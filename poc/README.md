@@ -1,7 +1,7 @@
 # PoC — motor vivo contra repo real (plano em `research/N3-poc-plano.md`)
 
 Tudo isolado num container: build/test do repo-alvo (Playwright), `roboto` (daemon), **Claude Code**
-backeado por **OpenRouter/Qwen** via **claude-code-router** (qwen3-coder big / qwen-2.5 small).
+backeado por **OpenRouter/Qwen** via **claude-code-router** (qwen3-coder-next default / qwen3-coder-flash background+longContext / deepseek-r1 think).
 
 ## Fase 0 — encanamento (sem secrets, sem tocar o GitHub)
 ```bash

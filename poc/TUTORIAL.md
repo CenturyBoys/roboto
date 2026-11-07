@@ -40,8 +40,8 @@ uma nova empresa, repita com outro `.env.poc` (mesma imagem — D27). Tudo que v
 
 ### 2.1 OpenRouter (modelos Qwen)
 1. Crie conta em **openrouter.ai** → *Keys* → **Create key**. Copie → `OPENROUTER_API_KEY`.
-2. Garanta crédito e acesso a `qwen/qwen3-coder` e `qwen/qwen-2.5-72b-instruct` (ajuste os ids em
-   `poc/ccr.config.json` se o seu plano usar outros).
+2. Garanta crédito e acesso a `qwen/qwen3-coder-next`, `qwen/qwen3-coder-flash` e
+   `deepseek/deepseek-r1-0528` (ajuste os ids em `poc/ccr.config.json` se o seu plano usar outros).
 
 ### 2.2 GitHub — modo PAT (1 token para git + API; recomendado)
 1. GitHub → **Settings → Developer settings → Personal access tokens → Fine-grained tokens** →

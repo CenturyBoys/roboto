@@ -2,7 +2,7 @@
 
 > Valida o contrato `CodingEngine` (D22) e o loop interativo **contra um repositório real**, com o
 > motor **Claude Code** backeado por **OpenRouter/Qwen** via **claude-code-router**, tudo isolado
-> num **Docker**. Decisões do dono: Qwen3-coder (big) / Qwen2.5 (small); Docker com Playwright;
+> num **Docker**. Decisões do dono: Qwen3-Coder-Next (default) / Qwen3-Coder-Flash (background) / DeepSeek-R1 (think); Docker com Playwright;
 > usar recursos da máquina.
 
 ## 1. Cenário (alvo)
@@ -15,7 +15,8 @@
 ## 2. Roteamento de modelo (Qwen via OpenRouter)
 - **Motor (Claude Code):** fala API Anthropic → apontar `ANTHROPIC_BASE_URL` para o
   **claude-code-router (ccr)** → ccr traduz p/ **OpenRouter**. Mapa: *default/main* →
-  `qwen/qwen3-coder`; *background/small* → `qwen/qwen-2.5-72b-instruct` (`poc/ccr.config.json`).
+  `qwen/qwen3-coder-next`; *background/longContext* → `qwen/qwen3-coder-flash`; *think* →
+  `deepseek/deepseek-r1-0528` (`poc/ccr.config.json`).
 - **Gateway nativo do roboto (refino/judge):** `OpenRouterGateway` já aponta p/ Qwen (mesmos ids).
 - A chave real é a `OPENROUTER_API_KEY` (na config do ccr); o `ANTHROPIC_API_KEY` que o Claude Code
   usa é fake (o ccr ignora).

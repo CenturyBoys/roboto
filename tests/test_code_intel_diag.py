@@ -33,6 +33,21 @@ def test_descarta_erro_de_uso_da_tool() -> None:
     assert format_diagnostics("Error: missing 'file' attribute") == ""
 
 
+def test_descarta_erro_de_config_do_code_intel() -> None:
+    # #245 runaway: validate_build sem o typecheck configurado devolve erro de CONFIG — é o
+    # code-intel pedindo setup ao operador, NÃO erro no código. Não pode ir pro modelo "corrigir".
+    assert format_diagnostics("error: sem comando de build p/ 'typescript' (defina "
+                              "TYPESCRIPT_CHECK_CMD)") == ""
+    assert format_diagnostics("error: language 'python' not configured — run doctor --fix") == ""
+    assert format_diagnostics("erro: workspace não configurado; defina PY_CHECK_CMD") == ""
+
+
+def test_config_err_nao_mata_erro_real_de_ts() -> None:
+    # guard: um erro REAL de TS não pode ser confundido com config (o filtro é específico)
+    out = format_diagnostics("route.ts(3,1): error TS2345: Argument not assignable.")
+    assert out.startswith("DIAGNÓSTICOS DO BUILD") and "TS2345" in out
+
+
 def test_diagnostics_sem_file_nem_lang_nao_chama_tool() -> None:
     # guard: sem dica de linguagem, não chama validate_build (evita o erro de uso) → ""
     from roboto.app.code_intel_diag import code_intel_diagnostics

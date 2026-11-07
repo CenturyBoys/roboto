@@ -32,6 +32,8 @@ services:
       JUDGE_MODEL: ${JUDGE_MODEL:-z-ai/glm-4.5-air} # GLM-4.5-Air via gateway OpenRouter direto — review/juiz
       # TAVILY_API_KEY vem do .env.poc (env_file) — busca web só no refino (ver app/web_research)
       JEV_MODEL: ${JEV_MODEL:-typesafe/jev-router} # Jev degrau-2: decide criticidade da pesquisa (#222)
+      REFINE_PERSONA: ${REFINE_PERSONA:-} # âncora de papel no refino (tech lead). Ligada por default; "0"=off
+      IMPL_PERSONA: ${IMPL_PERSONA:-} # âncora de papel no impl (eng. sênior). Ligada por default; "0"=off
     ports:
       - "8090:8080" # servidor ASGI (webhook + console) — 8090 no host (8080 ocupada)
       - "7681:7681" # ttyd — terminal web (tmux no container)

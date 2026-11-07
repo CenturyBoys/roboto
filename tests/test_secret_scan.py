@@ -90,3 +90,36 @@ def test_entropy_ignores_short_value() -> None:
 def test_entropy_ignores_non_secret_key() -> None:
     # chave sem cara de segredo, mesmo com valor aleatório → não flaga (precisa dos DOIS sinais)
     assert scan_diff('+commit_sha = "xQ7v2Lp9Rz4Wk1Nf8Ht3Bc6"\n') == []
+
+
+# --- contexto de arquivo: heurística de entropia não roda em teste/fixture (FP do run #56) ---
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "apps/web/src/app/api/version/route.test.ts",  # o caso real que matou o run #56
+        "pkg/rate-limiter.int.test.ts",
+        "src/foo.spec.tsx",
+        "tests/test_pricing.py",
+        "api/handlers_test.py",
+        "app/__tests__/auth.ts",
+        "e2e/login.ts",
+        "test/fixtures/seed.json",
+    ],
+)
+def test_entropy_skipped_in_test_files(path: str) -> None:
+    # fixture fake num arquivo de teste NÃO deve bloquear o push (era o falso-positivo).
+    diff = f'+++ b/{path}\n+    tokens: "xQ7v2Lp9Rz4Wk1Nf8Ht3Bc6",\n'
+    assert scan_diff(diff) == []
+
+
+def test_canonical_token_still_blocks_even_in_test_file() -> None:
+    # um token REAL (formato canônico) commitado num teste AINDA vaza → continua bloqueado.
+    diff = f'+++ b/src/foo.test.ts\n+const gh = "{_GHP}"\n'
+    assert any(f.pattern == "GitHub token" for f in scan_diff(diff))
+
+
+def test_entropy_still_flags_in_production_file() -> None:
+    # fora de teste, a heurística segue ativa (não enfraquecemos o caso real).
+    diff = '+++ b/src/config.ts\n+  apiKey: "xQ7v2Lp9Rz4Wk1Nf8Ht3Bc6",\n'
+    assert any("heurística" in f.pattern for f in scan_diff(diff))
