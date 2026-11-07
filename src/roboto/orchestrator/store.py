@@ -156,7 +156,8 @@ class Store(Protocol):
     ) -> None: ...
 
     async def remember(
-        self, tenant: str, text: str, *, kind: str, ref: str, now: datetime
+        self, tenant: str, text: str, *, kind: str, ref: str, now: datetime,
+        unique_by_ref: bool = False,
     ) -> MemoryFact: ...
 
     async def recall(self, tenant: str, query: str, limit: int) -> list[MemoryFact]: ...
@@ -612,8 +613,15 @@ class InMemoryStore:
         self._pr_state[(tenant, repo, pr_number)] = state
 
     async def remember(
-        self, tenant: str, text: str, *, kind: str, ref: str, now: datetime
+        self, tenant: str, text: str, *, kind: str, ref: str, now: datetime,
+        unique_by_ref: bool = False,
     ) -> MemoryFact:
+        if unique_by_ref and ref:
+            # dedup: mantém só o fato vigente deste (kind, ref) — ex.: perfil de boot não acumula
+            self._facts = [
+                f for f in self._facts
+                if not (f.tenant == tenant and f.kind == kind and f.ref == ref)
+            ]
         self._fact_seq += 1
         fact = MemoryFact(
             id=self._fact_seq, tenant=tenant, kind=kind, ref=ref, text=text, created_at=now

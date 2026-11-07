@@ -222,6 +222,14 @@ async def process_refine_tick(
     else:
         nota = "Proposta emitida (sem marcadores para validar o DoR)."
     await store.append_session_event(run.tenant, run.id, "message", now(), text=nota)
+    if verdict is not None and verdict.ready and body:
+        # second brain (Fatia 1): grava a DECISÃO de escopo do refino — greppável; o refino/impl de
+        # issues RELACIONADAS injeta via recall. Bounded + dedup por ref (1 vigente por issue).
+        resumo = " ".join(body.split())[:400]
+        await store.remember(
+            run.tenant, f"Refino #{run.issue_id} ({title}): {resumo}",
+            kind="decisão", ref=f"#{run.issue_id}", now=now(), unique_by_ref=True,
+        )
 
 
 async def poll_tick(

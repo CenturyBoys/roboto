@@ -216,14 +216,17 @@ async def _run_daemon(config: Config, store: Store) -> None:
                 api_key=config.models.openrouter_api_key, model=config.jev_model
             )
 
-        # second brain (G/D32): grava o PERFIL do repo (como operar) uma vez no boot — o motor não
-        # começa cru. Determinístico (lê package.json/workspace); o prompt de impl injeta direto.
+        # second brain (G/D32): grava o PERFIL do repo (como operar) no boot — o motor não começa
+        # cru. Determinístico (lê package.json/workspace); o prompt de impl injeta direto. kind
+        # "perfil" + unique_by_ref: é DERIVADO do código (cache regenerável), não decisão → só 1
+        # vigente por repo (antes acumulava 1 cópia por subida — 55 no PoC).
         from roboto.app.repo_profile import build_repo_profile
 
         _profile = build_repo_profile(f"/work/{config.default_repo}")
         if _profile:
             await store.remember(
-                config.tenant, _profile, kind="fato", ref=config.default_repo, now=_now()
+                config.tenant, _profile, kind="perfil", ref=config.default_repo,
+                now=_now(), unique_by_ref=True,
             )
 
         async def _run_refine() -> None:

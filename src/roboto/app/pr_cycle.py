@@ -551,6 +551,16 @@ async def run_pr_cycle(
             f"[{f.severidade}] {f.titulo} ({f.arquivo}:{f.linha}) — {f.recomendacao}"
             for f in findings
         ]
+        # second brain (Fatia 1): registra o FATO do review (veredito + títulos dos findings) —
+        # greppável; alimenta o refino/impl de relacionadas. Dedup por ref (review vigente).
+        if store is not None and now is not None:
+            titulos = "; ".join(f.titulo for f in findings[:5]) or "sem apontamentos"
+            veredito = "aprovado" if aprovado else "reprovado"
+            await store.remember(
+                run.tenant,
+                f"Review PR #{pr.number} (issue #{run.issue_id}): {veredito}. {titulos}"[:400],
+                kind="fato", ref=f"#{run.issue_id}", now=now, unique_by_ref=True,
+            )
         return ReviewVerdict(approved=aprovado, issues=issues, summary=body[:200])
 
     return await correction_cycle(implement=implement, review=review, max_attempts=max_attempts)
