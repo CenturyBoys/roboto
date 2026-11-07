@@ -823,7 +823,22 @@ async def process_correct_tick(
             cost_usd=(tin + tout) / 1_000_000 * _COST_PER_MTOK, now=moment,
         )
 
-        await git.commit_all(f"fix(review): corrige apontamentos do review (PR #{pr_number})")
+        # commit resiliente ao prettier (mesmo motivo do run_pr_cycle): o correct tick tem commit
+        # próprio e, sem isto, o pre-commit `prettier --check` barra os arquivos que a correção
+        # tocou e MATA a correção (PR #254). Formata (determinístico) e re-tenta; bounded.
+        await autoformat(workdir)
+        _fmt_tries = 0
+        while True:
+            try:
+                await git.commit_all(f"fix(review): corrige apontamentos (PR #{pr_number})")
+                break
+            except GitError as _exc:
+                low = str(_exc).lower()
+                if ("prettier" in low or "code style" in low) and _fmt_tries < _FMT_FIX_ATTEMPTS:
+                    _fmt_tries += 1
+                    await autoformat(workdir)
+                    continue
+                raise  # outro hook (doc-sync/i18n): sem turno de modelo aqui → propaga
         leak = await _guard_secrets(git, base, store=store, run=run, now=moment)  # H: antes do push
         if leak:
             raise SecretLeakError(leak)  # correção vazou segredo → bloqueia (push nunca sai sujo)

@@ -685,6 +685,43 @@ async def test_correct_tick_fixes_pr_on_its_branch() -> None:
     assert any(c.tokens_in == 800 and c.tokens_out == 200 for c in calls)
 
 
+async def test_correct_tick_prettier_barra_reformata_e_segue() -> None:
+    # #254: a correção edita, mas o pre-commit `prettier --check` barra os arquivos tocados. O
+    # correct tick tem commit próprio — precisa de autoformat+retry (igual ao impl), senão morre.
+    store = InMemoryStore()
+    ev = GithubEvent(
+        tenant="acme", repo="acme/app", issue_id="221", agent="correct", idempotency_key="cp"
+    )
+    run, _ = await store.insert_run_if_absent(ev, _T0)
+    engine = StubEngine(
+        [
+            EngineEvent(EngineEventKind.MESSAGE, text="corrigido"),
+            EngineEvent(EngineEventKind.FINISHED),
+        ]
+    )
+
+    class _PrettierOnce(_FakeGit):
+        def __init__(self) -> None:
+            super().__init__()
+            self._barrou = False
+
+        async def commit_all(self, message: str) -> None:
+            if not self._barrou:
+                self._barrou = True
+                raise GitError("prettier --check (staged) failed")
+            self.commits.append(message)
+
+    git, github = _PrettierOnce(), _FakeGithub()
+    gw = _SeqGateway([_FIND_REPROVA, ""])  # reprova → corrige → aprova
+    await process_correct_tick(
+        engine, gw, github, store,  # type: ignore[arg-type]
+        tenant="acme", workdir_root="/work", reviewer="review",
+        git_factory=lambda ws: git, now=lambda: _T0,
+    )
+    assert git.commits and git.pushes == ["feature/pr-221"]  # reformatou e empurrou (não morreu)
+    assert store._runs[run.id].state is RunState.VERIFYING  # type: ignore[attr-defined]
+
+
 async def test_correct_tick_approved_pr_is_noop() -> None:
     # PR já aprovado no review -> não edita, não dá push, comenta "nada a corrigir", vai a DONE.
     store = InMemoryStore()
