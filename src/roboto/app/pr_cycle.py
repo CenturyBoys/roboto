@@ -32,6 +32,7 @@ from roboto.app.engine_loop import guarded_events
 from roboto.app.git_ops import GitError
 from roboto.app.jev_guard import assess as assess_risk
 from roboto.app.memory import recall_block
+from roboto.app.related_issues import related_issues_block
 from roboto.app.repo_profile import (
     build_repo_profile,
     read_agents_conventions,
@@ -48,6 +49,7 @@ from roboto.llm.port import ModelGateway
 from roboto.orchestrator.core import backoff_until
 from roboto.orchestrator.model import Error, Run, RunState
 from roboto.orchestrator.store import Store
+from roboto.persona import anchor_line
 from roboto.result import Err, Ok, Result
 
 _COST_PER_MTOK = 0.4  # custo aprox. Qwen/OpenRouter ($/milhão de tokens) — medir/afinar (L)
@@ -154,6 +156,10 @@ def _diag_fix_prompt(diag: str) -> str:
 
 
 _HOOK_FIX_ATTEMPTS = 2  # correções harness-driven quando um hook de pre-commit barra o commit
+# prettier é determinístico: re-formata a CADA barrada (não só 1×). O motor pode criar arquivos
+# novos entre tentativas (ex.: locales i18n) que o pre-commit `prettier --check` então rejeita;
+# formatar à mão não casa com o prettier → tem de re-rodar o formatador, não devolver ao modelo.
+_FMT_FIX_ATTEMPTS = 3
 
 
 def _hook_fix_prompt(saida: str) -> str:
@@ -181,6 +187,7 @@ async def run_pr_cycle(
     store: Store | None = None,
     now: datetime | None = None,
     allow_secret: bool = False,  # override humano (H): libera o push mesmo com secret-scan positivo
+    persona: str = "",  # âncora de papel opcional (A/B atrás de flag) — ver roboto/persona.py
 ) -> CycleResult:
     branch = f"roboto/run-{run.id}"
     # título/corpo do PR seguem a ISSUE (não "run 1: 107"): título = título da issue; corpo linka
@@ -194,6 +201,13 @@ async def run_pr_cycle(
             issue_title, issue_body = got.value
             pr_title = issue_title.strip() or pr_title
             contexto = f"\n\nTítulo: {issue_title}\nRequisitos (corpo da issue):\n{issue_body}\n"
+            # issues relacionadas (#N no corpo: dependência/épico): o harness LÊ e injeta o contexto
+            # delas — o coder não precisa (nem deve) ir editar outras issues p/ se situar.
+            related = await related_issues_block(
+                run.repo, issue_body, github.get_issue, self_id=int(run.issue_id)
+            )
+            if related:
+                contexto += "\n" + related + "\n"
     title = pr_title
     closes = f"Closes #{run.issue_id}" if run.issue_id.isdigit() else ""
 
@@ -316,6 +330,7 @@ async def run_pr_cycle(
                 "se foi review/checks, atenda o apontamento antes de concluir.\n"
             )
     base_prompt = (
+        f"{anchor_line(persona)}"
         f"Implemente a issue {run.issue_id} no repo {run.repo} (cwd {workdir}).{contexto}"
         f"{profile_block}{test_block}{ci_block}{conventions_block}{memory_block}{aprendizado_block}\n"
         "ESCOPO MÍNIMO: entregue APENAS o que os Critérios de aceite da issue pedem — nada além. "
@@ -437,7 +452,7 @@ async def run_pr_cycle(
                 break
             except GitError as _exc:
                 low = str(_exc).lower()
-                if ("prettier" in low or "code style" in low) and fmt_tries < 1:
+                if ("prettier" in low or "code style" in low) and fmt_tries < _FMT_FIX_ATTEMPTS:
                     fmt_tries += 1
                     refmt = await autoformat(workdir)
                     if refmt and store is not None and now is not None:
@@ -454,6 +469,10 @@ async def run_pr_cycle(
                             text=f"↻ commit barrado por hook → motor corrige (try {hook_tries}).",
                         )
                     await _engine_turn(_hook_fix_prompt(str(_exc)), coder.get("native"))
+                    # determinismo: o motor pode ter criado/editado arquivos no turno acima (ex.:
+                    # locales i18n) → re-formata com o prettier ANTES do próximo commit; senão o
+                    # `--check` barra e a correção à mão do modelo nunca casa (buraco do #245).
+                    await autoformat(workdir)
                     continue
                 raise  # esgotou as tentativas de correção → propaga (FAILED)
         # H: secret-scan com AUTO-CORREÇÃO — bloqueia o push e devolve ao motor p/ trocar o literal
@@ -552,6 +571,7 @@ async def process_pr_run_tick(
     lease_seconds: int = 3600,  # ciclo é longo; lease generoso p/ o sweeper não reclamar no meio
     wip_limit: int = 0,  # backpressure (J): cap de runs ativos por tenant; 0 = sem limite
     self_assign_login: str = "",  # #150: login do fleet p/ self-assign; "" = não atribui
+    persona: str = "",  # âncora de papel opcional (A/B atrás de flag) — ver roboto/persona.py
 ) -> None:
     """Pega o próximo run da fila e roda o ciclo. Aprovado -> VERIFYING; desistiu -> FAILED.
 
@@ -628,6 +648,7 @@ async def process_pr_run_tick(
             store=store,  # medição de token (llm_call)
             now=moment,
             allow_secret=secret_ok,
+            persona=persona,
         )
     except Exception as exc:  # noqa: BLE001 — motor travado (watchdog) / git / PR: tira de RUNNING
         # Erro TRANSITÓRIO de provedor (402 sem crédito, 429, 5xx, overloaded) → re-enfileira com

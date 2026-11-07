@@ -119,8 +119,8 @@ async def test_research_block_vazio_sem_chave() -> None:
 # --- gate em 2 degraus (keyword + Jev/decider) ---------------------------------------------------
 
 
-async def test_critico_keyword_descarta_sem_chamar_decider() -> None:
-    # degrau-1: issue sem sinal nunca chega no decider (e retorna False)
+async def test_critico_com_decider_consulta_jev_mesmo_sem_keyword() -> None:
+    # AFROUXADO: com Jev, QUALQUER issue é avaliada — keyword não é mais pré-gate duro
     called = {"n": 0}
 
     class Spy:
@@ -128,8 +128,13 @@ async def test_critico_keyword_descarta_sem_chamar_decider() -> None:
             called["n"] += 1
             return Ok(Decision(True, 1.0))
 
-    assert not await research_is_critical("Corrigir bug", "ajustar split", decider=Spy())
-    assert called["n"] == 0
+    assert await research_is_critical("Corrigir bug", "ajustar split", decider=Spy())
+    assert called["n"] == 1
+
+
+async def test_critico_sem_decider_sem_sinal_nao_pesquisa() -> None:
+    # sem Jev: keyword decide — sem sinal, não pesquisa
+    assert not await research_is_critical("Corrigir bug", "ajustar split", decider=None)
 
 
 async def test_critico_sem_decider_cai_no_keyword() -> None:
@@ -155,4 +160,11 @@ async def test_critico_jev_sim_mas_confianca_baixa_nao_pesquisa() -> None:
 
 async def test_critico_jev_erro_cai_no_keyword() -> None:
     dec = _StubDecider(Err(Error("jev", "falhou")))
+    # Jev falhou + título tem sinal ("convenção") → cai no keyword = True
     assert await research_is_critical("Definir convenção de versão", "corpo", decider=dec)
+
+
+async def test_critico_jev_erro_sem_sinal_nao_pesquisa() -> None:
+    dec = _StubDecider(Err(Error("jev", "falhou")))
+    # Jev falhou + sem sinal → keyword = False (degrada sem forçar pesquisa)
+    assert not await research_is_critical("Corrigir bug", "ajustar split", decider=dec)

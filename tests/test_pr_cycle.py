@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from roboto.app.git_ops import GitError
 from roboto.app.pr_cycle import process_correct_tick, process_pr_run_tick, run_pr_cycle
 from roboto.engines.port import EngineEvent, EngineEventKind
 from roboto.engines.stub import StubEngine
@@ -269,6 +270,42 @@ async def test_cycle_autofixes_secret_then_pushes() -> None:
     assert result.approved
     events = await store.session_events(run.id, 0, 50)
     assert any("secret-scan" in e.text for e in events)  # registrou o bloqueio/retry no feed
+
+
+async def test_prettier_barra_apos_turno_do_modelo_reformata_e_segue() -> None:
+    # #245: prettier barra → hook i18n barra (motor cria locales) → prettier barra arquivos novos.
+    # Formatar à mão (modelo) NUNCA casa com o prettier; o harness tem de RE-FORMATAR após o turno
+    # do modelo. Com o fix o ciclo recupera e empurra; sem ele, esgotava e ia FAILED.
+    store = InMemoryStore()
+    run = await _run(store)
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+
+    class _PrettierAfterModelTurn(_FakeGit):
+        def __init__(self) -> None:
+            super().__init__()
+            self._fails = [
+                "prettier --check (staged) failed",
+                "doc-sync/i18n hook: missing translation key",  # motor cria arquivos novos aqui
+                "prettier --check (staged) failed",  # os arquivos novos não estão formatados
+                "prettier --check (staged) failed",
+            ]
+
+        async def commit_all(self, message: str) -> None:
+            if self._fails:
+                raise GitError(self._fails.pop(0))
+            self.commits.append(message)
+
+    git, github = _PrettierAfterModelTurn(), _FakeGithub()
+    result = await run_pr_cycle(
+        engine=engine, gateway=_SeqGateway(["", "", ""]),  # type: ignore[arg-type]
+        github=github, git=git, run=run, workdir="/work/acme/app",
+        reviewer="review", store=store, now=_T0,
+    )
+    assert git.commits  # fechou o commit (não ficou preso no prettier)
+    assert git.pushes and github.opened == 1 and result.approved
+    assert len(engine.started) >= 2  # houve ao menos 1 turno de correção de hook (i18n)
+    events = await store.session_events(run.id, 0, 80)
+    assert any("hook" in e.text for e in events)  # registrou a barrada de hook no feed
 
 
 async def test_retry_injects_previous_failure_into_prompt() -> None:

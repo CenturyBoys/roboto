@@ -233,6 +233,7 @@ async def _run_daemon(config: Config, store: Store) -> None:
                 tenant=config.tenant, chat_id=config.chat_id, now=_now,
                 tavily_key=config.tavily_api_key, gateway=adapters.gateway,
                 decider=refine_decider, code_intel=config.code_intel,
+                persona=config.refine_persona,
             )
 
         async def _run_claude() -> None:
@@ -250,6 +251,7 @@ async def _run_daemon(config: Config, store: Store) -> None:
                 base=config.base_branch,
                 wip_limit=config.wip_limit,  # backpressure (J)
                 self_assign_login=config.bot_login,  # self-assign ao assumir (#150)
+                persona=config.impl_persona,  # âncora de papel (A/B atrás de flag)
             )
 
         async def _run_scope() -> None:
