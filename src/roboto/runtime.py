@@ -181,7 +181,11 @@ async def _run_daemon(config: Config, store: Store) -> None:
         # max_turns=80: implementação é mais longa que o refino (editar + rodar checks + corrigir),
         # mas ainda um backstop contra flail infinito (ex.: loop tentando instalar deps).
         claude = ClaudeCodeEngine(
-            model=engine_model, permission_mode="bypassPermissions", mcp_servers=mcp, max_turns=80
+            model=engine_model, permission_mode="bypassPermissions", mcp_servers=mcp,
+            max_turns=120,  # folga p/ motor verborrágico (devstral explora muito); #232
+            max_resumes=2,  # ao bater o teto, RESUME e conclui (WIP no /work) em vez de FAILED
+            # liga reasoning p/ modelos reasoning-mandatory via ccr (gpt-oss); 0 = desligado
+            max_thinking_tokens=int(os.environ.get("ROBOTO_THINKING_TOKENS", "0") or "0"),
         )
         # motor dedicado ao refino (read-only por prompt): evita corrida com o ciclo de PR.
         # max_turns=60: refino é LER+PROPOR; o PROMPT força parar em ~10 consultas, mas issues de
@@ -212,14 +216,17 @@ async def _run_daemon(config: Config, store: Store) -> None:
                 api_key=config.models.openrouter_api_key, model=config.jev_model
             )
 
-        # second brain (G/D32): grava o PERFIL do repo (como operar) uma vez no boot — o motor não
-        # começa cru. Determinístico (lê package.json/workspace); o prompt de impl injeta direto.
+        # second brain (G/D32): grava o PERFIL do repo (como operar) no boot — o motor não começa
+        # cru. Determinístico (lê package.json/workspace); o prompt de impl injeta direto. kind
+        # "perfil" + unique_by_ref: é DERIVADO do código (cache regenerável), não decisão → só 1
+        # vigente por repo (antes acumulava 1 cópia por subida — 55 no PoC).
         from roboto.app.repo_profile import build_repo_profile
 
         _profile = build_repo_profile(f"/work/{config.default_repo}")
         if _profile:
             await store.remember(
-                config.tenant, _profile, kind="fato", ref=config.default_repo, now=_now()
+                config.tenant, _profile, kind="perfil", ref=config.default_repo,
+                now=_now(), unique_by_ref=True,
             )
 
         async def _run_refine() -> None:
@@ -229,6 +236,7 @@ async def _run_daemon(config: Config, store: Store) -> None:
                 tenant=config.tenant, chat_id=config.chat_id, now=_now,
                 tavily_key=config.tavily_api_key, gateway=adapters.gateway,
                 decider=refine_decider, code_intel=config.code_intel,
+                persona=config.refine_persona,
             )
 
         async def _run_claude() -> None:
@@ -246,6 +254,7 @@ async def _run_daemon(config: Config, store: Store) -> None:
                 base=config.base_branch,
                 wip_limit=config.wip_limit,  # backpressure (J)
                 self_assign_login=config.bot_login,  # self-assign ao assumir (#150)
+                persona=config.impl_persona,  # âncora de papel (A/B atrás de flag)
             )
 
         async def _run_scope() -> None:

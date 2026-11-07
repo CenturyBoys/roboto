@@ -12,6 +12,11 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from roboto.orchestrator.model import Error
+from roboto.persona import (
+    IMPL_PERSONA_DEFAULT,
+    REFINE_PERSONA_DEFAULT,
+    resolve_persona,
+)
 from roboto.result import Err, Ok, Result
 
 
@@ -82,6 +87,10 @@ class Config:
     # Jev (System One) como DECISOR degrau-2 (trilha I): modelo via OpenRouter (ex.:
     # typesafe/jev-router). Vazio = sem Jev → gate cai no keyword determinístico. JEV_MODEL.
     jev_model: str = ""
+    # Âncora de PAPEL (persona) opcional — A/B atrás de flag (ver roboto/persona.py). Vazio =
+    # baseline. "1"/"on" = âncora default; texto = override. REFINE_PERSONA / IMPL_PERSONA.
+    refine_persona: str = ""
+    impl_persona: str = ""
 
 
 _REQUIRED = (
@@ -127,6 +136,8 @@ SETTABLE_KEYS: tuple[str, ...] = (
     "ROBOTO_MAX_TOKENS",
     "TAVILY_API_KEY",
     "JEV_MODEL",
+    "REFINE_PERSONA",
+    "IMPL_PERSONA",
 )
 
 
@@ -237,5 +248,9 @@ def load_config(env: Mapping[str, str]) -> Result[Config, Error]:
             max_tokens=int(maxtok_raw),
             tavily_api_key=env.get("TAVILY_API_KEY", ""),
             jev_model=env.get("JEV_MODEL", ""),
+            refine_persona=resolve_persona(
+                env.get("REFINE_PERSONA", ""), REFINE_PERSONA_DEFAULT
+            ),
+            impl_persona=resolve_persona(env.get("IMPL_PERSONA", ""), IMPL_PERSONA_DEFAULT),
         )
     )

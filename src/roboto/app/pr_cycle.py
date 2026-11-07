@@ -32,6 +32,7 @@ from roboto.app.engine_loop import guarded_events
 from roboto.app.git_ops import GitError
 from roboto.app.jev_guard import assess as assess_risk
 from roboto.app.memory import recall_block
+from roboto.app.related_issues import related_issues_block
 from roboto.app.repo_profile import (
     build_repo_profile,
     read_agents_conventions,
@@ -48,6 +49,7 @@ from roboto.llm.port import ModelGateway
 from roboto.orchestrator.core import backoff_until
 from roboto.orchestrator.model import Error, Run, RunState
 from roboto.orchestrator.store import Store
+from roboto.persona import anchor_line
 from roboto.result import Err, Ok, Result
 
 _COST_PER_MTOK = 0.4  # custo aprox. Qwen/OpenRouter ($/milhão de tokens) — medir/afinar (L)
@@ -83,6 +85,9 @@ class GithubPrOps(Protocol):
     async def get_pr_diff(self, repo: str, number: int) -> Result[str, Error]: ...
 
     async def comment_pr(self, repo: str, number: int, body: str) -> Result[None, Error]: ...
+
+    # resumo dos checks que FALHARAM no head do PR (erro REAL da CI p/ alimentar a correção, #233)
+    async def check_failures(self, repo: str, number: int) -> Result[str, Error]: ...
 
     # abre/fecha a issue — reverter um PR reabre a issue p/ o fleet refazer (recuperação, H)
     async def set_issue_state(
@@ -150,6 +155,24 @@ def _diag_fix_prompt(diag: str) -> str:
     )
 
 
+_HOOK_FIX_ATTEMPTS = 2  # correções harness-driven quando um hook de pre-commit barra o commit
+# prettier é determinístico: re-formata a CADA barrada (não só 1×). O motor pode criar arquivos
+# novos entre tentativas (ex.: locales i18n) que o pre-commit `prettier --check` então rejeita;
+# formatar à mão não casa com o prettier → tem de re-rodar o formatador, não devolver ao modelo.
+_FMT_FIX_ATTEMPTS = 3
+
+
+def _hook_fix_prompt(saida: str) -> str:
+    return (
+        "O COMMIT foi BLOQUEADO por um hook de pre-commit do repo (regra do projeto, INEGOCIÁVEL). "
+        "Abaixo a saída do hook — faça EXATAMENTE o que ele exige (ex.: criar/atualizar o doc da "
+        "rota/comportamento novo no MESMO commit, corrigir lint/i18n/tipo), sem mexer no que já "
+        "está certo:\n\n"
+        f"{saida}\n\n"
+        "Edite os arquivos necessários e pare (NÃO faça commit nem push — o harness re-tenta)."
+    )
+
+
 async def run_pr_cycle(
     *,
     engine: CodingEngine,
@@ -164,6 +187,7 @@ async def run_pr_cycle(
     store: Store | None = None,
     now: datetime | None = None,
     allow_secret: bool = False,  # override humano (H): libera o push mesmo com secret-scan positivo
+    persona: str = "",  # âncora de papel opcional (A/B atrás de flag) — ver roboto/persona.py
 ) -> CycleResult:
     branch = f"roboto/run-{run.id}"
     # título/corpo do PR seguem a ISSUE (não "run 1: 107"): título = título da issue; corpo linka
@@ -177,6 +201,13 @@ async def run_pr_cycle(
             issue_title, issue_body = got.value
             pr_title = issue_title.strip() or pr_title
             contexto = f"\n\nTítulo: {issue_title}\nRequisitos (corpo da issue):\n{issue_body}\n"
+            # issues relacionadas (#N no corpo: dependência/épico): o harness LÊ e injeta o contexto
+            # delas — o coder não precisa (nem deve) ir editar outras issues p/ se situar.
+            related = await related_issues_block(
+                run.repo, issue_body, github.get_issue, self_id=int(run.issue_id)
+            )
+            if related:
+                contexto += "\n" + related + "\n"
     title = pr_title
     closes = f"Closes #{run.issue_id}" if run.issue_id.isdigit() else ""
 
@@ -299,6 +330,7 @@ async def run_pr_cycle(
                 "se foi review/checks, atenda o apontamento antes de concluir.\n"
             )
     base_prompt = (
+        f"{anchor_line(persona)}"
         f"Implemente a issue {run.issue_id} no repo {run.repo} (cwd {workdir}).{contexto}"
         f"{profile_block}{test_block}{ci_block}{conventions_block}{memory_block}{aprendizado_block}\n"
         "ESCOPO MÍNIMO: entregue APENAS o que os Critérios de aceite da issue pedem — nada além. "
@@ -306,8 +338,9 @@ async def run_pr_cycle(
         "épico nem outras issues, NÃO toque em código não relacionado, NÃO commite lockfile/deps "
         "sem a issue exigir. Se identificar trabalho FUTURO (quebrar épico, abrir sub-issues), "
         "apenas MENCIONE no fim — NÃO crie arquivo nem issue por conta própria. "
-        "Siga TODAS as regras do AGENTS.md — inclusive doc-in-sync (§5): mudança de regra/domínio "
-        "exige atualizar a doc (.md/docs/ADR) no MESMO commit. "
+        "Siga as regras do AGENTS.md. doc-in-sync (§5): SÓ atualize doc se você MUDOU uma "
+        "regra/domínio; um endpoint/código novo que SEGUE o padrão existente NÃO exige doc nem "
+        "caçar convenção de documentação (não gaste turnos procurando onde documentar). "
         "Faça UM self-check rápido: lint/typecheck + o TESTE do(s) arquivo(s) que você mudou (ex.: "
         "`vitest run <caminho-do-seu-teste>`). Se passar, ótimo; se o ambiente NÃO deixar rodar "
         "(infra/DB ausente, lentidão) ou um teste PRÉ-EXISTENTE falhar por infra, NÃO insista — "
@@ -406,23 +439,42 @@ async def run_pr_cycle(
                 run.tenant, run.id, "message", now,
                 text=f"🎨 auto-format: {len(formatados)} arquivo(s) formatado(s) antes do commit.",
             )
-        # commit resiliente ao hook de formatação (#228): se o pre-commit `prettier --check` barrar,
-        # formata e re-tenta UMA vez — o hook é a fonte da verdade (cobre o autoformat proativo não
-        # ter pego, ex.: #51 morreu assim). Outros erros do hook (lint/test) propagam normalmente.
+        # commit resiliente ao pre-commit hook: a saída do hook é a fonte da verdade (determinismo).
+        # - formatação (#228, prettier --check): o harness formata e re-tenta (não gasta o motor).
+        # - qualquer OUTRO hook (doc-sync, lint, i18n, tipo): devolve a saída ao motor p/ corrigir e
+        #   re-tenta — bounded. Era o buraco que matava motor bom (#57: doc-sync exige doc da rota
+        #   nova; o motor tinha implementado tudo, só faltava o doc).
         _msg = title if not feedback else f"{title} (correção)"
-        try:
-            await git.commit_all(_msg)
-        except GitError as _exc:
-            low = str(_exc).lower()
-            if "prettier" not in low and "code style" not in low:
-                raise
-            refmt = await autoformat(workdir)
-            if refmt and store is not None and now is not None:
-                await store.append_session_event(
-                    run.tenant, run.id, "message", now,
-                    text=f"🎨 commit barrado por formatação → reformatei {len(refmt)} e re-tento.",
-                )
-            await git.commit_all(_msg)  # re-tenta; se barrar de novo, propaga
+        fmt_tries = hook_tries = 0
+        while True:
+            try:
+                await git.commit_all(_msg)
+                break
+            except GitError as _exc:
+                low = str(_exc).lower()
+                if ("prettier" in low or "code style" in low) and fmt_tries < _FMT_FIX_ATTEMPTS:
+                    fmt_tries += 1
+                    refmt = await autoformat(workdir)
+                    if refmt and store is not None and now is not None:
+                        await store.append_session_event(
+                            run.tenant, run.id, "message", now,
+                            text=f"🎨 commit barrado por formatação → reformatei {len(refmt)}.",
+                        )
+                    continue
+                if hook_tries < _HOOK_FIX_ATTEMPTS:
+                    hook_tries += 1
+                    if store is not None and now is not None:
+                        await store.append_session_event(
+                            run.tenant, run.id, "message", now,
+                            text=f"↻ commit barrado por hook → motor corrige (try {hook_tries}).",
+                        )
+                    await _engine_turn(_hook_fix_prompt(str(_exc)), coder.get("native"))
+                    # determinismo: o motor pode ter criado/editado arquivos no turno acima (ex.:
+                    # locales i18n) → re-formata com o prettier ANTES do próximo commit; senão o
+                    # `--check` barra e a correção à mão do modelo nunca casa (buraco do #245).
+                    await autoformat(workdir)
+                    continue
+                raise  # esgotou as tentativas de correção → propaga (FAILED)
         # H: secret-scan com AUTO-CORREÇÃO — bloqueia o push e devolve ao motor p/ trocar o literal
         # por placeholder/env, re-escaneando. Esgotou → aborta (o push nunca sai com segredo).
         leak = await _guard_secrets(git, base, store=store, run=run, now=now)
@@ -499,6 +551,16 @@ async def run_pr_cycle(
             f"[{f.severidade}] {f.titulo} ({f.arquivo}:{f.linha}) — {f.recomendacao}"
             for f in findings
         ]
+        # second brain (Fatia 1): registra o FATO do review (veredito + títulos dos findings) —
+        # greppável; alimenta o refino/impl de relacionadas. Dedup por ref (review vigente).
+        if store is not None and now is not None:
+            titulos = "; ".join(f.titulo for f in findings[:5]) or "sem apontamentos"
+            veredito = "aprovado" if aprovado else "reprovado"
+            await store.remember(
+                run.tenant,
+                f"Review PR #{pr.number} (issue #{run.issue_id}): {veredito}. {titulos}"[:400],
+                kind="fato", ref=f"#{run.issue_id}", now=now, unique_by_ref=True,
+            )
         return ReviewVerdict(approved=aprovado, issues=issues, summary=body[:200])
 
     return await correction_cycle(implement=implement, review=review, max_attempts=max_attempts)
@@ -519,6 +581,7 @@ async def process_pr_run_tick(
     lease_seconds: int = 3600,  # ciclo é longo; lease generoso p/ o sweeper não reclamar no meio
     wip_limit: int = 0,  # backpressure (J): cap de runs ativos por tenant; 0 = sem limite
     self_assign_login: str = "",  # #150: login do fleet p/ self-assign; "" = não atribui
+    persona: str = "",  # âncora de papel opcional (A/B atrás de flag) — ver roboto/persona.py
 ) -> None:
     """Pega o próximo run da fila e roda o ciclo. Aprovado -> VERIFYING; desistiu -> FAILED.
 
@@ -595,6 +658,7 @@ async def process_pr_run_tick(
             store=store,  # medição de token (llm_call)
             now=moment,
             allow_secret=secret_ok,
+            persona=persona,
         )
     except Exception as exc:  # noqa: BLE001 — motor travado (watchdog) / git / PR: tira de RUNNING
         # Erro TRANSITÓRIO de provedor (402 sem crédito, 429, 5xx, overloaded) → re-enfileira com
@@ -629,6 +693,12 @@ async def process_pr_run_tick(
             run.tenant, run.id, "telegram_notify",
             {"chat_id": run.origin_chat_id, "text": txt}, f"done:{run.id}", moment,
         )
+
+
+# bound de auto-correção por PR (#233). VALIDADO pela literatura: o ganho da auto-correção se
+# concentra nas ~2 primeiras rodadas (76–95%); além de ~4 cai a zero (falta de CONTEXTO, não de
+# tentativas). "Três é o número mágico" (arXiv 2607.05197, 2604.10508). Alinha com max_attempts=3.
+_CORRECT_MAX_ATTEMPTS = 3
 
 
 def _correct_prompt(repo: str, pr_number: int, workdir: str, issues: list[str]) -> str:
@@ -693,18 +763,44 @@ async def process_correct_tick(
         await git.checkout_remote(branch)  # estado do PR na árvore ANTES de editar (B: seguro)
 
         verdict = await _review_now()
-        if verdict.approved:
+        # CI VERMELHA é AUTORITATIVA (#233): lê o erro REAL (tsc/lint) e alimenta a correção — o
+        # juiz lê só o diff e pode não ver o erro de tipo (deixou o #252 vermelho e "aprovado").
+        cf = await github.check_failures(run.repo, pr_number)
+        ci_errs = cf.value if isinstance(cf, Ok) else ""
+
+        if verdict.approved and not ci_errs:
             await github.comment_pr(
-                run.repo, pr_number, "✅ Correção: nada a ajustar — o review já está aprovado."
+                run.repo, pr_number, "✅ Correção: nada a ajustar — review aprovado e CI verde."
             )
             await store.append_session_event(
-                run.tenant, run.id, "message", moment, text="✅ review aprovado — nada a corrigir"
+                run.tenant, run.id, "message", moment,
+                text="✅ review aprovado + CI verde — nada a corrigir",
             )
             await store.set_state(run.id, RunState.DONE, moment)
             return
 
-        # motor corrige NA branch do PR (código já implementado) com os apontamentos do review
-        prompt = _correct_prompt(run.repo, pr_number, workdir, verdict.issues)
+        # bound por PR: esgotou as tentativas e a CI SEGUE vermelha → para e escala p/ humano (não
+        # fica corrigindo em loop — o ganho zera por falta de contexto, não de tentativas).
+        prior = await store.count_runs(run.tenant, run.repo, str(pr_number), "correct")
+        if prior > _CORRECT_MAX_ATTEMPTS and ci_errs:
+            await github.comment_pr(
+                run.repo,
+                pr_number,
+                f"🚩 Correção automática parada após {_CORRECT_MAX_ATTEMPTS} tentativas — a CI "
+                f"segue vermelha. Precisa de olhar humano.\n{BOT_MARKER}",
+            )
+            await store.append_session_event(
+                run.tenant, run.id, "message", moment,
+                text=f"🚩 bound de correção ({_CORRECT_MAX_ATTEMPTS}) atingido — escala p/ humano",
+            )
+            await store.set_state(run.id, RunState.FAILED, moment)
+            return
+
+        # motor corrige NA branch do PR: CI vermelha PRIMEIRO (autoritativa), depois o review
+        issues = list(verdict.issues)
+        if ci_errs:
+            issues = [f"A CI do repo REPROVOU — corrija EXATAMENTE isto:\n{ci_errs}"] + issues
+        prompt = _correct_prompt(run.repo, pr_number, workdir, issues)
         await engine.start(
             RunSpec(tenant=run.tenant, repo=run.repo, workdir=workdir, prompt=prompt)
         )
@@ -734,15 +830,19 @@ async def process_correct_tick(
         await git.push(branch)  # force-push atualiza o MESMO PR
 
         again = await _review_now()
-        body = (
-            "✅ Correção aplicada — review re-aprovado."
-            if again.approved
-            else "🔁 Correção aplicada; ainda restam pontos:\n- " + "\n- ".join(again.issues)
-        )
+        if ci_errs:
+            # a CI re-roda async no commit novo; o poller re-avalia (bounded). Fica pendente.
+            body = "🔁 Correção da CI aplicada — a CI vai re-rodar no novo commit."
+            final = RunState.VERIFYING
+        elif again.approved:
+            body = "✅ Correção aplicada — review re-aprovado."
+            final = RunState.VERIFYING
+        else:
+            body = "🔁 Correção aplicada; ainda restam pontos:\n- " + "\n- ".join(again.issues)
+            final = RunState.FAILED
         await github.comment_pr(
             run.repo, pr_number, body + f"\n\n_(correção do fleet, reviewer≠autor)_\n{BOT_MARKER}"
         )
-        final = RunState.VERIFYING if again.approved else RunState.FAILED
         await store.set_state(run.id, final, moment)
     except Exception as exc:  # noqa: BLE001 — falha não pode deixar o run preso em RUNNING
         await store.set_state(run.id, RunState.FAILED, moment)

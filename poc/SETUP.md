@@ -60,8 +60,8 @@ infra está boa. **Só depois disto vale configurar o resto.**
 2. Descubra seu **user id numérico** (ex.: @userinfobot) → coloque em `TELEGRAM_ALLOWLIST` (vírgulas).
 
 ### Passo 3 — OpenRouter
-openrouter.ai → crie uma API key → `OPENROUTER_API_KEY`. Confirme acesso a `qwen/qwen3-coder` e
-`qwen/qwen-2.5-72b-instruct` (ajuste os ids em `poc/ccr.config.json` se necessário).
+openrouter.ai → crie uma API key → `OPENROUTER_API_KEY`. Confirme acesso a `qwen/qwen3-coder-next`,
+`qwen/qwen3-coder-flash` e `deepseek/deepseek-r1-0528` (ajuste os ids em `poc/ccr.config.json` se necessário).
 
 ### Passo 4 — preencher e subir a Fase 1
 ```bash

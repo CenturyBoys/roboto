@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from roboto.app.git_ops import GitError
 from roboto.app.pr_cycle import process_correct_tick, process_pr_run_tick, run_pr_cycle
 from roboto.engines.port import EngineEvent, EngineEventKind
 from roboto.engines.stub import StubEngine
@@ -90,6 +91,7 @@ class _FakeGithub:
         self.issue_states: list[tuple[int, str]] = []  # revert (H): (issue_number, state)
         self.blocker_state = "open"  # gate de dependência (J): estado da issue bloqueadora
         self.reviews: list[str] = []  # corpos de submit_review (review estruturado, Trilha D)
+        self.ci_errs = ""  # #233: saída de CI vermelha (default = CI verde); testes setam
         self._existing = existing_pr
         self._ready = ready_issue
         self._custom_body = custom_body
@@ -124,6 +126,9 @@ class _FakeGithub:
     async def comment_pr(self, repo: str, number: int, body: str) -> Result[None, Error]:
         self.comments.append(body)
         return Ok(None)
+
+    async def check_failures(self, repo: str, number: int) -> Result[str, Error]:
+        return Ok(self.ci_errs)  # #233: "" = CI verde; não-vazio = erro real da CI
 
     async def set_issue_state(self, repo: str, number: int, state: str) -> Result[None, Error]:
         self.issue_states.append((number, state))
@@ -265,6 +270,42 @@ async def test_cycle_autofixes_secret_then_pushes() -> None:
     assert result.approved
     events = await store.session_events(run.id, 0, 50)
     assert any("secret-scan" in e.text for e in events)  # registrou o bloqueio/retry no feed
+
+
+async def test_prettier_barra_apos_turno_do_modelo_reformata_e_segue() -> None:
+    # #245: prettier barra → hook i18n barra (motor cria locales) → prettier barra arquivos novos.
+    # Formatar à mão (modelo) NUNCA casa com o prettier; o harness tem de RE-FORMATAR após o turno
+    # do modelo. Com o fix o ciclo recupera e empurra; sem ele, esgotava e ia FAILED.
+    store = InMemoryStore()
+    run = await _run(store)
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+
+    class _PrettierAfterModelTurn(_FakeGit):
+        def __init__(self) -> None:
+            super().__init__()
+            self._fails = [
+                "prettier --check (staged) failed",
+                "doc-sync/i18n hook: missing translation key",  # motor cria arquivos novos aqui
+                "prettier --check (staged) failed",  # os arquivos novos não estão formatados
+                "prettier --check (staged) failed",
+            ]
+
+        async def commit_all(self, message: str) -> None:
+            if self._fails:
+                raise GitError(self._fails.pop(0))
+            self.commits.append(message)
+
+    git, github = _PrettierAfterModelTurn(), _FakeGithub()
+    result = await run_pr_cycle(
+        engine=engine, gateway=_SeqGateway(["", "", ""]),  # type: ignore[arg-type]
+        github=github, git=git, run=run, workdir="/work/acme/app",
+        reviewer="review", store=store, now=_T0,
+    )
+    assert git.commits  # fechou o commit (não ficou preso no prettier)
+    assert git.pushes and github.opened == 1 and result.approved
+    assert len(engine.started) >= 2  # houve ao menos 1 turno de correção de hook (i18n)
+    events = await store.session_events(run.id, 0, 80)
+    assert any("hook" in e.text for e in events)  # registrou a barrada de hook no feed
 
 
 async def test_retry_injects_previous_failure_into_prompt() -> None:
@@ -667,3 +708,67 @@ async def test_correct_tick_approved_pr_is_noop() -> None:
     assert engine.started == []  # nada a corrigir -> motor não roda
     assert git.pushes == []
     assert store._runs[run.id].state is RunState.DONE
+
+
+async def test_correct_tick_ci_red_forces_correction_even_if_judge_approves() -> None:
+    # #233: o juiz APROVA o diff, mas a CI está VERMELHA → corrige mesmo assim, com o erro REAL da
+    # CI como feedback autoritativo. Era o buraco do #252 (juiz não via o erro de tipo do tsc).
+    store = InMemoryStore()
+    ev = GithubEvent(
+        tenant="acme", repo="acme/app", issue_id="221", agent="correct", idempotency_key="c3"
+    )
+    run, _ = await store.insert_run_if_absent(ev, _T0)
+    engine = StubEngine(
+        [
+            EngineEvent(EngineEventKind.MESSAGE, text="corrigindo tsc"),
+            EngineEvent(EngineEventKind.FINISHED, tokens_in=100, tokens_out=50),
+        ]
+    )
+    git, github = _FakeGit(), _FakeGithub()
+    github.ci_errs = "✖ verify: Typecheck\n  route.test.ts:20 TS2345 Request não é NextRequest"
+    await process_correct_tick(
+        engine,
+        _SeqGateway(["", ""]),  # type: ignore[arg-type]  # juiz aprova nas 2 rodadas
+        github,
+        store,
+        tenant="acme",
+        workdir_root="/work",
+        reviewer="review",
+        git_factory=lambda ws: git,
+        now=lambda: _T0,
+    )
+    assert len(engine.started) == 1  # corrigiu APESAR do juiz aprovar (a CI mandou)
+    assert git.pushes == ["feature/pr-221"]
+    assert store._runs[run.id].state is RunState.VERIFYING  # CI re-roda no commit novo
+    assert "TS2345" in engine.started[0].prompt  # o erro REAL da CI foi pro prompt da correção
+
+
+async def test_correct_tick_bound_escalates_after_max_attempts() -> None:
+    # #233: esgotou o bound e a CI segue vermelha → NÃO corrige mais, escala p/ humano (anti-loop).
+    store = InMemoryStore()
+    for i in range(4):  # 4 runs 'correct' do MESMO PR > _CORRECT_MAX_ATTEMPTS (3)
+        await store.insert_run_if_absent(
+            GithubEvent(
+                tenant="acme", repo="acme/app", issue_id="221",
+                agent="correct", idempotency_key=f"c-{i}",
+            ),
+            _T0,
+        )
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    git, github = _FakeGit(), _FakeGithub()
+    github.ci_errs = "✖ verify: ainda vermelha"
+    await process_correct_tick(
+        engine,
+        _SeqGateway([""]),  # type: ignore[arg-type]
+        github,
+        store,
+        tenant="acme",
+        workdir_root="/work",
+        reviewer="review",
+        git_factory=lambda ws: git,
+        now=lambda: _T0,
+    )
+    assert engine.started == []  # bateu o bound -> não corrige
+    assert git.pushes == []
+    assert any("🚩" in c and "humano" in c for c in github.comments)  # escalou
+    assert any(r.state is RunState.FAILED for r in store._runs.values())

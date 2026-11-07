@@ -22,13 +22,20 @@ _ERR_SIGNAL = re.compile(
 # erro de USO do próprio validate_build (ex.: "faltou 'lang' ou 'file'") — NÃO é diagnóstico de
 # build; injetar isso mandou o motor caçar erro fantasma (#226 bug). Descarta.
 _USAGE_ERR = re.compile(r"(faltou|missing|requer|required|obrigat).{0,24}('?lang'?|'?file'?)", re.I)
+# erro de CONFIG/SETUP do code-intel (ex.: "sem comando de build p/ 'typescript' (defina
+# TYPESCRIPT_CHECK_CMD)") — é o code-intel pedindo configuração ao OPERADOR, NÃO um erro no código.
+# Injetar isso mandou o motor editar .env/turbo.json caçando env var fantasma (#245 runaway). A cura
+# é configurar o code-intel (doctor no bootstrap, Fix B), não o modelo adivinhar. Descarta.
+_CONFIG_ERR = re.compile(
+    r"sem comando de build|_CHECK_CMD\b|n[ãa]o configurad|not configured|\bdoctor\b", re.I
+)
 _DIAG_MAX = 1800
 
 
 def format_diagnostics(raw: str, *, max_chars: int = _DIAG_MAX) -> str:
-    """Bloco dos diagnostics (PURA, testável). Vazio se build ok, ruído, ou erro de USO da tool."""
+    """Bloco dos diagnostics (PURA). Vazio se build ok, ruído, erro de USO ou de CONFIG."""
     raw = raw.strip()
-    if not raw or _USAGE_ERR.search(raw) or not _ERR_SIGNAL.search(raw):
+    if not raw or _USAGE_ERR.search(raw) or _CONFIG_ERR.search(raw) or not _ERR_SIGNAL.search(raw):
         return ""
     if len(raw) > max_chars:
         raw = raw[:max_chars].rstrip() + "\n…(truncado)"

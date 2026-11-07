@@ -50,6 +50,14 @@ async def reconcile_verifying(
         merged = await github.pr_merged(r.repo, number)
         if isinstance(merged, Ok) and merged.value:
             await store.set_state(r.id, RunState.DONE, now)
+            # second brain (Fatia 1): registra a DECISÃO "issue implementada e mergeada" — fecha o
+            # loop do ciclo (o refino/impl de relacionadas injeta via recall). Dedup por ref.
+            if r.issue_id.isdigit():
+                await store.remember(
+                    tenant,
+                    f"Issue #{r.issue_id} implementada e mergeada no {r.repo} (PR #{number}).",
+                    kind="decisão", ref=f"#{r.issue_id}", now=now, unique_by_ref=True,
+                )
             resolved += 1
             continue
         # não mergeado: fechado sem merge também precisa sair do VERIFYING (senão trava o lock)

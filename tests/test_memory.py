@@ -38,3 +38,24 @@ async def test_recall_block_isolates_tenant() -> None:
     store = InMemoryStore()
     await store.remember("acme", "segredo do acme sobre export", kind="fato", ref="", now=_T0)
     assert await recall_block(store, "outra", "export") == ""
+
+
+async def test_remember_unique_by_ref_dedup() -> None:
+    # Fatia 1: perfil/decisão com unique_by_ref mantém só 1 vigente por (kind, ref) — não acumula
+    store = InMemoryStore()
+    for i in range(3):
+        await store.remember(
+            "acme", f"perfil v{i}", kind="perfil", ref="acme/app", now=_T0, unique_by_ref=True
+        )
+    facts = [f for f in store._facts if f.kind == "perfil"]  # type: ignore[attr-defined]
+    assert len(facts) == 1 and facts[0].text == "perfil v2"  # só o último sobrevive
+
+
+async def test_remember_unique_by_ref_nao_afeta_outros_ref_ou_kind() -> None:
+    store = InMemoryStore()
+    u = {"now": _T0, "unique_by_ref": True}
+    await store.remember("acme", "perfil A", kind="perfil", ref="repoA", **u)
+    await store.remember("acme", "perfil B", kind="perfil", ref="repoB", **u)
+    await store.remember("acme", "decisão X", kind="decisão", ref="repoA", now=_T0)
+    # refs/kinds distintos coexistem (dedup é só por (kind, ref))
+    assert len(store._facts) == 3  # type: ignore[attr-defined]

@@ -225,7 +225,7 @@ grande (determinismo + baixo custo de manutenção/token).
    plugado no `runtime`** (não mais só PoC): `app/copilot.py` (`ClaudeSDKClient`) com
    `permission_mode=bypassPermissions` (leitura fluida, sem travar em aprovação), **vigia concorrente**
    que corta o motor NO INSTANTE do interromper/encerrar (prioridade máxima), **resume** da sessão
-   nativa com **fallback** p/ sessão nova (rebuild apaga o disco), e **modelo fixo** (`qwen/qwen3-coder`).
+   nativa com **fallback** p/ sessão nova (rebuild apaga o disco), e **modelo fixo** (`qwen/qwen3-coder-next`).
    **Dois drivers por `COPILOT_MODE`:** `sdk` (feed estruturado) e `tmux` (ver Fatia 7). Refino é
    **read-only** (bloqueia Write/Edit/Bash). Validado ao vivo contra `arenavalendo/main`.
 6. ✅ **Refino no cockpit + aplicar na issue** *(feito 2026-10-23)* — pedido do dono: fazer o ciclo da issue pela UI,

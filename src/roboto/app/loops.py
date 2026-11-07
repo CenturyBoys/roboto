@@ -17,6 +17,7 @@ from roboto.app.code_intel_brief import code_intel_brief
 from roboto.app.engine_loop import TurnOutcome, drive_turn
 from roboto.app.inbound import IssueLister, dispatch_inbound
 from roboto.app.memory import recall_block
+from roboto.app.related_issues import related_issues_block
 from roboto.app.repo_profile import read_agents_conventions
 from roboto.app.web_research import research_block, research_is_critical
 from roboto.channels.model import OutboundMessage
@@ -26,6 +27,7 @@ from roboto.llm.decide import Decider
 from roboto.llm.port import ModelGateway, Transcriber
 from roboto.orchestrator.model import RunState
 from roboto.orchestrator.store import Store
+from roboto.persona import anchor_line
 from roboto.result import Err, Ok
 
 # Marcadores que delimitam o CORPO LIMPO da issue na saída do refino: o motor pode narrar/pensar
@@ -54,8 +56,11 @@ def _marked_body(msgs: list[str]) -> str:
     return ""
 
 
-def _refine_prompt(repo: str, issue_id: str, contexto: str, correction: str = "") -> str:
+def _refine_prompt(
+    repo: str, issue_id: str, contexto: str, correction: str = "", persona: str = ""
+) -> str:
     base = (
+        f"{anchor_line(persona)}"
         f"Refine a issue #{issue_id} do repo {repo}.{contexto}\n\n"
         "Seu trabalho é ESCREVER a issue refinada — NÃO executar a tarefa dela. Mesmo que a issue "
         "fale em 'discovery'/'mapear'/'levantar', você NÃO faz o levantamento agora: você descreve "
@@ -122,6 +127,7 @@ async def process_refine_tick(
     gateway: ModelGateway | None = None,
     decider: Decider | None = None,
     code_intel: bool = False,
+    persona: str = "",
 ) -> None:
     """Refino ENGINE-SCOPED (trilha O, Fatia 6/C): o motor LÊ o repo e propõe a issue fundamentada.
 
@@ -149,6 +155,15 @@ async def process_refine_tick(
                 )
                 if block:
                     contexto += "\n\n" + block
+            # issues relacionadas (#N no corpo: "Depende de #244", "épico #67"): o harness LÊ e
+            # injeta o contexto delas — consultar ≠ mexer, o refino segue read-only. Determinístico
+            # (modelo local não busca sozinho — mesma lição do web/code-intel).
+            self_id = int(run.issue_id) if run.issue_id.isdigit() else None
+            related = await related_issues_block(
+                run.repo, corpo, github.get_issue, self_id=self_id
+            )
+            if related:
+                contexto += "\n\n" + related
 
     # convenções do repo-alvo (E) + recall da memória (G): mesmas injeções do impl. O refino decide
     # ESCOPO melhor conhecendo as convenções do repo e as decisões/fatos passados — harness injeta
@@ -176,7 +191,7 @@ async def process_refine_tick(
     correction = ""
     verdict = None
     for _ in range(_REFINE_MAX_ATTEMPTS):
-        prompt = _refine_prompt(run.repo, run.issue_id, contexto, correction)
+        prompt = _refine_prompt(run.repo, run.issue_id, contexto, correction, persona)
         res = await drive_turn(engine, store, run=run, chat_id=chat_id, now=now(), prompt=prompt)
         if isinstance(res, Err):
             return  # motor falhou: drive_turn já marcou FAILED
@@ -207,6 +222,14 @@ async def process_refine_tick(
     else:
         nota = "Proposta emitida (sem marcadores para validar o DoR)."
     await store.append_session_event(run.tenant, run.id, "message", now(), text=nota)
+    if verdict is not None and verdict.ready and body:
+        # second brain (Fatia 1): grava a DECISÃO de escopo do refino — greppável; o refino/impl de
+        # issues RELACIONADAS injeta via recall. Bounded + dedup por ref (1 vigente por issue).
+        resumo = " ".join(body.split())[:400]
+        await store.remember(
+            run.tenant, f"Refino #{run.issue_id} ({title}): {resumo}",
+            kind="decisão", ref=f"#{run.issue_id}", now=now(), unique_by_ref=True,
+        )
 
 
 async def poll_tick(

@@ -640,6 +640,18 @@ class PostgresStore:
             )
             return {r["state"]: int(r["n"]) for r in rows}
 
+    async def count_runs(self, tenant: str, repo: str, issue_id: str, agent: str) -> int:
+        async with self._pool.acquire() as conn:
+            n = await conn.fetchval(
+                "SELECT COUNT(*) FROM run WHERE tenant = $1 AND repo = $2 "
+                "AND issue_id = $3 AND agent = $4",
+                tenant,
+                repo,
+                issue_id,
+                agent,
+            )
+            return int(n or 0)
+
     async def cost_for_execution(self, execution_id: int) -> tuple[int, float]:
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
@@ -672,9 +684,17 @@ class PostgresStore:
             ]
 
     async def remember(
-        self, tenant: str, text: str, *, kind: str, ref: str, now: datetime
+        self, tenant: str, text: str, *, kind: str, ref: str, now: datetime,
+        unique_by_ref: bool = False,
     ) -> MemoryFact:
         async with self._pool.acquire() as conn:
+            if unique_by_ref and ref:
+                # dedup: só o fato vigente deste (kind, ref) sobrevive — ex.: perfil de boot não
+                # acumula cópias a cada subida (era o bug das 55 duplicatas no PoC).
+                await conn.execute(
+                    "DELETE FROM memory_fact WHERE tenant=$1 AND kind=$2 AND ref=$3",
+                    tenant, kind, ref,
+                )
             row = await conn.fetchrow(
                 "INSERT INTO memory_fact (tenant, kind, ref, text, created_at) "
                 "VALUES ($1,$2,$3,$4,$5) RETURNING id,tenant,kind,ref,text,created_at",
