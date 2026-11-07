@@ -7,6 +7,9 @@ set -euo pipefail
 : "${TARGET_REPO_URL:?defina TARGET_REPO_URL (ex.: https://github.com/arenavalendo/main.git)}"
 # modo PAT: 1 token serve p/ API e clone — reaproveita GITHUB_API_TOKEN se CLONE não vier
 GITHUB_CLONE_TOKEN="${GITHUB_CLONE_TOKEN:-${GITHUB_API_TOKEN:-}}"
+# gh lê GH_TOKEN do ambiente (sem `gh auth login`): deixa o CLI autenticado p/ o motor (impl) e o
+# operador consultarem issues/PRs do alvo. Exportado → herda no shell do engine e na tmux do ttyd.
+export GH_TOKEN="${GITHUB_API_TOKEN:-${GITHUB_CLONE_TOKEN:-}}"
 
 # skills do fleet (Trilha C): expõe fleet/skills ao MOTOR em qualquer repo-alvo (progressive
 # disclosure). O Claude Code descobre skills em ~/.claude/skills (global), além do cwd do repo-alvo.
@@ -48,6 +51,16 @@ if [ ! -d "$TARGET_DIR/.git" ]; then
   fi
 fi
 export TARGET_WORKDIR="$TARGET_DIR"
+
+# code-intel validate_build (TS): o v0.9.1 honra <LANG>_CHECK_CMD, mas TypeScript NÃO tem default
+# (rust/dart/csharp/python têm) — sem isto, o diagnostics do impl erra "sem comando de build" e
+# manda o motor caçar env var fantasma (#245 runaway). Se o repo-alvo declara um script `typecheck`,
+# exporta o comando p/ o validate_build typecheckar de verdade. Genérico (só liga se o script existe).
+if [ -z "${TYPESCRIPT_CHECK_CMD:-}" ] && [ -f "$TARGET_WORKDIR/package.json" ] \
+   && grep -q '"typecheck"' "$TARGET_WORKDIR/package.json"; then
+  export TYPESCRIPT_CHECK_CMD="pnpm -s typecheck"
+  echo "code-intel: TYPESCRIPT_CHECK_CMD=pnpm -s typecheck (validate_build do TS habilitado)"
+fi
 
 # 3b) BOOTSTRAP + validação do ambiente do repo-alvo (em BACKGROUND: não trava o cockpit). Prepara a
 #     toolchain (corepack/pnpm), instala deps e valida — grava /tmp/env-status com ✅ PRONTO/❌ FALHOU.
