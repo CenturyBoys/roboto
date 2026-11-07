@@ -740,7 +740,7 @@ async def process_correct_tick(
     workdir = f"{workdir_root}/{run.repo}"
     git = git_factory(workdir)
 
-    async def _review_now() -> ReviewVerdict:
+    async def _review_now(previas: list[str] | None = None) -> ReviewVerdict:
         diff = await github.get_pr_diff(run.repo, pr_number)
         pr = PullRequest(
             number=pr_number,
@@ -748,7 +748,10 @@ async def process_correct_tick(
             title=f"PR #{pr_number}",
             diff=diff.value if isinstance(diff, Ok) else "",
         )
-        res = await revisar_pr(pr, gateway, reviewer=reviewer)
+        # anchora o re-review nos pontos ANTERIORES (#151/convergência): o juiz VERIFICA se cada um
+        # foi resolvido, em vez de re-revisar do zero e inventar bloqueadores novos a cada rodada
+        # (era por que o loop review→correção→re-review nunca fechava — #254).
+        res = await revisar_pr(pr, gateway, reviewer=reviewer, contexto_previo=previas)
         findings = res.value if isinstance(res, Ok) else []
         issues = [f"[{f.severidade}] {f.titulo} — {f.recomendacao}" for f in findings]
         from roboto.agents.review import aprovado_por_findings
@@ -779,15 +782,18 @@ async def process_correct_tick(
             await store.set_state(run.id, RunState.DONE, moment)
             return
 
-        # bound por PR: esgotou as tentativas e a CI SEGUE vermelha → para e escala p/ humano (não
-        # fica corrigindo em loop — o ganho zera por falta de contexto, não de tentativas).
+        # bound por PR: esgotou as tentativas e o PR SEGUE reprovado (CI vermelha OU review com
+        # bloqueador) → para e escala p/ humano. Antes só escalava com `ci_errs`, então um juiz que
+        # achava bloqueador novo a cada rodada (sem CI) re-disparava pra sempre (#254). O ganho da
+        # auto-correção zera por falta de CONTEXTO, não de tentativas.
         prior = await store.count_runs(run.tenant, run.repo, str(pr_number), "correct")
-        if prior > _CORRECT_MAX_ATTEMPTS and ci_errs:
+        if prior > _CORRECT_MAX_ATTEMPTS and (ci_errs or not verdict.approved):
+            motivo = "a CI segue vermelha" if ci_errs else "o review ainda aponta bloqueadores"
             await github.comment_pr(
                 run.repo,
                 pr_number,
-                f"🚩 Correção automática parada após {_CORRECT_MAX_ATTEMPTS} tentativas — a CI "
-                f"segue vermelha. Precisa de olhar humano.\n{BOT_MARKER}",
+                f"🚩 Correção parada após {_CORRECT_MAX_ATTEMPTS} tentativas — {motivo}. "
+                f"Precisa de olhar humano.\n{BOT_MARKER}",
             )
             await store.append_session_event(
                 run.tenant, run.id, "message", moment,
@@ -844,7 +850,7 @@ async def process_correct_tick(
             raise SecretLeakError(leak)  # correção vazou segredo → bloqueia (push nunca sai sujo)
         await git.push(branch)  # force-push atualiza o MESMO PR
 
-        again = await _review_now()
+        again = await _review_now(previas=list(verdict.issues))
         if ci_errs:
             # a CI re-roda async no commit novo; o poller re-avalia (bounded). Fica pendente.
             body = "🔁 Correção da CI aplicada — a CI vai re-rodar no novo commit."
