@@ -85,6 +85,27 @@ def test_run_ci_banco_de_teste_nao_migrado_e_infra() -> None:
     assert r.fixable is False  # não realimenta o motor (3 turnos à toa no #103)
 
 
+def test_run_ci_typecheck_cannot_find_module_e_codigo_nao_infra() -> None:
+    # regressão do run #104: TS2307 `Cannot find module` no TYPECHECK é código (import errado),
+    # não infra — tem de voltar ao motor; waved-through reabre PR vermelho.
+    def runner(cmd: str, cwd: str, timeout: float) -> tuple[int, str]:
+        return 2, "src/lib/versioning.test.ts(2,56): error TS2307: Cannot find module '../check'"
+
+    r = run_ci("/w", [("typecheck", "pnpm -s typecheck")], runner=runner)
+    assert r.passed is False
+    assert r.infra is False  # typecheck não é passo de infra
+    assert r.fixable is True  # volta ao motor
+
+
+def test_run_ci_lint_nunca_e_infra() -> None:
+    # mesmo um texto com cara de infra no LINT conta como código (lint é estático puro).
+    def runner(cmd: str, cwd: str, timeout: float) -> tuple[int, str]:
+        return 1, "Cannot find module 'x' / ECONNREFUSED (ruído)"
+
+    r = run_ci("/w", [("lint", "pnpm -s lint")], runner=runner)
+    assert r.infra is False and r.fixable is True
+
+
 def test_run_ci_timeout_vira_infra() -> None:
     def runner(cmd: str, cwd: str, timeout: float) -> tuple[int, str]:
         raise TimeoutError("estourou")

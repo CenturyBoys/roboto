@@ -88,13 +88,15 @@ abre o PR quando **verde**. Igual ao guard de hook, mas é a porta do próprio C
 | execução | roda em sequência, para no 1º vermelho, trima a saída pelo fim | `app/repo_ci.run_ci` |
 | gate | antes do push: vermelho → corrige (bounded) → re-commita → re-roda; verde → segue | `app/pr_cycle` (bloco pré-`push`) |
 
-- **Infra ≠ código:** vermelho que casa padrão de infra (`ECONNREFUSED`, DB fora, deps faltando,
-  **banco de teste não migrado** — ex.: integração Prisma `table does not exist`/`P2021`) **não**
-  realimenta o motor (ele não corrige infra) — é **surfado** no feed e o ciclo **segue** (o CI do
-  GitHub, que roda com DB migrado, é o juiz desses). Validado no run #103: `lint`/`typecheck` verdes
-  localmente, `test` de integração caiu por falta de DB → degrada, não escala à toa. Só erro de
-  **código** vira correção. Em ambiente sem o DB de teste, `ROBOTO_LOCAL_CI_CMDS=lint,typecheck`
-  evita rodar a suíte de integração que só o CI consegue julgar.
+- **Infra ≠ código — só no `test`:** `lint` e `typecheck` são análise **estática pura** — qualquer
+  vermelho ali é **código** (ex.: `TS2307 Cannot find module` = import errado) e **sempre** volta ao
+  motor. Só o passo **`test`** (que precisa de DB/serviços) ganha o benefício da dúvida: vermelho que
+  casa padrão de infra (`ECONNREFUSED`, DB fora, **banco de teste não migrado** — Prisma
+  `table does not exist`/`P2021`) **não** realimenta o motor — é **surfado** e o ciclo **segue** (o CI
+  do GitHub, com DB migrado, é o juiz desses). Validado ao vivo: run #103 pegou o vermelho e não abriu
+  PR; run #104 mostrou que waving-through de `typecheck` reabre PR vermelho → por isso infra é restrita
+  ao `test`. Em ambiente sem o DB de teste, `ROBOTO_LOCAL_CI_CMDS=lint,typecheck` evita rodar a suíte
+  de integração que só o CI consegue julgar.
 - **Esgotou e segue vermelho:** **não abre PR vermelho** — escala p/ humano (feed + Telegram).
 - **Visibilidade:** cada passo vai pro feed (`🔴 CI local lint reprovou…`, `✅ CI local verde…`) —
   a falha de CI deixa de ser invisível.
