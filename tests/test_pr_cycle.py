@@ -49,6 +49,11 @@ class _FakeGit:
     async def working_changes(self) -> list[str]:
         return []  # #226: árvore de trabalho (fake vazio — diag best-effort)
 
+    baseline_red_output = ""  # #247: subclasses setam p/ simular pre-commit vermelho na base
+
+    async def precommit_baseline(self) -> str:
+        return self.baseline_red_output
+
     async def checkout_remote(self, name: str) -> None:
         self.checked_out.append(name)
 
@@ -309,6 +314,34 @@ async def test_cycle_escala_modelo_forte_no_hook() -> None:
     events = await store.session_events(run.id, 0, 90)
     assert any("MODELO FORTE" in e.text for e in events)  # registrou o degrau
     assert any("Precisa de humano" in e.text for e in events)  # forte tb não cedeu → humano
+
+
+async def test_cycle_baseline_vermelho_surfa_divida_preexistente() -> None:
+    # #247: o pre-commit do repo-alvo já falha na BASE (dívida pré-existente, ex.: 555 i18n) → o
+    # fleet surfa isso e NÃO culpa a mudança do modelo.
+    store = InMemoryStore()
+    run = await _run(store)
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+
+    class _BaseRedI18n(_FakeGit):
+        baseline_red_output = "check:i18n ✖ 555 erro(s) (bloqueia)"
+
+        async def commit_all(self, message: str) -> None:
+            raise GitError("check:i18n ✖ 555 erro(s) (bloqueia)")
+
+    raised = False
+    try:
+        await run_pr_cycle(
+            engine=engine, gateway=_SeqGateway([]),  # type: ignore[arg-type]
+            github=_FakeGithub(), git=_BaseRedI18n(), run=run, workdir="/work/acme/app",
+            reviewer="review", store=store, now=_T0,
+        )
+    except GitError:
+        raised = True
+    assert raised
+    events = await store.session_events(run.id, 0, 90)
+    assert any("vermelho na BASE" in e.text for e in events)  # avisou no início
+    assert any("pré-existente" in e.text and "não é a sua mudança" in e.text for e in events)
 
 
 async def test_cycle_hook_nao_prettier_escala_humano() -> None:

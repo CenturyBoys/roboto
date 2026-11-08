@@ -402,6 +402,7 @@ async def run_pr_cycle(
 
     async def implement(feedback: list[str]) -> PullRequest:
         prompt = base_prompt
+        baseline_red = ""
         if feedback:
             prompt += "\nCorrija os pontos do review:\n- " + "\n- ".join(feedback)
         else:
@@ -409,6 +410,19 @@ async def run_pr_cycle(
             # árvore do run anterior no /work compartilhado (PR contaminado, ex.: #250). Só na 1ª
             # tentativa: correções (feedback) editam SOBRE o trabalho já feito, não resetam.
             await git.reset_to_base(base)
+            # guard de baseline (#247): o repo-alvo pode ter o pre-commit VERMELHO por DÍVIDA
+            # pré-existente (ex.: 555 chaves i18n faltando repo-wide) → barra QUALQUER commit, não é
+            # a mudança do fleet. Prova na base limpa p/ não culpar o modelo. Best-effort.
+            try:
+                baseline_red = await git.precommit_baseline()  # type: ignore[attr-defined]
+            except Exception:  # noqa: BLE001 — probe best-effort, nunca derruba o ciclo
+                baseline_red = ""
+            if baseline_red and store is not None and now is not None:
+                await store.append_session_event(
+                    run.tenant, run.id, "message", now,
+                    text="⚠️ pre-commit do repo-alvo JÁ está vermelho na BASE (dívida "
+                         "pré-existente) — vai barrar qualquer commit; não é a sua mudança.",
+                )
         # correção RESUMINDO a sessão do coder: 1ª tentativa é sessão nova; correções resumem.
         await _engine_turn(prompt, coder.get("native") if feedback else None)
         await git.prepare_branch(branch)
@@ -510,10 +524,15 @@ async def run_pr_cycle(
                 # hook NÃO-prettier não cedeu nem no forte (i18n/doc-sync não são mecânicos). Escala
                 # LIMPO p/ humano em vez de FAILED seco com GitError cru (exec #80: morreu no i18n).
                 if store is not None and now is not None:
+                    extra = (
+                        " NOTA: este hook JÁ estava vermelho na BASE (dívida pré-existente do "
+                        "repo) — precisa de LIMPEZA do repo, não é a sua mudança."
+                        if baseline_red else ""
+                    )
                     await store.append_session_event(
                         run.tenant, run.id, "message", now,
                         text=(f"🚩 hook de pre-commit não passou após {_HOOK_FIX_ATTEMPTS} "
-                              "tentativas (i18n/doc-sync não é mecânico). Precisa de humano."),
+                              f"tentativas (não é mecânico). Precisa de humano.{extra}"),
                     )
                     if run.origin_chat_id:
                         await store.enqueue_effect(
