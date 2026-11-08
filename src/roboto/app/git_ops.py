@@ -80,6 +80,20 @@ class SubprocessGit:
             "commit", "-m", message,
         )
 
+    async def precommit_baseline(self) -> str:
+        """Prova o pre-commit na BASE limpa (commit --allow-empty): se já falha SEM a mudança do
+        fleet, é dívida PRÉ-EXISTENTE do repo (o hook varre o codebase todo) — o fleet não deve ser
+        culpado. Devolve a saída do hook vermelho, ou '' se a base está verde. Best-effort."""
+        try:
+            await self._git_checked(
+                "-c", "user.email=fleet@roboto.dev", "-c", "user.name=roboto",
+                "commit", "--allow-empty", "-m", "roboto baseline probe",
+            )
+        except GitError as exc:
+            return str(exc)  # pre-commit VERMELHO na base (pré-existente)
+        await self._git("reset", "--hard", "HEAD~1")  # passou → desfaz o commit-probe
+        return ""
+
     async def push(self, name: str) -> None:
         # push NÃO pode falhar em silêncio: branch que não sobe vira 422 confuso no open_pr.
         await self._git_checked("push", "-u", "origin", name, "--force")
