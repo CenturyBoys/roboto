@@ -54,6 +54,12 @@ def test_disallowed_tools_default_empty() -> None:
     assert ClaudeCodeEngine()._disallowed_tools == []
 
 
+def test_accepts_max_buffer_size() -> None:
+    # #70/#83: buffer do SDK (default 1MB) mata run verboso → configurável
+    assert ClaudeCodeEngine(max_buffer_size=10_485_760)._max_buffer_size == 10_485_760
+    assert ClaudeCodeEngine()._max_buffer_size == 0  # 0 = default do SDK
+
+
 # --- resume-on-max_turns (#232) -----------------------------------------------------------------
 import sys  # noqa: E402
 import types  # noqa: E402

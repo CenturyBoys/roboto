@@ -189,6 +189,8 @@ async def _run_daemon(config: Config, store: Store) -> None:
             # budget de tokens (#242 Fatia 2): estourou → não resume e termina (corta o burn de
             # flailing, ex.: exec #80 = 194k). 0 = desligado. ROBOTO_TURN_TOKEN_BUDGET.
             token_budget=int(os.environ.get("ROBOTO_TURN_TOKEN_BUDGET", "0") or "0"),
+            # buffer do SDK (#70/#83): default 1MB mata run verboso. Sobe p/ 10MB. 0 = default.
+            max_buffer_size=int(os.environ.get("ROBOTO_MAX_BUFFER_SIZE", str(10 * 1024 * 1024))),
         )
         # motor dedicado ao refino (read-only por prompt): evita corrida com o ciclo de PR.
         # max_turns=60: refino é LER+PROPOR; o PROMPT força parar em ~10 consultas, mas issues de
