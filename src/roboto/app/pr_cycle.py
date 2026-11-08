@@ -474,7 +474,24 @@ async def run_pr_cycle(
                     # `--check` barra e a correção à mão do modelo nunca casa (buraco do #245).
                     await autoformat(workdir)
                     continue
-                raise  # esgotou as tentativas de correção → propaga (FAILED)
+                # hook NÃO-prettier não cedeu após N turnos do motor (i18n/doc-sync não são
+                # mecânicos — o modelo fraco corrige incompleto). Escala LIMPO p/ humano em vez de
+                # FAILED seco com GitError cru (exec #80: morreu no check:i18n sem sinal claro).
+                if store is not None and now is not None:
+                    await store.append_session_event(
+                        run.tenant, run.id, "message", now,
+                        text=(f"🚩 hook de pre-commit não passou após {_HOOK_FIX_ATTEMPTS} "
+                              "tentativas (i18n/doc-sync não é mecânico). Precisa de humano."),
+                    )
+                    if run.origin_chat_id:
+                        await store.enqueue_effect(
+                            run.tenant, run.id, "telegram_notify",
+                            {"chat_id": run.origin_chat_id,
+                             "text": f"🚩 #{run.issue_id}: hook de pre-commit (i18n/doc-sync) "
+                                     f"não passou após {_HOOK_FIX_ATTEMPTS} tentativas — humano."},
+                            f"hookfail:{run.id}", now,
+                        )
+                raise  # esgotou as tentativas → propaga (FAILED), agora com sinal claro p/ humano
         # H: secret-scan com AUTO-CORREÇÃO — bloqueia o push e devolve ao motor p/ trocar o literal
         # por placeholder/env, re-escaneando. Esgotou → aborta (o push nunca sai com segredo).
         leak = await _guard_secrets(git, base, store=store, run=run, now=now)

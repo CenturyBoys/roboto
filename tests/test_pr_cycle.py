@@ -272,6 +272,31 @@ async def test_cycle_autofixes_secret_then_pushes() -> None:
     assert any("secret-scan" in e.text for e in events)  # registrou o bloqueio/retry no feed
 
 
+async def test_cycle_hook_nao_prettier_escala_humano() -> None:
+    # exec #80: hook NÃO-prettier (i18n) não cede após N tentativas → escala LIMPO p/ humano
+    # (mensagem clara no feed), em vez de FAILED seco com GitError cru.
+    store = InMemoryStore()
+    run = await _run(store)
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+
+    class _I18nHookForever(_FakeGit):
+        async def commit_all(self, message: str) -> None:
+            raise GitError("check:i18n ✖ i18n — 5 erro(s) (bloqueia): chave faltando")
+
+    raised = False
+    try:
+        await run_pr_cycle(
+            engine=engine, gateway=_SeqGateway([]),  # type: ignore[arg-type]
+            github=_FakeGithub(), git=_I18nHookForever(), run=run, workdir="/work/acme/app",
+            reviewer="review", store=store, now=_T0,
+        )
+    except GitError:
+        raised = True
+    assert raised  # esgotou o hook e propagou (FAILED a jusante)
+    events = await store.session_events(run.id, 0, 80)
+    assert any("Precisa de humano" in e.text for e in events)  # escalou limpo
+
+
 async def test_prettier_barra_apos_turno_do_modelo_reformata_e_segue() -> None:
     # #245: prettier barra → hook i18n barra (motor cria locales) → prettier barra arquivos novos.
     # Formatar à mão (modelo) NUNCA casa com o prettier; o harness tem de RE-FORMATAR após o turno
