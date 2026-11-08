@@ -53,6 +53,7 @@ nav:
       - Dev / arquitetura: tutorial-dev.md
       - Convenção de diagramas: convencao-diagramas.md
   - Arquitetura:
+      - Mapa do sistema: mapa.md
       - Visão geral: arquitetura.md
       - Orquestrador: design/orquestrador.md
       - Responsabilidades: responsabilidades.md
