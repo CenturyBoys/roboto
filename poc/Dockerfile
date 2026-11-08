@@ -39,6 +39,14 @@ RUN curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_CLI_VERSION}/
     && rm -rf "/tmp/gh_${GH_CLI_VERSION}_linux_amd64" \
     && gh --version
 
+# TOOLCHAINS POLIGLOTAS (bootstrap multi-ecossistema): o alvo pode ser Go/Rust/Python, não só JS.
+# Sem o toolchain, o bootstrap marca o ecossistema como "toolchain ausente" (FALHOU honesto); com ele,
+# instala as deps de verdade. Todos PINADOS (determinismo; bump = trocar a tag). Go = system-wide.
+ENV GO_VERSION=1.23.3
+RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" | tar -xz -C /usr/local \
+    && /usr/local/go/bin/go version
+ENV PATH="/usr/local/go/bin:/home/pwuser/go/bin:$PATH"
+
 # Claude Code CLI + claude-code-router (validar nomes/versões dos pacotes npm)
 RUN npm install -g @anthropic-ai/claude-code @musistudio/claude-code-router
 # tavily-mcp: busca web no refino (MCP, só o refiner — ver src/roboto/app/mcp_config). Pré-instalado
@@ -51,6 +59,9 @@ RUN npm install -g @typescript/native-preview && tsgo --version 2>/dev/null || t
 # venv dedicado: evita PEP 668 (externally-managed) e garante pip novo (sem --break-system-packages)
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
+# uv: instalador Python rápido (pyproject/requirements) que o bootstrap prefere p/ o repo-alvo. Binário
+# no /opt/venv/bin (já no PATH); cria venv NO dir do alvo, não polui o venv do roboto.
+RUN pip install uv && uv --version
 
 WORKDIR /opt/roboto
 COPY pyproject.toml ./
@@ -80,6 +91,14 @@ RUN mkdir -p /work /home/pwuser/.claude \
     && chown -R pwuser:pwuser /work /home/pwuser /opt/roboto
 ENV HOME=/home/pwuser
 USER pwuser
+
+# Rust (rustup, perfil minimal) p/ o pwuser — o bootstrap roda `cargo fetch` no alvo quando houver
+# Cargo.toml. PINADO; perfil minimal mantém o peso no mínimo. Em ~/.cargo/bin.
+ENV RUST_VERSION=1.82.0
+ENV PATH="/home/pwuser/.cargo/bin:$PATH"
+RUN curl -fsSL https://sh.rustup.rs \
+      | sh -s -- -y --no-modify-path --profile minimal --default-toolchain "${RUST_VERSION}" \
+    && cargo --version
 
 # ide_cc (code-intel MCP): navegação/edição semântica verificada = menos token (F). Em ~/.local/bin.
 # PILAR da economia de token: o build FALHA se não instalar (antes `|| echo` degradava SILENCIOSO —
