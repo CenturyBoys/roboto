@@ -70,7 +70,33 @@ guard é **robusto** (bloqueia por padrão, auto-corrige) sem ser **rígido** (t
 - Varre só o que o PR **introduz** (linhas `+`), nunca contexto nem remoções.
 - **Nunca vaza no log:** o finding mostra só um prefixo redigido (`ghp_…*** (40 chars)`).
 
-## 4. Recuperação
+## 4. Porta de CI local antes do push (novo)
+
+**Problema (2026-11-08):** o fleet abria PR sem rodar a **própria porta de CI do repo** — só um
+type-check best-effort via code-intel que, em monorepo, **se auto-desligava**. Resultado: PR com
+`lint`/`tsc` vermelho chegava ao GitHub, o CI reprovava e isso vinha **invisível** ao operador (só
+"failed" seco). Contradizia o princípio-mãe ("o CI é o juiz do pronto").
+
+**Correção (determinismo 1º):** antes do push, o harness roda a **MESMA porta que o CI aplica** —
+`lint` + `typecheck` + `test` (os scripts reais do `package.json`, via `pnpm`). Vermelho de **código**
+volta ao motor como feedback autoritativo (bounded, última tentativa no **forte**) + re-commit; só
+abre o PR quando **verde**. Igual ao guard de hook, mas é a porta do próprio CI.
+
+| Peça | O que faz | Onde |
+|---|---|---|
+| descoberta | lê `package.json` → `lint/typecheck/test` na ordem barato→caro (`pnpm -s <script>`) | `app/repo_ci.discover_ci_commands` |
+| execução | roda em sequência, para no 1º vermelho, trima a saída pelo fim | `app/repo_ci.run_ci` |
+| gate | antes do push: vermelho → corrige (bounded) → re-commita → re-roda; verde → segue | `app/pr_cycle` (bloco pré-`push`) |
+
+- **Infra ≠ código:** vermelho que casa padrão de infra (`ECONNREFUSED`, DB fora, deps faltando)
+  **não** realimenta o motor (ele não corrige infra) — é **surfado** no feed e o ciclo **segue** (o CI
+  do GitHub é o juiz final). Só erro de código vira correção.
+- **Esgotou e segue vermelho:** **não abre PR vermelho** — escala p/ humano (feed + Telegram).
+- **Visibilidade:** cada passo vai pro feed (`🔴 CI local lint reprovou…`, `✅ CI local verde…`) —
+  a falha de CI deixa de ser invisível.
+- **Configurável:** `ROBOTO_LOCAL_CI=0` desliga; `ROBOTO_LOCAL_CI_CMDS=lint,typecheck` restringe.
+
+## 5. Recuperação
 
 - **Dead-letter + replay** (trilha B): run/efeito que falha após os retries vai pra dead-letter (com
   contexto e erro) e pode ser **replayado** pelo cockpit (`orchestrator/*`, endpoints em `web/console`).
@@ -88,13 +114,13 @@ guard é **robusto** (bloqueia por padrão, auto-corrige) sem ser **rígido** (t
   destrutivo. Conflito no `git revert` → run `FAILED` + aviso no feed, **nada é empurrado**.
 - Checkpoint/time-travel sofisticado só como exceção justificada (não implementado).
 
-## 5. Observabilidade (serve a economia de token)
+## 6. Observabilidade (serve a economia de token)
 
 - **Custo por run/tier** medido de verdade (`llm_call`) — trilha F.
 - **Comportamento** por run: eficiência semântica (code-intel vs ler arquivo inteiro) — trilha F,
   `app/tool_usage`. *Não dá pra otimizar nem orçar token sem medir token.*
 
-## 6. Risk-tiering (jev-guard, novo)
+## 7. Risk-tiering (jev-guard, novo)
 
 Antes do gate humano (merge), o fleet **classifica o risco** da mudança pelos **arquivos tocados** —
 determinístico, sem LLM (`app/jev_guard`). O nível é **surfado**, não bloqueia:
@@ -111,7 +137,7 @@ determinístico, sem LLM (`app/jev_guard`). O nível é **surfado**, não bloque
   (alto → esperar OK humano antes de abrir PR) fica como **toggle de follow-up**, pra evitar
   *approval fatigue* enquanto a régua não está calibrada.
 
-## 7. Evals — gate anti-regressão (novo)
+## 8. Evals — gate anti-regressão (novo)
 
 Golden set **versionado** (`evals/golden/*.json`) de casos `input → expect` rodados como **gate de
 CI**: regressão numa das decisões **determinísticas** de segurança barra o merge. **Sem LLM no CI**
@@ -128,7 +154,7 @@ CI**: regressão numa das decisões **determinísticas** de segurança barra o m
 Cobre os graders que **são** a camada de segurança (determinismo primeiro). Cada caso que escapou em
 produção vira um caso no golden — o gate impede que volte.
 
-## 8. Anti-loopjacking (aprovação por ação — primitivo)
+## 9. Anti-loopjacking (aprovação por ação — primitivo)
 
 *Loopjacking* = fazer o humano aprovar uma ação enquanto o sistema executa **outra** (troca de estado
 entre aprovar e usar). Defesa verificada (pesquisa H): **canonical rendering** + **comparação EXATA
@@ -144,13 +170,13 @@ no uso** — o que foi aprovado tem de ser idêntico ao que executa.
 **Sliver:** o *enforcement* real (gatear a tool via callback `can_use_tool`) depende do **SDK vivo**
 (TODO em `engines/claude_code`); o primitivo já está pronto pra plugar quando o callback existir.
 
-## 9. Confiança e escalada
+## 10. Confiança e escalada
 
 A validação de prontidão (DoR, trilha A) escala **JUDGE → FRONTIER** quando a confiança é baixa
 (`agents/review.validar_issue_semantica`) — o mesmo fio de "proposta validada por camada
 determinística". O veredito do review é determinístico (`aprovado_por_findings`, trilha D).
 
-## 10. Follow-ups (backlog)
+## 11. Follow-ups (backlog)
 
 - **evals — LLM-as-judge** (dimensões subjetivas: qualidade de refino/review), em run **agendado**.
 - **jev-guard — escalada automática**: alto risco → esperar OK humano (hoje só surfa o nível).

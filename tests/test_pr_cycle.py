@@ -224,6 +224,86 @@ async def test_forte_finalize_rascunho_base_correcao_forte() -> None:
     assert engine.started[1].model == "openrouter,modelo-forte-teste"  # correção: FORTE
 
 
+async def test_porta_ci_local_bloqueia_e_corrige(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    # roda a MESMA porta do CI (lint) ANTES do push: vermelho → motor corrige → verde → push.
+    import json as _json
+
+    (tmp_path / "package.json").write_text(_json.dumps({"scripts": {"lint": "eslint"}}))
+    store = InMemoryStore()
+    run = await _run(store)
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    git, github = _FakeGit(), _FakeGithub()
+    calls = {"n": 0}
+
+    def runner(cmd: str, cwd: str, timeout: float) -> tuple[int, str]:
+        calls["n"] += 1
+        if calls["n"] == 1:  # 1ª passada: lint vermelho; depois da correção: verde
+            return 1, "30:15 error Unexpected any @typescript-eslint/no-explicit-any"
+        return 0, "ok"
+
+    result = await run_pr_cycle(
+        engine=engine, gateway=_SeqGateway([""]), github=github, git=git, run=run,
+        workdir=str(tmp_path), reviewer="review", store=store, now=_T0, ci_runner=runner,
+    )
+    assert result.approved is True
+    assert git.pushes  # verde após a correção → empurrou (PR nasce verde)
+    assert any("verificação LOCAL" in s.prompt for s in engine.started)  # houve turno de fix de CI
+    events = await store.session_events(run.id, 0, 90)
+    assert any("CI local `lint` reprovou" in e.text for e in events)
+    assert any("CI local verde" in e.text for e in events)
+
+
+async def test_porta_ci_local_vermelho_persistente_escala_humano(tmp_path) -> None:  # type: ignore[no-untyped-def]  # noqa: E501
+    # lint vermelho SEMPRE → esgota tentativas → NÃO abre PR, escala p/ humano (não nasce vermelho).
+    import json as _json
+
+    (tmp_path / "package.json").write_text(_json.dumps({"scripts": {"lint": "eslint"}}))
+    store = InMemoryStore()
+    run = await _run(store)
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    git, github = _FakeGit(), _FakeGithub()
+
+    def runner(cmd: str, cwd: str, timeout: float) -> tuple[int, str]:
+        return 1, "erro de lint que o motor não resolve"
+
+    raised = False
+    try:
+        await run_pr_cycle(
+            engine=engine, gateway=_SeqGateway([""]), github=github, git=git, run=run,
+            workdir=str(tmp_path), reviewer="review", store=store, now=_T0, ci_runner=runner,
+        )
+    except RuntimeError:
+        raised = True
+    assert raised
+    assert git.pushes == []  # NÃO empurrou — PR não nasce vermelho
+    assert github.opened == 0
+    events = await store.session_events(run.id, 0, 90)
+    assert any("segue vermelho" in e.text and "humano" in e.text for e in events)
+
+
+async def test_porta_ci_local_infra_nao_trava(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    # vermelho de INFRA (DB fora) não é culpa do modelo → NÃO realimenta, surfa e SEGUE (push ok).
+    import json as _json
+
+    (tmp_path / "package.json").write_text(_json.dumps({"scripts": {"test": "vitest"}}))
+    store = InMemoryStore()
+    run = await _run(store)
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    git, github = _FakeGit(), _FakeGithub()
+
+    def runner(cmd: str, cwd: str, timeout: float) -> tuple[int, str]:
+        return 1, "Error: connect ECONNREFUSED 127.0.0.1:5432"
+
+    result = await run_pr_cycle(
+        engine=engine, gateway=_SeqGateway([""]), github=github, git=git, run=run,
+        workdir=str(tmp_path), reviewer="review", store=store, now=_T0, ci_runner=runner,
+    )
+    assert result.approved is True
+    assert git.pushes  # infra não trava: seguiu e empurrou
+    events = await store.session_events(run.id, 0, 90)
+    assert any("indisponível" in e.text and "INFRA" in e.text for e in events)
+
+
 async def test_cycle_reuses_live_pr() -> None:
     # já existe um PR aberto p/ o branch -> não abre outro (idempotência, repo vivo)
     store = InMemoryStore()

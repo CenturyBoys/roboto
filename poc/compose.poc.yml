@@ -41,6 +41,10 @@ services:
       # #242 proativo: rascunho no BASE, finalização (diag/hook/correção) no FORTE. "1"=on. Default
       # off = reativo (só escala quando trava). O tier (Jev degrau-2) já escolhe o modelo do rascunho.
       ROBOTO_FORTE_FINALIZE: ${ROBOTO_FORTE_FINALIZE:-0}
+      # porta de CI local ANTES do push: roda a MESMA porta do CI (lint/typecheck/test) p/ o PR não
+      # nascer vermelho. "0" desliga; ROBOTO_LOCAL_CI_CMDS=lint,typecheck restringe o escopo.
+      ROBOTO_LOCAL_CI: ${ROBOTO_LOCAL_CI:-1}
+      ROBOTO_LOCAL_CI_CMDS: ${ROBOTO_LOCAL_CI_CMDS:-}
     ports:
       - "8090:8080" # servidor ASGI (webhook + console) — 8090 no host (8080 ocupada)
       - "7681:7681" # ttyd — terminal web (tmux no container)
