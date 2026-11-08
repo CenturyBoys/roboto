@@ -33,6 +33,7 @@ from roboto.app.git_ops import GitError
 from roboto.app.i18n_assist import apply_i18n_stubs
 from roboto.app.jev_guard import assess as assess_risk
 from roboto.app.memory import recall_block
+from roboto.app.provider_errors import classify_provider_error
 from roboto.app.related_issues import related_issues_block
 from roboto.app.repo_profile import (
     build_repo_profile,
@@ -744,8 +745,10 @@ async def process_pr_run_tick(
             )
             return
         await store.set_state(run.id, RunState.FAILED, moment)
+        op = classify_provider_error(str(exc))  # billing/cota do provider → msg clara, não bug
         await store.append_session_event(
-            run.tenant, run.id, "message", moment, text=f"⚠️ execução falhou: {exc}"
+            run.tenant, run.id, "message", moment,
+            text=op or f"⚠️ execução falhou: {exc}",
         )
         return
     await store.set_state(
@@ -955,6 +958,8 @@ async def process_correct_tick(
         await store.set_state(run.id, final, moment)
     except Exception as exc:  # noqa: BLE001 — falha não pode deixar o run preso em RUNNING
         await store.set_state(run.id, RunState.FAILED, moment)
+        op = classify_provider_error(str(exc))  # billing/cota do provider → msg clara, não bug
         await store.append_session_event(
-            run.tenant, run.id, "message", moment, text=f"⚠️ correção falhou: {exc}"
+            run.tenant, run.id, "message", moment,
+            text=op or f"⚠️ correção falhou: {exc}",
         )
