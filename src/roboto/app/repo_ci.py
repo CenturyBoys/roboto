@@ -20,6 +20,11 @@ from pathlib import Path
 # ordem canônica barato→caro: lint e typecheck não precisam de infra; `test` pode precisar (DB).
 _CANON_ORDER = ("lint", "typecheck", "test")
 
+# passos que PODEM reprovar por infra (precisam de DB/serviços). lint/typecheck são análise estática
+# PURA — qualquer vermelho ali é CÓDIGO (ex.: TS2307 `Cannot find module` = import errado), nunca
+# infra; waved-through ali reabre PR vermelho (run #104). Só o `test` ganha o benefício da dúvida.
+_INFRA_CAPABLE = {"test"}
+
 # padrões de vermelho que são de INFRA/ambiente (não a mudança do modelo) → NÃO realimenta o motor.
 # Inclui banco de teste não provisionado (ex.: integração Prisma sem migração): o CI do GitHub roda
 # com DB migrado, é o juiz desses — localmente degrada p/ "indisponível", não trava nem escala.
@@ -97,5 +102,7 @@ def run_ci(
             )
         if rc != 0:
             red = saida.strip()[-max_red_chars:]
-            return CiResult(False, which=name, red=red, infra=bool(_INFRA_RED.search(saida)))
+            # infra só vale p/ passos que tocam serviços (test); lint/typecheck vermelho = código.
+            infra = name in _INFRA_CAPABLE and bool(_INFRA_RED.search(saida))
+            return CiResult(False, which=name, red=red, infra=infra)
     return CiResult(True)
