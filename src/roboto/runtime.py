@@ -191,6 +191,8 @@ async def _run_daemon(config: Config, store: Store) -> None:
             token_budget=int(os.environ.get("ROBOTO_TURN_TOKEN_BUDGET", "0") or "0"),
             # buffer do SDK (#70/#83): default 1MB mata run verboso. Sobe p/ 10MB. 0 = default.
             max_buffer_size=int(os.environ.get("ROBOTO_MAX_BUFFER_SIZE", str(10 * 1024 * 1024))),
+            # cap de flailing (#96): corta o run que loopa (172 tools, 3.4M) mid-stream. 0=sem cap.
+            max_tools=int(os.environ.get("ROBOTO_MAX_TOOLS", "80") or "80"),
         )
         # motor dedicado ao refino (read-only por prompt): evita corrida com o ciclo de PR.
         # max_turns=60: refino é LER+PROPOR; o PROMPT força parar em ~10 consultas, mas issues de
