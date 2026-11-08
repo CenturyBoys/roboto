@@ -725,6 +725,18 @@ async def run_pr_cycle(
             f"[{f.severidade}] {f.titulo} ({f.arquivo}:{f.linha}) — {f.recomendacao}"
             for f in findings
         ]
+        # #3 visibilidade: surfa o VEREDITO do review no feed a cada tentativa. Sem isto o console
+        # só mostrava o lado do implement (CI local) — o operador não via O QUÊ o review reprovou
+        # entre as voltas, só o agregado final no encerramento. Agora cada review deixa rastro.
+        if store is not None and now is not None:
+            if aprovado:
+                texto_review = "🔍 Review: aprovado ✅ — sem bloqueadores."
+            else:
+                detalhe = "\n".join(f"• {problema}" for problema in issues) or "• (sem detalhe)"
+                texto_review = f"🔍 Review: reprovou 🔴 ({len(issues)} ponto(s)):\n{detalhe}"
+            await store.append_session_event(
+                run.tenant, run.id, "message", now, text=texto_review,
+            )
         # second brain (Fatia 1): registra o FATO do review (veredito + títulos dos findings) —
         # greppável; alimenta o refino/impl de relacionadas. Dedup por ref (review vigente).
         if store is not None and now is not None:
@@ -859,6 +871,16 @@ async def process_pr_run_tick(
     await store.set_state(
         run.id, RunState.VERIFYING if result.approved else RunState.FAILED, moment
     )
+    if not result.approved:
+        # terminal VISÍVEL no console: sem isto, o feed termina na última msg do implement (ex.: o
+        # aviso benigno de CI local INFRA) e o run vira `failed` SEM explicação — parece que o CI
+        # local falhou. Surface o motivo real: o review não aprovou após N tentativas + pendências.
+        pendencias = "; ".join(result.issues[:5]) if result.issues else "sem pendências registradas"
+        await store.append_session_event(
+            run.tenant, run.id, "message", moment,
+            text=f"🚩 Encerrado sem aprovação após {result.attempts} tentativa(s) de review — "
+                 f"precisa de humano. Pendências do review: {pendencias}",
+        )
     if run.origin_chat_id:  # status final volta pro Telegram de quem pediu (D30)
         pr = result.pr
         ref = f" (PR #{pr.number})" if pr is not None else ""
