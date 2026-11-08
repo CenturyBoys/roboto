@@ -363,11 +363,12 @@ async def run_pr_cycle(
     state: dict[str, int] = {}  # guarda o número do PR entre tentativas
     coder: dict[str, str] = {}  # id NATIVO da sessão do coder, p/ RESUMIR na correção (= contexto)
 
-    async def _engine_turn(prompt: str, resume: str | None) -> None:
+    async def _engine_turn(prompt: str, resume: str | None, model: str | None = None) -> None:
         # um turno do motor: edita o repo, alimenta o feed ao vivo (Fatia 2) e mede o token (D10/L).
+        # `model` override = degrau de escalonamento (#242): força o modelo forte se o base travar.
         spec = RunSpec(
-            tenant=run.tenant, repo=run.repo, workdir=workdir, prompt=prompt,
-            model=modelo_do_motor, resume_session_id=resume,
+            tenant=run.tenant, repo=run.repo, workdir=workdir,
+            prompt=prompt, model=model or modelo_do_motor, resume_session_id=resume,
         )
         started = await engine.start(spec)
         native = getattr(engine, "session_id", "") or (
@@ -446,6 +447,7 @@ async def run_pr_cycle(
         #   nova; o motor tinha implementado tudo, só faltava o doc).
         _msg = title if not feedback else f"{title} (correção)"
         fmt_tries = hook_tries = 0
+        escalado = False  # degrau (#242): 1 turno no modelo forte se o base travar
         while True:
             try:
                 await git.commit_all(_msg)
@@ -474,9 +476,23 @@ async def run_pr_cycle(
                     # `--check` barra e a correção à mão do modelo nunca casa (buraco do #245).
                     await autoformat(workdir)
                     continue
-                # hook NÃO-prettier não cedeu após N turnos do motor (i18n/doc-sync não são
-                # mecânicos — o modelo fraco corrige incompleto). Escala LIMPO p/ humano em vez de
-                # FAILED seco com GitError cru (exec #80: morreu no check:i18n sem sinal claro).
+                # DEGRAU DE ESCALONAMENTO (#242): o modelo BASE esgotou o hook → antes de desistir,
+                # 1 turno com o MODELO FORTE (Sonnet) corrigindo o hook. O forte fecha
+                # i18n/doc-sync que o qwen não fecha (medido: Sonnet corrige limpo). Bounded (1×).
+                if modelo_forte and modelo_do_motor != modelo_forte and not escalado:
+                    escalado = True
+                    if store is not None and now is not None:
+                        await store.append_session_event(
+                            run.tenant, run.id, "message", now,
+                            text="⚡ hook não cedeu no modelo base → escalando p/ o MODELO FORTE.",
+                        )
+                    await _engine_turn(
+                        _hook_fix_prompt(str(_exc)), coder.get("native"), model=modelo_forte
+                    )
+                    await autoformat(workdir)
+                    continue
+                # hook NÃO-prettier não cedeu nem no forte (i18n/doc-sync não são mecânicos). Escala
+                # LIMPO p/ humano em vez de FAILED seco com GitError cru (exec #80: morreu no i18n).
                 if store is not None and now is not None:
                     await store.append_session_event(
                         run.tenant, run.id, "message", now,

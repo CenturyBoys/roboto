@@ -272,6 +272,45 @@ async def test_cycle_autofixes_secret_then_pushes() -> None:
     assert any("secret-scan" in e.text for e in events)  # registrou o bloqueio/retry no feed
 
 
+async def test_cycle_escala_modelo_forte_no_hook() -> None:
+    # #242: o modelo base esgota o hook → degrau de escalonamento força 1 turno no MODELO FORTE
+    # antes de desistir. Se o forte tb não resolver → escala p/ humano.
+    import os
+
+    store = InMemoryStore()
+    run = await _run(store)  # issue pequena (_READY_BODY) → tier não-forte → base = default (qwen)
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+
+    class _I18nHookForever(_FakeGit):
+        async def commit_all(self, message: str) -> None:
+            raise GitError("check:i18n ✖ i18n — 5 erro(s) (bloqueia)")
+
+    old = os.environ.get("ROBOTO_STRONG_MODEL")
+    os.environ["ROBOTO_STRONG_MODEL"] = "openrouter,modelo-forte-teste"
+    try:
+        raised = False
+        try:
+            await run_pr_cycle(
+                engine=engine, gateway=_SeqGateway([]),  # type: ignore[arg-type]
+                github=_FakeGithub(), git=_I18nHookForever(), run=run, workdir="/work/acme/app",
+                reviewer="review", store=store, now=_T0,
+            )
+        except GitError:
+            raised = True
+    finally:
+        if old is None:
+            os.environ.pop("ROBOTO_STRONG_MODEL", None)
+        else:
+            os.environ["ROBOTO_STRONG_MODEL"] = old
+
+    assert raised
+    # houve 1 turno com o MODELO FORTE (spec.model = o forte de teste)
+    assert any(s.model == "openrouter,modelo-forte-teste" for s in engine.started)
+    events = await store.session_events(run.id, 0, 90)
+    assert any("MODELO FORTE" in e.text for e in events)  # registrou o degrau
+    assert any("Precisa de humano" in e.text for e in events)  # forte tb não cedeu → humano
+
+
 async def test_cycle_hook_nao_prettier_escala_humano() -> None:
     # exec #80: hook NÃO-prettier (i18n) não cede após N tentativas → escala LIMPO p/ humano
     # (mensagem clara no feed), em vez de FAILED seco com GitError cru.
