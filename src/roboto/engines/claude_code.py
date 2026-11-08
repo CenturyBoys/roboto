@@ -51,6 +51,8 @@ class ClaudeCodeEngine:
         # budget de tokens por run (#242 Fatia 2): estourou → NÃO resume e termina (provável
         # flailing). Corta a multiplicação do burn (exec #80: 194k). 0 = sem budget.
         token_budget: int = 0,
+        # buffer do stdout do SDK (default 1MB mata run verboso, #70/#83). 0 = default do SDK.
+        max_buffer_size: int = 0,
     ) -> None:
         self._model = model
         self._permission_mode = permission_mode
@@ -61,6 +63,7 @@ class ClaudeCodeEngine:
         self._max_resumes = max_resumes
         self._max_thinking_tokens = max_thinking_tokens
         self._token_budget = token_budget
+        self._max_buffer_size = max_buffer_size
         self._spec: RunSpec | None = None
         self._session_id = ""
 
@@ -99,6 +102,9 @@ class ClaudeCodeEngine:
                 mcp_servers=self._mcp_servers,  # code-intel (navegação semântica, F)
                 max_turns=self._max_turns or None,
                 max_thinking_tokens=self._max_thinking_tokens or None,  # liga reasoning (gpt-oss)
+                # buffer do stdout NDJSON do SDK (default 1MB). Modelo verboso (qwen-80b) emite uma
+                # mensagem única >1MB → "JSON message exceeded buffer" MATAVA o run (#70/#83). Sobe.
+                max_buffer_size=self._max_buffer_size or None,
             )
             hit_max = False
             async for message in query(prompt=prompt, options=options):
