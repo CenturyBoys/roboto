@@ -820,6 +820,43 @@ async def test_correct_tick_rereview_recebe_contexto_previo() -> None:
     assert "falta teste" in rereview_txt
 
 
+async def test_correct_tick_escala_coder_forte_na_2a_rodada() -> None:
+    # #242 Fatia 3: 1ª correção no base; da 2ª em diante (não convergiu) o coder sobe pro FORTE.
+    import os
+
+    store = InMemoryStore()
+    for k in ("c1", "c2"):  # 2 runs de correct no MESMO PR → prior=2 → escala
+        await store.insert_run_if_absent(
+            GithubEvent(tenant="acme", repo="acme/app", issue_id="221",
+                        agent="correct", idempotency_key=k),
+            _T0,
+        )
+    engine = StubEngine(
+        [
+            EngineEvent(EngineEventKind.MESSAGE, text="corrigido"),
+            EngineEvent(EngineEventKind.FINISHED),
+        ]
+    )
+    gw = _SeqGateway([_FIND_REPROVA, ""])  # reprova → corrige → aprova
+    git, github = _FakeGit(), _FakeGithub()
+    old = os.environ.get("ROBOTO_STRONG_MODEL")
+    os.environ["ROBOTO_STRONG_MODEL"] = "openrouter,modelo-forte-teste"
+    try:
+        await process_correct_tick(
+            engine, gw, github, store,  # type: ignore[arg-type]
+            tenant="acme", workdir_root="/work", reviewer="review",
+            git_factory=lambda ws: git, now=lambda: _T0,
+        )
+    finally:
+        if old is None:
+            os.environ.pop("ROBOTO_STRONG_MODEL", None)
+        else:
+            os.environ["ROBOTO_STRONG_MODEL"] = old
+    # a correção rodou no MODELO FORTE (2ª rodada) e empurrou
+    assert any(s.model == "openrouter,modelo-forte-teste" for s in engine.started)
+    assert git.pushes == ["feature/pr-221"]
+
+
 async def test_correct_tick_approved_pr_is_noop() -> None:
     # PR já aprovado no review -> não edita, não dá push, comenta "nada a corrigir", vai a DONE.
     store = InMemoryStore()

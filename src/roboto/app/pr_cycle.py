@@ -732,6 +732,9 @@ async def process_pr_run_tick(
 # concentra nas ~2 primeiras rodadas (76–95%); além de ~4 cai a zero (falta de CONTEXTO, não de
 # tentativas). "Três é o número mágico" (arXiv 2607.05197, 2604.10508). Alinha com max_attempts=3.
 _CORRECT_MAX_ATTEMPTS = 3
+# a partir desta rodada de correção (prior inclui a atual), o coder sobe pro modelo forte (#242
+# Fatia 3): 1ª no base barato; não convergiu → forte, antes de bater o bound e escalar p/ humano.
+_CORRECT_ESCALATE_AT = 2
 
 
 def _correct_prompt(repo: str, pr_number: int, workdir: str, issues: list[str]) -> str:
@@ -840,8 +843,21 @@ async def process_correct_tick(
         if ci_errs:
             issues = [f"A CI do repo REPROVOU — corrija EXATAMENTE isto:\n{ci_errs}"] + issues
         prompt = _correct_prompt(run.repo, pr_number, workdir, issues)
+        # DEGRAU DE ESCALONAMENTO (#242 Fatia 3): 1ª correção no modelo base; da 2ª em diante (não
+        # convergiu), a correção sobe pro MODELO FORTE antes de bater o bound e escalar p/ humano.
+        # `prior` conta os runs de correct deste PR (inclui este).
+        _forte_default = "openrouter,anthropic/claude-sonnet-4.6"
+        modelo_forte = os.environ.get("ROBOTO_STRONG_MODEL", _forte_default)
+        model_corr = modelo_forte if (prior >= _CORRECT_ESCALATE_AT and modelo_forte) else ""
+        if model_corr:
+            await store.append_session_event(
+                run.tenant, run.id, "message", moment,
+                text=f"⚡ correção não convergiu no base ({prior}ª rodada) → MODELO FORTE.",
+            )
         await engine.start(
-            RunSpec(tenant=run.tenant, repo=run.repo, workdir=workdir, prompt=prompt)
+            RunSpec(
+                tenant=run.tenant, repo=run.repo, workdir=workdir, prompt=prompt, model=model_corr
+            )
         )
         tin = tout = 0
         async for event in guarded_events(engine.events()):  # feed ao vivo no cockpit
