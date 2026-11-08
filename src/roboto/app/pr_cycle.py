@@ -220,10 +220,16 @@ async def run_pr_cycle(
     # id no formato "provider,model": o ccr IGNORA o model do cliente e roteia pela config, MENOS
     # quando vem com a sintaxe de override "provider,model" — aí usa esse (validado no PoC).
     modelo_forte = os.environ.get("ROBOTO_STRONG_MODEL", "openrouter,anthropic/claude-sonnet-4.6")
-    modelo_do_motor = modelo_forte if (decisao_tier.forte and modelo_forte) else ""
+    # forte-UPFRONT desligado por default (#242): o grosso começa no BASE barato e o DEGRAU só sobe
+    # pro forte QUANDO TRAVA — forte vira resgate RARO, não a task toda (exec #88/#93 inteiros no
+    # forte = 315k/261k). Ligue ROBOTO_FORTE_UPFRONT=1 p/ começar grande direto no forte.
+    _upf = os.environ.get("ROBOTO_FORTE_UPFRONT", "0").lower()
+    forte_upfront = _upf not in ("0", "off", "false", "no")
+    _usa_forte = forte_upfront and decisao_tier.forte and bool(modelo_forte)
+    modelo_do_motor = modelo_forte if _usa_forte else ""
     print(
-        f"[tier] forte={decisao_tier.forte} modelo={modelo_do_motor or '(default/qwen)'} "
-        f"— {decisao_tier.motivo}"
+        f"[tier] forte={decisao_tier.forte} upfront={forte_upfront} "
+        f"modelo={modelo_do_motor or '(base/qwen-coder)'} — {decisao_tier.motivo}"
     )
 
     async def build_pr_body() -> str:
