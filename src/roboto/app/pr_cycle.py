@@ -35,6 +35,7 @@ from roboto.app.jev_guard import assess as assess_risk
 from roboto.app.memory import recall_block
 from roboto.app.provider_errors import classify_provider_error
 from roboto.app.related_issues import related_issues_block
+from roboto.app.repo_ci import Runner, discover_ci_commands, run_ci
 from roboto.app.repo_profile import (
     build_repo_profile,
     read_agents_conventions,
@@ -165,6 +166,21 @@ _HOOK_FIX_ATTEMPTS = 2  # correções harness-driven quando um hook de pre-commi
 _FMT_FIX_ATTEMPTS = 3
 
 
+# porta de CI LOCAL (lint/typecheck/test) ANTES do push: bound de auto-correção. O fleet abria PR
+# que o CI reprovava (lint `no-explicit-any`) porque NÃO rodava a porta do repo localmente — a saída
+# vermelha chegava invisível ao operador. Agora roda a MESMA porta e devolve o vermelho ao motor.
+_LOCAL_CI_FIX_ATTEMPTS = 3
+
+
+def _ci_fix_prompt(which: str, red: str) -> str:
+    return (
+        f"A verificação LOCAL `{which}` (A MESMA que o CI do repo aplica) REPROVOU — se eu abrir o "
+        "PR assim, o CI fica vermelho. Corrija EXATAMENTE estes erros (não reescreva o que já "
+        f"passa):\n\n{red}\n\n"
+        "Edite os arquivos e pare (não faça commit nem push)."
+    )
+
+
 def _hook_fix_prompt(saida: str) -> str:
     return (
         "O COMMIT foi BLOQUEADO por um hook de pre-commit do repo (regra do projeto, INEGOCIÁVEL). "
@@ -192,6 +208,7 @@ async def run_pr_cycle(
     allow_secret: bool = False,  # override humano (H): libera o push mesmo com secret-scan positivo
     persona: str = "",  # âncora de papel opcional (A/B atrás de flag) — ver roboto/persona.py
     decider: Decider | None = None,  # Jev degrau-2 do tier (#242): promove o que o keyword perdeu
+    ci_runner: Runner | None = None,  # executor da porta de CI local (teste); None = subprocess
 ) -> CycleResult:
     branch = f"roboto/run-{run.id}"
     # título/corpo do PR seguem a ISSUE (não "run 1: 107"): título = título da issue; corpo linka
@@ -594,6 +611,69 @@ async def run_pr_cycle(
         # #144: diff vazio = motor não editou nada → FALHA explícita (não revisa "o nada").
         if not (await git.diff(base)).strip():
             raise RuntimeError("motor não editou nada (diff vazio vs base) — nada a revisar")
+        # PORTA DE CI LOCAL (determinismo 1º): roda a MESMA porta do CI (lint/typecheck/test) ANTES
+        # do push. Vermelho de CÓDIGO volta ao motor (bounded; última no forte) + re-commit;
+        # verde → segue. Vermelho de INFRA (DB fora/deps) degrada p/ surfado (não trava, CI é juiz).
+        # Fecha o buraco: o fleet não abre mais PR que o CI vai reprovar, e o vermelho fica VISÍVEL.
+        if os.environ.get("ROBOTO_LOCAL_CI", "1") not in ("0", "off", "false", "no"):
+            ci_cmds = discover_ci_commands(
+                workdir, override=os.environ.get("ROBOTO_LOCAL_CI_CMDS", "")
+            )
+            if ci_cmds:
+                ci = await asyncio.to_thread(run_ci, workdir, ci_cmds, runner=ci_runner)
+                ci_tries = 0
+                while ci.fixable and ci_tries < _LOCAL_CI_FIX_ATTEMPTS:
+                    ci_tries += 1
+                    model_ci = (
+                        modelo_forte
+                        if (modelo_forte and ci_tries >= _LOCAL_CI_FIX_ATTEMPTS)
+                        else modelo_fin
+                    )
+                    if store is not None and now is not None:
+                        await store.append_session_event(
+                            run.tenant, run.id, "message", now,
+                            text=f"🔴 CI local `{ci.which}` reprovou → motor corrige ({ci_tries}).",
+                        )
+                    await _engine_turn(
+                        _ci_fix_prompt(ci.which, ci.red), coder.get("native"), model=model_ci
+                    )
+                    await autoformat(workdir)
+                    try:
+                        await git.commit_all(f"{title} (fix CI {ci.which})")
+                    except GitError:
+                        pass  # hooks já passaram no 1º commit; re-commit dos fixes é best-effort
+                    ci = await asyncio.to_thread(run_ci, workdir, ci_cmds, runner=ci_runner)
+                if ci.infra:
+                    if store is not None and now is not None:
+                        await store.append_session_event(
+                            run.tenant, run.id, "message", now,
+                            text=f"⚠️ CI local `{ci.which}` indisponível (parece INFRA, não a sua "
+                                 "mudança) — sigo; o CI do GitHub é o juiz final.",
+                        )
+                elif not ci.passed:
+                    if store is not None and now is not None:
+                        await store.append_session_event(
+                            run.tenant, run.id, "message", now,
+                            text=f"🚩 CI local `{ci.which}` segue vermelho após "
+                                 f"{_LOCAL_CI_FIX_ATTEMPTS} tentativas — humano (PR não sai).",
+                        )
+                        if run.origin_chat_id:
+                            await store.enqueue_effect(
+                                run.tenant, run.id, "telegram_notify",
+                                {"chat_id": run.origin_chat_id,
+                                 "text": f"🚩 #{run.issue_id}: CI local ({ci.which}) vermelho "
+                                         "após 3 tentativas — precisa de humano."},
+                                f"localci:{run.id}", now,
+                            )
+                    raise RuntimeError(
+                        f"CI local ({ci.which}) segue vermelho após {_LOCAL_CI_FIX_ATTEMPTS} "
+                        "tentativas — escala p/ humano (não abre PR vermelho)"
+                    )
+                elif ci_tries and store is not None and now is not None:
+                    await store.append_session_event(
+                        run.tenant, run.id, "message", now,
+                        text=f"✅ CI local verde após {ci_tries} correção(ões) — PR nasce verde.",
+                    )
         await git.push(branch)
         if "pr" not in state:
             # idempotência contra PR vivo: reaproveita o PR aberto do branch, se houver

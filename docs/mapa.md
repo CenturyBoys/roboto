@@ -110,8 +110,9 @@ flowchart LR
 ```
 
 *Legenda:* entre `git` e o PR rodam os **guards determinísticos** (secret-scan, hook/prettier/i18n,
-code-intel diag). O review é **estruturado** (lenses); reprova = bloqueador; converge em ≤3 rodadas
-(bound da literatura). Só o humano mergeia.
+code-intel diag e a **porta de CI local** — `lint`/`typecheck`/`test`, a mesma do CI, antes do push).
+O review é **estruturado** (lenses); reprova = bloqueador; converge em ≤3 rodadas (bound da
+literatura). Só o humano mergeia.
 
 **Regras do ciclo:**
 
@@ -185,7 +186,8 @@ O que já está **de pé** (validado no PoC vivo contra um repo real):
 - **Ciclo completo**: refino → impl → commit → PR → review (≠autor) → correção → merge humano.
   Entregou PRs reais no alvo.
 - **Guards determinísticos**: secret-scan, hook/prettier/**i18n** (stub determinístico), code-intel
-  **diag**, baseline (dívida pré-existente não vira culpa do fleet).
+  **diag**, **porta de CI local** (lint/typecheck/test antes do push — PR não nasce vermelho),
+  baseline (dívida pré-existente não vira culpa do fleet).
 - **Tiering em 2 degraus**: determinístico + **Jev** (degrau-2); escalonamento **reativo** quando o
   base trava + **finalize proativo** atrás de flag. Cap de tools + budget de token contra flailing.
 - **Escolha de modelo (empírica)**: **base** = Qwen3-Coder-30B; **forte** = Gemini 3.1 Flash Lite
