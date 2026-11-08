@@ -151,3 +151,9 @@ async def test_max_turns_without_resume_fails(monkeypatch: pytest.MonkeyPatch) -
     kinds = [e.kind async for e in eng.events()]
     assert EngineEventKind.FAILED in kinds  # sem resume → falha (comportamento antigo)
     assert len(fake._calls) == 1  # type: ignore[attr-defined]
+
+
+def test_accepts_max_tools() -> None:
+    # #96: cap de flailing (tool-calls) — modelo fraco loopa a 3.4M tokens → corta mid-stream
+    assert ClaudeCodeEngine(max_tools=80)._max_tools == 80
+    assert ClaudeCodeEngine()._max_tools == 0  # 0 = sem cap

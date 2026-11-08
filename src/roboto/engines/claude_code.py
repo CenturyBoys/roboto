@@ -53,6 +53,9 @@ class ClaudeCodeEngine:
         token_budget: int = 0,
         # buffer do stdout do SDK (default 1MB mata run verboso, #70/#83). 0 = default do SDK.
         max_buffer_size: int = 0,
+        # cap de tool-calls por run (#242): modelo fraco flaila (exec #96: 172 tools, 3.4M tokens).
+        # O budget de token só checa no fim do segmento — o cap de tools corta MID-STREAM. 0 = sem.
+        max_tools: int = 0,
     ) -> None:
         self._model = model
         self._permission_mode = permission_mode
@@ -64,6 +67,7 @@ class ClaudeCodeEngine:
         self._max_thinking_tokens = max_thinking_tokens
         self._token_budget = token_budget
         self._max_buffer_size = max_buffer_size
+        self._max_tools = max_tools
         self._spec: RunSpec | None = None
         self._session_id = ""
 
@@ -89,6 +93,7 @@ class ClaudeCodeEngine:
         prompt = self._spec.prompt
         resumes_left = self._max_resumes
         tin_acc = tout_acc = 0  # tokens acumulam entre os segmentos (resume)
+        tool_count = 0  # cap de flailing (#242/#96): total de tool-calls do run; corta MID-STREAM
         while True:
             options = ClaudeAgentOptions(
                 cwd=self._spec.workdir,
@@ -115,6 +120,16 @@ class ClaudeCodeEngine:
                             yield EngineEvent(EngineEventKind.MESSAGE, text=str(block.text))
                         elif hasattr(block, "name"):  # tool_use
                             yield EngineEvent(EngineEventKind.TOOL_CALL, tool=str(block.name))
+                            tool_count += 1
+                            # cap de flailing (#96): modelo fraco loopa (172 tools, 3.4M tokens). O
+                            # budget de token só vê no fim do segmento — o cap de tool corta AGORA.
+                            if self._max_tools and tool_count > self._max_tools:
+                                yield EngineEvent(
+                                    EngineEventKind.FAILED,
+                                    text=f"flailing: {tool_count} tool-calls (> {self._max_tools}) "
+                                    "— abortado p/ não queimar token (provável loop)",
+                                )
+                                return
                 elif name == "ResultMessage":
                     self._session_id = str(getattr(message, "session_id", "") or "")
                     usage = getattr(message, "usage", {}) or {}
