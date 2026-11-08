@@ -30,6 +30,7 @@ from roboto.app.correction import CycleResult, correction_cycle
 from roboto.app.deps import blocked_by
 from roboto.app.engine_loop import guarded_events
 from roboto.app.git_ops import GitError
+from roboto.app.i18n_assist import apply_i18n_stubs
 from roboto.app.jev_guard import assess as assess_risk
 from roboto.app.memory import recall_block
 from roboto.app.related_issues import related_issues_block
@@ -446,7 +447,7 @@ async def run_pr_cycle(
         #   re-tenta — bounded. Era o buraco que matava motor bom (#57: doc-sync exige doc da rota
         #   nova; o motor tinha implementado tudo, só faltava o doc).
         _msg = title if not feedback else f"{title} (correção)"
-        fmt_tries = hook_tries = 0
+        fmt_tries = hook_tries = i18n_tries = 0
         escalado = False  # degrau (#242): 1 turno no modelo forte se o base travar
         while True:
             try:
@@ -463,6 +464,21 @@ async def run_pr_cycle(
                             text=f"🎨 commit barrado por formatação → reformatei {len(refmt)}.",
                         )
                     continue
+                # i18n DETERMINÍSTICO (#247): o check:i18n ENTREGA a chave exata faltando — o
+                # harness a stuba nos locales (imune ao drift do modelo, que inventa camelCase).
+                # Antes do modelo (determinismo 1º). 1×: se não resolver, cai no motor/forte.
+                if "i18n" in low and i18n_tries < 1:
+                    i18n_tries += 1
+                    stubbed = apply_i18n_stubs(workdir, str(_exc))
+                    if stubbed and store is not None and now is not None:
+                        await store.append_session_event(
+                            run.tenant, run.id, "message", now,
+                            text=f"🌐 i18n: stub determinístico de {len(stubbed)} chave(s) "
+                                 "(revise as traduções no PR).",
+                        )
+                    if stubbed:
+                        await autoformat(workdir)
+                        continue
                 if hook_tries < _HOOK_FIX_ATTEMPTS:
                     hook_tries += 1
                     if store is not None and now is not None:
