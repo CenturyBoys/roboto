@@ -88,9 +88,13 @@ abre o PR quando **verde**. Igual ao guard de hook, mas é a porta do próprio C
 | execução | roda em sequência, para no 1º vermelho, trima a saída pelo fim | `app/repo_ci.run_ci` |
 | gate | antes do push: vermelho → corrige (bounded) → re-commita → re-roda; verde → segue | `app/pr_cycle` (bloco pré-`push`) |
 
-- **Infra ≠ código:** vermelho que casa padrão de infra (`ECONNREFUSED`, DB fora, deps faltando)
-  **não** realimenta o motor (ele não corrige infra) — é **surfado** no feed e o ciclo **segue** (o CI
-  do GitHub é o juiz final). Só erro de código vira correção.
+- **Infra ≠ código:** vermelho que casa padrão de infra (`ECONNREFUSED`, DB fora, deps faltando,
+  **banco de teste não migrado** — ex.: integração Prisma `table does not exist`/`P2021`) **não**
+  realimenta o motor (ele não corrige infra) — é **surfado** no feed e o ciclo **segue** (o CI do
+  GitHub, que roda com DB migrado, é o juiz desses). Validado no run #103: `lint`/`typecheck` verdes
+  localmente, `test` de integração caiu por falta de DB → degrada, não escala à toa. Só erro de
+  **código** vira correção. Em ambiente sem o DB de teste, `ROBOTO_LOCAL_CI_CMDS=lint,typecheck`
+  evita rodar a suíte de integração que só o CI consegue julgar.
 - **Esgotou e segue vermelho:** **não abre PR vermelho** — escala p/ humano (feed + Telegram).
 - **Visibilidade:** cada passo vai pro feed (`🔴 CI local lint reprovou…`, `✅ CI local verde…`) —
   a falha de CI deixa de ser invisível.

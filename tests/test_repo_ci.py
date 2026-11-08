@@ -70,6 +70,21 @@ def test_run_ci_vermelho_de_infra_nao_e_fixable() -> None:
     assert r.fixable is False  # infra: não realimenta o motor
 
 
+def test_run_ci_banco_de_teste_nao_migrado_e_infra() -> None:
+    # caso real (run #103): teste de integração sem DB migrado → infra, não culpa do modelo.
+    def runner(cmd: str, cwd: str, timeout: float) -> tuple[int, str]:
+        return 1, (
+            "PrismaClientKnownRequestError: \n"
+            "Invalid `prisma.account.findMany()` invocation\n"
+            "The table `public.account` does not exist in the current database. (code P2021)"
+        )
+
+    r = run_ci("/w", [("test", "pnpm -s test")], runner=runner)
+    assert r.passed is False
+    assert r.infra is True  # banco de teste não provisionado localmente
+    assert r.fixable is False  # não realimenta o motor (3 turnos à toa no #103)
+
+
 def test_run_ci_timeout_vira_infra() -> None:
     def runner(cmd: str, cwd: str, timeout: float) -> tuple[int, str]:
         raise TimeoutError("estourou")
