@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from roboto.app.tiering import classificar_tier
+from roboto.app.tiering import classificar_tier, precisa_forte
+from roboto.llm.decide import Decision
+from roboto.orchestrator.model import Error
+from roboto.result import Err, Ok, Result
 
 
 def test_tarefa_pequena_fica_no_barato() -> None:
@@ -41,3 +44,62 @@ def test_arquitetural_com_corpo_extenso_vira_forte() -> None:
 def test_keyword_arquitetural_em_corpo_curto_nao_basta() -> None:
     d = classificar_tier("chore: nota", "pequeno refactor de nome")
     assert d.forte is False
+
+
+# --- degrau-2 (Jev/decider) sobre o tier ---------------------------------------------------------
+
+
+class _StubDecider:
+    """Decider de teste: devolve uma Decision fixa (ou Err) sem rede."""
+
+    def __init__(self, result: Result[Decision, Error]) -> None:
+        self._result = result
+
+    async def decide(self, question: str, context: str) -> Result[Decision, Error]:
+        return self._result
+
+
+async def test_precisa_forte_sem_decider_e_so_deterministico() -> None:
+    d = await precisa_forte("chore: nota", "pequeno ajuste de nome", decider=None)
+    assert d.forte is False
+
+
+async def test_precisa_forte_respeita_deterministico_forte_sem_consultar_jev() -> None:
+    # determinístico já mandou pro forte (6 arquivos) → nem consulta o Jev
+    called = {"n": 0}
+
+    class Spy:
+        async def decide(self, q: str, c: str) -> Result[Decision, Error]:
+            called["n"] += 1
+            return Ok(Decision(False, 1.0))
+
+    arqs = ", ".join(f"apps/web/src/{c}.tsx" for c in "abcdef")
+    d = await precisa_forte("feat: refatorar", f"toca {arqs}", decider=Spy())
+    assert d.forte is True
+    assert called["n"] == 0  # não rebaixa nem consulta quando o keyword já é forte
+
+
+async def test_precisa_forte_jev_promove_base_para_forte() -> None:
+    # determinístico diz base (escopo curto sem keyword), mas o Jev promove com confiança alta
+    dec = _StubDecider(Ok(Decision(decision=True, confidence=0.9, reason="refator cross-módulo")))
+    d = await precisa_forte("feat: ajuste", "corpo curto", decider=dec)
+    assert d.forte is True
+    assert "jev" in d.motivo
+
+
+async def test_precisa_forte_jev_diz_nao_fica_base() -> None:
+    dec = _StubDecider(Ok(Decision(decision=False, confidence=0.9)))
+    d = await precisa_forte("feat: ajuste", "corpo curto", decider=dec)
+    assert d.forte is False
+
+
+async def test_precisa_forte_jev_confianca_baixa_nao_promove() -> None:
+    dec = _StubDecider(Ok(Decision(decision=True, confidence=0.4)))
+    d = await precisa_forte("feat: ajuste", "corpo curto", decider=dec, min_confidence=0.6)
+    assert d.forte is False
+
+
+async def test_precisa_forte_jev_erro_cai_no_deterministico() -> None:
+    dec = _StubDecider(Err(Error("jev", "falhou")))
+    d = await precisa_forte("feat: ajuste", "corpo curto", decider=dec)
+    assert d.forte is False  # degrada pro determinístico (não bloqueia)

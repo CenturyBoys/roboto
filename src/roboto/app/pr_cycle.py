@@ -42,11 +42,12 @@ from roboto.app.repo_profile import (
 )
 from roboto.app.secret_scan import SecretLeakError, scan_diff
 from roboto.app.task_class import TaskType, classificar_task
-from roboto.app.tiering import classificar_tier
+from roboto.app.tiering import precisa_forte
 from roboto.app.transient import is_transient
 from roboto.app.verify import VerifyResult, arquivos_ts, secao_verify, verificar
 from roboto.engines.port import CodingEngine, EngineEventKind, RunSpec
 from roboto.github.app import IssueRef
+from roboto.llm.decide import Decider
 from roboto.llm.port import ModelGateway
 from roboto.orchestrator.core import backoff_until
 from roboto.orchestrator.model import Error, Run, RunState
@@ -190,6 +191,7 @@ async def run_pr_cycle(
     now: datetime | None = None,
     allow_secret: bool = False,  # override humano (H): libera o push mesmo com secret-scan positivo
     persona: str = "",  # âncora de papel opcional (A/B atrás de flag) — ver roboto/persona.py
+    decider: Decider | None = None,  # Jev degrau-2 do tier (#242): promove o que o keyword perdeu
 ) -> CycleResult:
     branch = f"roboto/run-{run.id}"
     # título/corpo do PR seguem a ISSUE (não "run 1: 107"): título = título da issue; corpo linka
@@ -216,7 +218,9 @@ async def run_pr_cycle(
     # right-sizing do motor por CLASSE de tarefa (D/F, determinístico): tarefa grande/arquitetural
     # roda no tier FORTE (ROBOTO_STRONG_MODEL, default Sonnet); pequena fica no motor barato (qwen,
     # modelo "" = default do ccr). Classificador em app/tiering.py — não é decisão de LLM.
-    decisao_tier = classificar_tier(pr_title, contexto or run.issue_id)
+    # degrau-1 determinístico + degrau-2 Jev (se houver decider): o Jev só PROMOVE base→forte uma
+    # issue de escopo amplo que o keyword não pegou; nunca rebaixa. Sem decider = só determinístico.
+    decisao_tier = await precisa_forte(pr_title, contexto or run.issue_id, decider=decider)
     # id no formato "provider,model": o ccr IGNORA o model do cliente e roteia pela config, MENOS
     # quando vem com a sintaxe de override "provider,model" — aí usa esse (validado no PoC).
     modelo_forte = os.environ.get("ROBOTO_STRONG_MODEL", "openrouter,anthropic/claude-sonnet-4.6")
@@ -227,8 +231,13 @@ async def run_pr_cycle(
     forte_upfront = _upf not in ("0", "off", "false", "no")
     _usa_forte = forte_upfront and decisao_tier.forte and bool(modelo_forte)
     modelo_do_motor = modelo_forte if _usa_forte else ""
+    # forte na FINALIZAÇÃO (#242, proativo): rascunho no BASE, mas diag/hook/correção no FORTE (a
+    # ideia do dono: o base escreve, o forte FECHA a parte chata — i18n/review). Trigger = turnos
+    # pós-rascunho. ROBOTO_FORTE_FINALIZE=1. Default off = reativo (só escala ao travar). A/B.
+    _fin = os.environ.get("ROBOTO_FORTE_FINALIZE", "0").lower() not in ("0", "off", "false", "no")
+    modelo_fin = modelo_forte if (_fin and modelo_forte) else modelo_do_motor
     print(
-        f"[tier] forte={decisao_tier.forte} upfront={forte_upfront} "
+        f"[tier] forte={decisao_tier.forte} upfront={forte_upfront} finalize={_fin} "
         f"modelo={modelo_do_motor or '(base/qwen-coder)'} — {decisao_tier.motivo}"
     )
 
@@ -433,7 +442,11 @@ async def run_pr_cycle(
                          "pré-existente) — vai barrar qualquer commit; não é a sua mudança.",
                 )
         # correção RESUMINDO a sessão do coder: 1ª tentativa é sessão nova; correções resumem.
-        await _engine_turn(prompt, coder.get("native") if feedback else None)
+        # rascunho (sem feedback) no base; correção (feedback) no modelo_fin (forte se FINALIZE).
+        await _engine_turn(
+            prompt, coder.get("native") if feedback else None,
+            model=modelo_fin if feedback else None,
+        )
         await git.prepare_branch(branch)
         # diagnostics HARNESS-DRIVEN (#226): o motor subusa o code-intel p/ entender erro de build
         # (medido #46: tsc no braço). O harness roda validate_build e injeta os erros ESTRUTURADOS
@@ -452,7 +465,9 @@ async def run_pr_cycle(
                             run.tenant, run.id, "message", now,
                             text=f"↻ diagnostics (code-intel): corrigindo build (try {dtries}).",
                         )
-                    await _engine_turn(_diag_fix_prompt(diag), coder.get("native"))
+                    await _engine_turn(
+                        _diag_fix_prompt(diag), coder.get("native"), model=modelo_fin
+                    )
                     diag = await asyncio.to_thread(code_intel_diagnostics, workdir, amostra)
             except Exception:  # noqa: BLE001 — diagnostics é best-effort; não derruba o ciclo
                 pass
@@ -509,7 +524,9 @@ async def run_pr_cycle(
                             run.tenant, run.id, "message", now,
                             text=f"↻ commit barrado por hook → motor corrige (try {hook_tries}).",
                         )
-                    await _engine_turn(_hook_fix_prompt(str(_exc)), coder.get("native"))
+                    await _engine_turn(
+                        _hook_fix_prompt(str(_exc)), coder.get("native"), model=modelo_fin
+                    )
                     # determinismo: o motor pode ter criado/editado arquivos no turno acima (ex.:
                     # locales i18n) → re-formata com o prettier ANTES do próximo commit; senão o
                     # `--check` barra e a correção à mão do modelo nunca casa (buraco do #245).
@@ -563,7 +580,7 @@ async def run_pr_cycle(
                     run.tenant, run.id, "message", now,
                     text=f"↻ secret-scan: motor vai remover o literal (tentativa {fixes}).",
                 )
-            await _engine_turn(_secret_fix_prompt(leak), coder.get("native"))
+            await _engine_turn(_secret_fix_prompt(leak), coder.get("native"), model=modelo_fin)
             await git.commit_all("remove literal com cara de segredo (secret-scan)")
             leak = await _guard_secrets(git, base, store=store, run=run, now=now)
         if leak and not allow_secret:
@@ -659,6 +676,7 @@ async def process_pr_run_tick(
     wip_limit: int = 0,  # backpressure (J): cap de runs ativos por tenant; 0 = sem limite
     self_assign_login: str = "",  # #150: login do fleet p/ self-assign; "" = não atribui
     persona: str = "",  # âncora de papel opcional (A/B atrás de flag) — ver roboto/persona.py
+    decider: Decider | None = None,  # Jev degrau-2 do tier (#242); None = só determinístico
 ) -> None:
     """Pega o próximo run da fila e roda o ciclo. Aprovado -> VERIFYING; desistiu -> FAILED.
 
@@ -736,6 +754,7 @@ async def process_pr_run_tick(
             now=moment,
             allow_secret=secret_ok,
             persona=persona,
+            decider=decider,
         )
     except Exception as exc:  # noqa: BLE001 — motor travado (watchdog) / git / PR: tira de RUNNING
         # Erro TRANSITÓRIO de provedor (402 sem crédito, 429, 5xx, overloaded) → re-enfileira com

@@ -12,6 +12,9 @@ import os
 import re
 from dataclasses import dataclass
 
+from roboto.llm.decide import Decider
+from roboto.result import Err
+
 # vocabulário que denuncia escopo arquitetural/amplo (não um ajuste pontual).
 _PALAVRAS_ARQUITETURAIS = (
     "adr",
@@ -56,3 +59,38 @@ def classificar_tier(titulo: str, corpo: str) -> TierDecision:
     if palavras_encontradas and len(corpo or "") > _CORPO_MINIMO_PARA_ARQUITETURAL:
         return TierDecision(True, f"arquitetural {palavras_encontradas[:3]} + corpo extenso")
     return TierDecision(False, "escopo pequeno/mecânico")
+
+
+_TIER_QUESTION = (
+    "Esta issue de engenharia exige um modelo de coding FORTE (caro) para ser implementada bem, "
+    "em vez de um modelo barato? Dê True só para tarefa realmente ampla/arquitetural/arriscada "
+    "(refator cross-módulo, design novo, mudança que quebra contrato). Ajuste pontual, bugfix "
+    "localizado, CRUD, copy, config ou tarefa mecânica NÃO exigem o forte."
+)
+
+
+async def precisa_forte(
+    titulo: str,
+    corpo: str,
+    *,
+    decider: Decider | None = None,
+    min_confidence: float = 0.6,
+) -> TierDecision:
+    """Degrau-2 (Jev) sobre o tier: o determinístico (`classificar_tier`) é o degrau-1.
+
+    SEM `decider`: devolve a decisão determinística pura (fallback barato, igual hoje).
+    COM `decider` (Jev): o determinístico decide PRIMEIRO; se ele JÁ mandou pro forte, respeita
+    (não rebaixa — o keyword é sinal forte). Se ele disse base, o Jev tem a chance de PROMOVER uma
+    issue que o keyword não pegou (escopo amplo sem citar arquivos/palavra). Só promove com
+    confiança ≥ limiar. Jev falhou → cai no determinístico. Degrada, nunca bloqueia (determinismo
+    1º — [[determinismo-primeiro]])."""
+    base = classificar_tier(titulo, corpo)
+    if decider is None or base.forte:
+        return base  # sem Jev, ou o determinístico já mandou pro forte → respeita
+    verdict = await decider.decide(_TIER_QUESTION, f"Título: {titulo}\n\n{corpo}")
+    if isinstance(verdict, Err):
+        return base  # Jev falhou → determinístico (não bloqueia)
+    d = verdict.value
+    if d.decision and d.confidence >= min_confidence:
+        return TierDecision(True, f"jev promoveu (conf {d.confidence:.2f}): {d.reason[:80]}")
+    return base
