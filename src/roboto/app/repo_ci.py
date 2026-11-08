@@ -17,13 +17,16 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-# ordem canônica barato→caro: lint e typecheck não precisam de infra; `test` pode precisar (DB).
-_CANON_ORDER = ("lint", "typecheck", "test")
+# ordem canônica barato→caro: lint/typecheck (estática pura) → `build` (compila: pega erro que o
+# typecheck não vê, ex.: Next `middleware.ts`+`proxy.ts` juntos = build quebra, run #117) → `test`
+# (pode precisar de DB). build roda ANTES do test: sem compilar, nem adianta testar.
+_CANON_ORDER = ("lint", "typecheck", "build", "test")
 
-# passos que PODEM reprovar por infra (precisam de DB/serviços). lint/typecheck são análise estática
+# passos que PODEM reprovar por infra (precisam de serviço/env). lint/typecheck são análise estática
 # PURA — qualquer vermelho ali é CÓDIGO (ex.: TS2307 `Cannot find module` = import errado), nunca
-# infra; waved-through ali reabre PR vermelho (run #104). Só o `test` ganha o benefício da dúvida.
-_INFRA_CAPABLE = {"test"}
+# infra; waved-through ali reabre PR vermelho (run #104). `test` e `build` ganham o benefício da
+# dúvida (build pode faltar env/serviço); o erro de CÓDIGO (não casa `_INFRA_RED`) ainda realimenta.
+_INFRA_CAPABLE = {"test", "build"}
 
 # padrões de vermelho que são de INFRA/ambiente (não a mudança do modelo) → NÃO realimenta o motor.
 # Inclui banco de teste não provisionado (ex.: integração Prisma sem migração): o CI do GitHub roda
@@ -89,20 +92,54 @@ def run_ci(
     timeout: float = 300.0,
     max_red_chars: int = 3000,
 ) -> CiResult:
-    """Roda os checks em sequência, parando no 1º vermelho. SÍNCRONO (use `asyncio.to_thread`).
+    """Roda os checks e devolve o 1º bloco acionável de vermelho. SÍNCRONO (`asyncio.to_thread`).
     Nunca levanta: timeout/execução vira `CiResult(infra=True)`. Vazio/tudo-verde → `passed=True`.
-    A saída do vermelho é trimada pelo FIM (onde o erro real aparece) p/ caber no prompt."""
+
+    Fase ESTÁTICA (lint/typecheck): análise pura, sem infra. Roda TODOS e junta os vermelhos num
+    feedback só — o motor corrige lint+typecheck de UMA vez (1 turno), não um turno por check (mata
+    o ping-pong "arruma lint → quebra typecheck"). Fase de SERVIÇO (`test`): barato→caro, para no
+    1º vermelho e dá benefício da dúvida p/ INFRA (DB fora/não migrado) — CI do GitHub é o juiz.
+    Cada vermelho é trimado pelo FIM (onde o erro real aparece) p/ caber no prompt."""
     run = runner or _default_runner
-    for name, cmd in commands:
+
+    def executar(name: str, cmd: str) -> tuple[int, str] | CiResult:
+        # exceção (timeout/exec não-iniciado) = ambiente, não a mudança do modelo → infra.
         try:
-            rc, saida = run(cmd, workdir, timeout)
-        except Exception as exc:  # noqa: BLE001 — timeout/exec → trata como infra (não culpa modelo)
+            return run(cmd, workdir, timeout)
+        except Exception as exc:  # noqa: BLE001
             return CiResult(
                 False, which=name, red=f"{type(exc).__name__}: {exc}"[:max_red_chars], infra=True
             )
+
+    # FASE 1 — checks estáticos juntos: acumula TODOS os vermelhos (código, nunca infra).
+    vermelhos_estaticos: list[tuple[str, str]] = []  # (check, saída trimada pelo fim)
+    for name, cmd in ((n, c) for n, c in commands if n not in _INFRA_CAPABLE):
+        resultado = executar(name, cmd)
+        if isinstance(resultado, CiResult):
+            return resultado  # exceção num check estático → infra (sai sem acumular)
+        rc, saida = resultado
         if rc != 0:
-            red = saida.strip()[-max_red_chars:]
-            # infra só vale p/ passos que tocam serviços (test); lint/typecheck vermelho = código.
-            infra = name in _INFRA_CAPABLE and bool(_INFRA_RED.search(saida))
-            return CiResult(False, which=name, red=red, infra=infra)
+            vermelhos_estaticos.append((name, saida.strip()[-max_red_chars:]))
+    if vermelhos_estaticos:
+        # 1 vermelho: saída crua (preserva o orçamento por check). 2+: delimita com `== check ==`
+        # p/ o motor saber qual erro é de qual check e corrigir os dois no mesmo turno.
+        which = ", ".join(name for name, _ in vermelhos_estaticos)
+        red = (
+            vermelhos_estaticos[0][1]
+            if len(vermelhos_estaticos) == 1
+            else "\n\n".join(f"== {name} ==\n{red}" for name, red in vermelhos_estaticos)
+        )
+        return CiResult(False, which=which, red=red)
+
+    # FASE 2 — checks que tocam serviços (`test`): estáticos já verdes; para no 1º e separa INFRA.
+    for name, cmd in ((n, c) for n, c in commands if n in _INFRA_CAPABLE):
+        resultado = executar(name, cmd)
+        if isinstance(resultado, CiResult):
+            return resultado
+        rc, saida = resultado
+        if rc != 0:
+            return CiResult(
+                False, which=name, red=saida.strip()[-max_red_chars:],
+                infra=bool(_INFRA_RED.search(saida)),
+            )
     return CiResult(True)

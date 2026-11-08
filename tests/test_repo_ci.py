@@ -20,6 +20,13 @@ def test_discover_ordena_lint_typecheck_test(tmp_path: Path) -> None:
     assert cmds[0] == ("lint", "pnpm -s lint")
 
 
+def test_discover_inclui_build_entre_typecheck_e_test(tmp_path: Path) -> None:
+    # #117: `build` entra no gate (pega erro que lint/typecheck não veem), ANTES do test.
+    wd = _mk_pkg(tmp_path, {"test": "vitest", "build": "next build", "lint": "eslint",
+                            "typecheck": "tsc"})
+    assert [n for n, _ in discover_ci_commands(wd)] == ["lint", "typecheck", "build", "test"]
+
+
 def test_discover_so_os_que_existem(tmp_path: Path) -> None:
     wd = _mk_pkg(tmp_path, {"lint": "eslint"})  # só lint
     assert discover_ci_commands(wd) == [("lint", "pnpm -s lint")]
@@ -43,21 +50,86 @@ def test_run_ci_tudo_verde() -> None:
     assert r == CiResult(True)
 
 
-def test_run_ci_para_no_primeiro_vermelho() -> None:
+def test_run_ci_estaticos_rodam_juntos_e_juntam_vermelhos() -> None:
+    # lint E typecheck reprovam: a porta roda OS DOIS e devolve um feedback só (1 turno do motor),
+    # em vez de parar no lint e precisar de 2 rodadas (mata o ping-pong lint↔typecheck).
     chamados: list[str] = []
 
     def runner(cmd: str, cwd: str, timeout: float) -> tuple[int, str]:
         chamados.append(cmd)
         if "lint" in cmd:
             return 1, "30:15 error Unexpected any @typescript-eslint/no-explicit-any"
+        if "typecheck" in cmd:
+            return 2, "src/x.ts(2,5): error TS2345: Argument of type 'string'"
         return 0, "ok"
 
     r = run_ci("/w", [("lint", "pnpm -s lint"), ("typecheck", "pnpm -s typecheck")], runner=runner)
     assert r.passed is False
-    assert r.which == "lint"
+    assert r.which == "lint, typecheck"  # os dois vermelhos reportados juntos
     assert r.fixable is True  # erro de código → o motor pode corrigir
+    assert "no-explicit-any" in r.red and "TS2345" in r.red  # ambos os vermelhos no feedback
+    assert chamados == ["pnpm -s lint", "pnpm -s typecheck"]  # rodou os DOIS estáticos
+
+
+def test_run_ci_estatico_so_um_vermelho_reporta_so_ele() -> None:
+    def runner(cmd: str, cwd: str, timeout: float) -> tuple[int, str]:
+        if "lint" in cmd:
+            return 1, "30:15 error Unexpected any @typescript-eslint/no-explicit-any"
+        return 0, "ok"  # typecheck verde
+
+    r = run_ci("/w", [("lint", "pnpm -s lint"), ("typecheck", "pnpm -s typecheck")], runner=runner)
+    assert r.which == "lint" and r.fixable is True
     assert "no-explicit-any" in r.red
-    assert chamados == ["pnpm -s lint"]  # parou no 1º vermelho (não rodou typecheck)
+
+
+def test_run_ci_estaticos_verdes_so_entao_roda_test() -> None:
+    # `test` é fase de serviço: só roda DEPOIS que lint/typecheck estão verdes (barato→caro).
+    chamados: list[str] = []
+
+    def runner(cmd: str, cwd: str, timeout: float) -> tuple[int, str]:
+        chamados.append(cmd)
+        if "lint" in cmd:
+            return 1, "error no-explicit-any"  # estático vermelho → nem chega no test
+        return 0, "ok"
+
+    cmds = [("lint", "pnpm -s lint"), ("typecheck", "pnpm -s typecheck"), ("test", "pnpm -s test")]
+    run_ci("/w", cmds, runner=runner)
+    # estático vermelho segura o test (não desperdiça a suíte lenta com lint/type ainda vermelhos)
+    assert "pnpm -s test" not in chamados
+
+
+def test_run_ci_build_erro_de_codigo_e_fixable() -> None:
+    # #117: erro REAL de build (Next detecta middleware.ts + proxy.ts juntos) é CÓDIGO → realimenta.
+    def runner(cmd: str, cwd: str, timeout: float) -> tuple[int, str]:
+        if "build" in cmd:
+            return 1, 'Both middleware file "./src/middleware.ts" and proxy file "./src/proxy.ts"'
+        return 0, "ok"
+
+    r = run_ci("/w", [("build", "pnpm -s build")], runner=runner)
+    assert r.which == "build" and r.infra is False and r.fixable is True  # volta ao motor
+
+
+def test_run_ci_build_erro_de_infra_nao_e_fixable() -> None:
+    # build que cai por serviço/env (ECONNREFUSED) é INFRA → surfa, não culpa o modelo.
+    def runner(cmd: str, cwd: str, timeout: float) -> tuple[int, str]:
+        return 1, "Error: connect ECONNREFUSED 127.0.0.1:5432 durante o build"
+
+    r = run_ci("/w", [("build", "pnpm -s build")], runner=runner)
+    assert r.infra is True and r.fixable is False
+
+
+def test_run_ci_build_roda_antes_do_test() -> None:
+    # build vermelho segura o test (compila antes de testar): estáticos verdes → build → para.
+    chamados: list[str] = []
+
+    def runner(cmd: str, cwd: str, timeout: float) -> tuple[int, str]:
+        chamados.append(cmd)
+        return (1, "Build error") if "build" in cmd else (0, "ok")
+
+    cmds = [("typecheck", "pnpm -s tc"), ("build", "pnpm -s build"), ("test", "pnpm -s test")]
+    r = run_ci("/w", cmds, runner=runner)
+    assert r.which == "build"
+    assert "pnpm -s test" not in chamados  # build quebrou → nem roda o test
 
 
 def test_run_ci_vermelho_de_infra_nao_e_fixable() -> None:
