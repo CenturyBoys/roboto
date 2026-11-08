@@ -200,6 +200,30 @@ async def test_correction_resumes_coder_session() -> None:
     assert engine.started[1].resume_session_id == "stub-session"  # correção: resume do coder
 
 
+async def test_forte_finalize_rascunho_base_correcao_forte() -> None:
+    # #242 (proativo): ROBOTO_FORTE_FINALIZE=1 → rascunho (1º turno) no BASE; a correção (turno com
+    # feedback) sobe pro MODELO FORTE. O base escreve, o forte FECHA.
+    import os
+
+    gw = _SeqGateway([_FIND_REPROVA, ""])  # 1º review reprova → força 1 turno de correção
+    old_f = os.environ.get("ROBOTO_FORTE_FINALIZE")
+    old_m = os.environ.get("ROBOTO_STRONG_MODEL")
+    os.environ["ROBOTO_FORTE_FINALIZE"] = "1"
+    os.environ["ROBOTO_STRONG_MODEL"] = "openrouter,modelo-forte-teste"
+    try:
+        _, engine, _, _ = await _cycle(gw)
+    finally:
+        for k, v in (("ROBOTO_FORTE_FINALIZE", old_f), ("ROBOTO_STRONG_MODEL", old_m)):
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    assert len(engine.started) == 2
+    assert engine.started[0].model == ""  # rascunho: BASE (default do ccr)
+    assert engine.started[1].model == "openrouter,modelo-forte-teste"  # correção: FORTE
+
+
 async def test_cycle_reuses_live_pr() -> None:
     # já existe um PR aberto p/ o branch -> não abre outro (idempotência, repo vivo)
     store = InMemoryStore()

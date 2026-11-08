@@ -262,6 +262,7 @@ async def _run_daemon(config: Config, store: Store) -> None:
                 wip_limit=config.wip_limit,  # backpressure (J)
                 self_assign_login=config.bot_login,  # self-assign ao assumir (#150)
                 persona=config.impl_persona,  # âncora de papel (A/B atrás de flag)
+                decider=refine_decider,  # Jev degrau-2 do tier (#242); None = só determinístico
             )
 
         async def _run_scope() -> None:

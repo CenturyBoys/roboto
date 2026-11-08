@@ -14,16 +14,27 @@
 3. **Geração tiered** (`Tier.CHEAP` / `Tier.FRONTIER`): o grosso da geração em modelo barato; o
    raciocínio difícil no forte.
 
-## 2. Classificação de tier (determinística)
+## 2. Classificação de tier (determinística + Jev degrau-2)
 
-`app/tiering.classificar_tier` decide **forte vs barato** sem LLM, por sinais do texto:
+`app/tiering.classificar_tier` decide **forte vs barato** sem LLM (degrau-1), por sinais do texto:
 
 | Sinal | → |
 |---|---|
-| ≥ 3 arquivos citados **ou** keyword de arquitetura (ADR/refactor/migração/breaking) + corpo longo | **forte** |
+| ≥ `ROBOTO_TIER_FILES` (6) arquivos citados **ou** keyword de arquitetura (ADR/refactor/migração/breaking) + corpo longo | **forte** |
 | resto | **barato** |
 
 Alimenta o right-sizing da implementação (`pr_cycle`) — tarefa grande/arquitetural sobe pro modelo forte.
+
+**Degrau-2 (Jev), `app/tiering.precisa_forte`** — espelha `web_research.research_is_critical`: o
+degrau-1 decide primeiro; se já mandou pro **forte**, respeita (não rebaixa, nem consulta o Jev — o
+keyword é sinal forte). Se disse **base**, o `Decider` (Jev) pode **promover** uma issue de escopo
+amplo que o keyword não pegou (`decision && confidence ≥ limiar`). Jev falhou → cai no
+determinístico. Nunca bloqueia (determinismo 1º). O `runtime` passa o `refine_decider` já existente;
+sem decider = só determinístico.
+
+**Finalização no forte (`ROBOTO_FORTE_FINALIZE`, proativo, #242)** — o **base** escreve o rascunho
+(1º turno) e o **forte** fecha a parte chata (diag / hook / correção / secret-fix). Default `0` =
+**reativo** (só escala quando trava, via degrau de escalonamento). A/B contra o reativo.
 
 ## 3. Tier → modelo, por config + fallback (novo)
 
