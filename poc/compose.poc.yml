@@ -35,6 +35,9 @@ services:
       REFINE_PERSONA: ${REFINE_PERSONA:-} # âncora de papel no refino (tech lead). Ligada por default; "0"=off
       IMPL_PERSONA: ${IMPL_PERSONA:-} # âncora de papel no impl (eng. sênior). Ligada por default; "0"=off
       ROBOTO_TURN_TOKEN_BUDGET: ${ROBOTO_TURN_TOKEN_BUDGET:-150000} # #242: estourou → não resume (corta flailing); 0=off
+      # tier FORTE / degrau de escalonamento (#242): LOCAL-operável (GLM-4.5-Air, self-hostável) em vez
+      # do Sonnet pago — resgate "grátis". Troque p/ anthropic/claude-sonnet-4.6 se quiser o mais forte.
+      ROBOTO_STRONG_MODEL: ${ROBOTO_STRONG_MODEL:-openrouter,z-ai/glm-4.5-air}
     ports:
       - "8090:8080" # servidor ASGI (webhook + console) — 8090 no host (8080 ocupada)
       - "7681:7681" # ttyd — terminal web (tmux no container)
