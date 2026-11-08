@@ -21,10 +21,15 @@ from pathlib import Path
 _CANON_ORDER = ("lint", "typecheck", "test")
 
 # padrões de vermelho que são de INFRA/ambiente (não a mudança do modelo) → NÃO realimenta o motor.
+# Inclui banco de teste não provisionado (ex.: integração Prisma sem migração): o CI do GitHub roda
+# com DB migrado, é o juiz desses — localmente degrada p/ "indisponível", não trava nem escala.
 _INFRA_RED = re.compile(
     r"ECONNREFUSED|could not connect|getaddrinfo|ENOTFOUND|connection refused|"
-    r"database .*does not exist|role .*does not exist|password authentication|"
-    r"Cannot find module|command not found|ENOENT|No such file|corepack|pnpm: not found",
+    r"database .{0,60}does not exist|role .{0,60}does not exist|password authentication|"
+    r"Cannot find module|command not found|ENOENT|No such file|corepack|pnpm: not found|"
+    # banco de teste não migrado (Prisma/SQL): tabela/relação ausente, código P2021, conexão
+    r"table .{0,60}does not exist|relation .{0,60}does not exist|"
+    r"PrismaClient\w*Error|P2021|P10\d\d|prisma migrate|needs? to be migrated|not migrated",
     re.I,
 )
 
