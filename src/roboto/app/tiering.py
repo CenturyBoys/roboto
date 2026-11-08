@@ -8,6 +8,7 @@ pequena/mecânica roda no motor barato (qwen); tarefa grande/arquitetural sobe p
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
 
@@ -28,7 +29,10 @@ _PALAVRAS_ARQUITETURAIS = (
 _CAMINHO_DE_ARQUIVO = re.compile(
     r"[\w./@-]+\.(?:tsx?|jsx?|mjs|cjs|py|go|rs|java|rb|css|scss|sql|ya?ml)\b"
 )
-_ARQUIVOS_PARA_SER_GRANDE = 3  # >= este nº de arquivos distintos = tarefa grande
+# >= este nº de arquivos citados = tarefa grande (tier forte UPFRONT). Subido de 3→6 (#242): o
+# degrau de escalonamento já cobre o resgate, então o forte UPFRONT fica só p/ tarefa realmente
+# grande — evita Sonnet na task toda por 3 arquivos (exec #88: 315k tokens). ROBOTO_TIER_FILES.
+_ARQUIVOS_PARA_SER_GRANDE = int(os.environ.get("ROBOTO_TIER_FILES", "6") or "6")
 _CORPO_MINIMO_PARA_ARQUITETURAL = 400  # keyword solta em corpo curto não basta
 
 

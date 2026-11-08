@@ -350,7 +350,9 @@ async def run_pr_cycle(
         "(tipos) + a CI do PR (suíte completa com infra). "
         "NÃO abra PR, NÃO rode `git push`, `gh pr create` nem a API de PR do GitHub — o FLEET faz "
         "isso por você (commit + push + PR). Só IMPLEMENTE e deixe os arquivos prontos; abrir PR "
-        "aqui cria PR DUPLICADO. "
+        "aqui cria PR DUPLICADO. NUNCA rode `git stash`, `git reset`, `git checkout -- ` nem "
+        "`git clean` — DESCARTA o seu trabalho (exec #88 perdeu tudo num stash). Pra ver se um "
+        "fail é pré-existente, leia o git log/blame; não mexa na árvore. "
         "ECONOMIA DE TOKEN (F) — REGRA OBRIGATÓRIA de navegação: para DESCOBRIR onde algo está, "
         "quem usa um símbolo ou o que quebra ao mudá-lo, use SEMPRE as ferramentas do code-intel "
         "(mcp__code-intel__find_symbol, find_references, document_symbols, blast_radius) e o "
@@ -778,6 +780,8 @@ def _correct_prompt(repo: str, pr_number: int, workdir: str, issues: list[str]) 
         "Você está NA branch do PR, com o código já implementado — faça SÓ os ajustes abaixo, sem "
         "reimplementar nem sair do escopo. Self-check rápido (lint/typecheck + teste SÓ do que "
         "mexeu, não a suíte); se o ambiente não deixar rodar (infra/DB), NÃO insista — conclua. "
+        "NUNCA rode `git stash`, `git reset`, `git checkout -- ` nem `git clean` — DESCARTA o seu "
+        "trabalho (exec #88 perdeu tudo num stash); o FLEET cuida do git. "
         "Pontos do review:\n- " + "\n- ".join(issues)
     )
 
