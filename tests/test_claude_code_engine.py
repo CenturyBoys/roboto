@@ -60,7 +60,7 @@ import types  # noqa: E402
 
 import pytest  # noqa: E402
 
-from roboto.engines.claude_code import _is_max_turns  # noqa: E402
+from roboto.engines.claude_code import _is_max_turns, _over_token_budget  # noqa: E402
 from roboto.engines.port import EngineEventKind  # noqa: E402
 
 
@@ -69,6 +69,14 @@ def test_is_max_turns() -> None:
     assert _is_max_turns("error", "Reached maximum number of turns (80)")
     assert not _is_max_turns("error", "some other error")
     assert not _is_max_turns("success", "")
+
+
+def test_over_token_budget() -> None:
+    # #242 Fatia 2: estourou → corta o resume (provável flailing). budget<=0 desliga.
+    assert _over_token_budget(100_000, 60_000, 150_000)  # 160k > 150k
+    assert not _over_token_budget(80_000, 50_000, 150_000)  # 130k <= 150k
+    assert not _over_token_budget(999_999, 999_999, 0)  # budget 0 = desligado
+    assert not _over_token_budget(999_999, 999_999, -1)  # budget negativo = desligado
 
 
 class _Text:

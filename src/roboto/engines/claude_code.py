@@ -24,6 +24,11 @@ def _is_max_turns(subtype: str, result: str) -> bool:
     return "max_turn" in s or "maximum number of turns" in r or "maximum turns" in r
 
 
+def _over_token_budget(tokens_in: int, tokens_out: int, budget: int) -> bool:
+    """Estourou o budget de tokens do run? (#242 Fatia 2) — budget<=0 desliga. Pura/testável."""
+    return budget > 0 and (tokens_in + tokens_out) > budget
+
+
 class ClaudeCodeEngine:
     def __init__(
         self,
@@ -43,6 +48,9 @@ class ClaudeCodeEngine:
         # thinking budget: liga o reasoning (ccr mapeia thinking→reasoning). NECESSÁRIO p/ modelos
         # reasoning-mandatory via OpenRouter (ex.: gpt-oss — senão 400 "cannot be disabled").
         max_thinking_tokens: int = 0,
+        # budget de tokens por run (#242 Fatia 2): estourou → NÃO resume e termina (provável
+        # flailing). Corta a multiplicação do burn (exec #80: 194k). 0 = sem budget.
+        token_budget: int = 0,
     ) -> None:
         self._model = model
         self._permission_mode = permission_mode
@@ -52,6 +60,7 @@ class ClaudeCodeEngine:
         self._max_turns = max_turns
         self._max_resumes = max_resumes
         self._max_thinking_tokens = max_thinking_tokens
+        self._token_budget = token_budget
         self._spec: RunSpec | None = None
         self._session_id = ""
 
@@ -107,14 +116,22 @@ class ClaudeCodeEngine:
                     tout_acc += int(usage.get("output_tokens", 0) or 0)
                     subtype = str(getattr(message, "subtype", "success"))
                     result_text = str(getattr(message, "result", "") or "")
+                    over_budget = _over_token_budget(tin_acc, tout_acc, self._token_budget)
                     can_resume = (
                         resumes_left > 0
                         and bool(self._session_id)
                         and _is_max_turns(subtype, result_text)
+                        and not over_budget  # #242: estourou o budget → NÃO resume (corta o burn)
                     )
                     if subtype == "success":
                         yield EngineEvent(
                             EngineEventKind.FINISHED, tokens_in=tin_acc, tokens_out=tout_acc
+                        )
+                    elif over_budget:
+                        gasto = (tin_acc + tout_acc) // 1000
+                        yield EngineEvent(
+                            EngineEventKind.FAILED,
+                            text=f"budget de tokens estourado ({gasto}k) — provável flailing",
                         )
                     elif can_resume:
                         hit_max = True  # RESUME (#232): não falha; WIP salvo no /work
