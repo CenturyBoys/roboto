@@ -7,6 +7,7 @@ from roboto.agents.review import (
     Finding,
     IssueReadiness,
     PullRequest,
+    _parse_findings,
     aprovado_por_findings,
     check_issue_readiness,
     check_issue_size,
@@ -244,6 +245,22 @@ async def test_review_pr_findings_parseia() -> None:
     assert len(fs) == 2
     assert fs[0].severidade == "bloqueador" and fs[0].arquivo == "src/a.py" and fs[0].linha == 42
     assert fs[1].severidade == "menor" and fs[1].linha == 0
+
+
+def test_parse_findings_preenche_recomendacao_vazia() -> None:
+    # #2: reviewer deixou `recomendacao` vazia → o parser garante um "como" acionável (nunca em
+    # branco). Fallback: evidência concreta > derivar do título.
+    texto = (
+        "FINDING\nseveridade: bloqueador\narquivo: a.ts\nlinha: 10\nconfianca: alta\n"
+        "titulo: Teste duplicado\nevidencia: it('x') repete (L20 e L40)\nrecomendacao:\nEND\n"
+        "FINDING\nseveridade: menor\narquivo: b.ts\nlinha: 0\nconfianca: media\n"
+        "titulo: Nome ruim\nevidencia:\nrecomendacao:\nEND"
+    )
+    fs = _parse_findings(texto)
+    assert len(fs) == 2
+    assert fs[0].recomendacao == "it('x') repete (L20 e L40)"  # cai na evidência
+    assert fs[1].recomendacao == "Corrigir: Nome ruim"  # sem evidência → deriva do título
+    assert all(f.recomendacao.strip() for f in fs)  # nunca vazio
 
 
 def test_veredito_por_findings() -> None:

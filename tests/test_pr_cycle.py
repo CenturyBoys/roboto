@@ -565,6 +565,29 @@ async def test_process_pr_run_tick_fails_and_warns_on_secret_leak() -> None:
     assert any("secret-scan" in e.text for e in events)  # avisou no feed
 
 
+async def test_tick_sem_aprovacao_registra_motivo_no_feed() -> None:
+    # review reprova em TODAS as tentativas → FAILED. O motivo tem de aparecer no FEED (console),
+    # não só no Telegram — senão o run vira `failed` com a última msg do implement (ex.: o aviso
+    # benigno de CI local INFRA) como único rastro, parecendo que o CI local falhou.
+    from roboto.orchestrator.model import RunState
+
+    store = InMemoryStore()
+    run = await _run(store)  # type: ignore[assignment]
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    gw = _SeqGateway([_FIND_REPROVA, _FIND_REPROVA, _FIND_REPROVA])  # reprova as 3 tentativas
+    await process_pr_run_tick(
+        engine, gw, _FakeGithub(), store,  # type: ignore[arg-type]
+        tenant="acme", workdir_root="/work", reviewer="review",
+        git_factory=lambda ws: _FakeGit(), now=lambda: _T0,
+    )
+    assert store._runs[run.id].state is RunState.FAILED  # type: ignore[attr-defined]
+    events = await store.session_events(run.id, 0, 50)
+    assert any("sem aprovação" in e.text for e in events)  # motivo visível no console
+    assert any("falta teste" in e.text for e in events)  # pendências do review surfadas no feed
+    # #3: cada review reprovado deixa o veredito no feed (não só o agregado final do encerramento)
+    assert any("Review: reprovou" in e.text for e in events)
+
+
 class _RaisingEngine:
     """Motor que levanta um erro na partida — p/ testar o tratamento de falha do tick."""
 

@@ -78,28 +78,38 @@ type-check best-effort via code-intel que, em monorepo, **se auto-desligava**. R
 "failed" seco). Contradizia o princípio-mãe ("o CI é o juiz do pronto").
 
 **Correção (determinismo 1º):** antes do push, o harness roda a **MESMA porta que o CI aplica** —
-`lint` + `typecheck` + `test` (os scripts reais do `package.json`, via `pnpm`). Vermelho de **código**
-volta ao motor como feedback autoritativo (bounded, última tentativa no **forte**) + re-commit; só
-abre o PR quando **verde**. Igual ao guard de hook, mas é a porta do próprio CI.
+`lint` + `typecheck` + `build` + `test` (os scripts reais do `package.json`, via `pnpm`), na ordem
+barato→caro. Vermelho de **código** volta ao motor como feedback autoritativo (bounded, última
+tentativa no **forte**) + re-commit; só abre o PR quando **verde**. Igual ao guard de hook, mas é a
+porta do próprio CI.
 
 | Peça | O que faz | Onde |
 |---|---|---|
-| descoberta | lê `package.json` → `lint/typecheck/test` na ordem barato→caro (`pnpm -s <script>`) | `app/repo_ci.discover_ci_commands` |
-| execução | roda em sequência, para no 1º vermelho, trima a saída pelo fim | `app/repo_ci.run_ci` |
+| descoberta | lê `package.json` → `lint/typecheck/build/test` na ordem barato→caro (`pnpm -s <script>`) | `app/repo_ci.discover_ci_commands` |
+| execução | **estáticos (`lint`+`typecheck`) juntos** → acumula os vermelhos num feedback só (1 turno, mata o ping-pong lint↔typecheck); `build`/`test` param no 1º vermelho; trima a saída pelo fim | `app/repo_ci.run_ci` |
 | gate | antes do push: vermelho → corrige (bounded) → re-commita → re-roda; verde → segue | `app/pr_cycle` (bloco pré-`push`) |
 
-- **Infra ≠ código — só no `test`:** `lint` e `typecheck` são análise **estática pura** — qualquer
+- **`build` pega o que o `typecheck` não vê:** compilar expõe erro que a checagem de tipos deixa
+  passar — ex.: Next detecta `middleware.ts` + `proxy.ts` juntos e o **build quebra** (migração
+  middleware→proxy do Next 16). Validado ao vivo: o modelo caro (480b) só viu isso no CI do GitHub
+  (run #117, PR vermelho); com `build` no gate, o **30b local** pegou localmente, corrigiu e saiu
+  **verde** (run #118). `build` roda **antes** do `test` (sem compilar, nem adianta testar).
+- **Infra ≠ código — `test` e `build`:** `lint` e `typecheck` são análise **estática pura** — qualquer
   vermelho ali é **código** (ex.: `TS2307 Cannot find module` = import errado) e **sempre** volta ao
-  motor. Só o passo **`test`** (que precisa de DB/serviços) ganha o benefício da dúvida: vermelho que
-  casa padrão de infra (`ECONNREFUSED`, DB fora, **banco de teste não migrado** — Prisma
-  `table does not exist`/`P2021`) **não** realimenta o motor — é **surfado** e o ciclo **segue** (o CI
-  do GitHub, com DB migrado, é o juiz desses). Validado ao vivo: run #103 pegou o vermelho e não abriu
-  PR; run #104 mostrou que waving-through de `typecheck` reabre PR vermelho → por isso infra é restrita
-  ao `test`. Em ambiente sem o DB de teste, `ROBOTO_LOCAL_CI_CMDS=lint,typecheck` evita rodar a suíte
-  de integração que só o CI consegue julgar.
+  motor. Os passos **`test`** (DB/serviços) e **`build`** (pode faltar env/serviço) ganham o benefício
+  da dúvida: vermelho que casa padrão de infra (`ECONNREFUSED`, DB fora, **banco de teste não migrado**
+  — Prisma `table does not exist`/`P2021`) **não** realimenta o motor — é **surfado** e o ciclo
+  **segue** (o CI do GitHub, com DB migrado, é o juiz desses). Validado ao vivo: run #103 pegou o
+  vermelho e não abriu PR; run #104 mostrou que waving-through de `typecheck` reabre PR vermelho → por
+  isso infra fica restrita a `test`/`build`. Em ambiente sem o DB de teste,
+  `ROBOTO_LOCAL_CI_CMDS=lint,typecheck,build` evita rodar a suíte de integração que só o CI julga.
 - **Esgotou e segue vermelho:** **não abre PR vermelho** — escala p/ humano (feed + Telegram).
 - **Visibilidade:** cada passo vai pro feed (`🔴 CI local lint reprovou…`, `✅ CI local verde…`) —
-  a falha de CI deixa de ser invisível.
+  a falha de CI deixa de ser invisível. O mesmo vale para o **review**: cada tentativa deixa o veredito
+  no feed (`🔍 Review: aprovado/reprovou (N)`) e, ao esgotar sem aprovação, o motivo (`🚩 Encerrado
+  sem aprovação após N tentativas` + pendências) — antes o run virava `failed` **mudo**. E todo finding
+  do review carrega uma **recomendação acionável** (nunca vazia): o impl recebe o *como corrigir*, não
+  só o *o quê*.
 - **Configurável:** `ROBOTO_LOCAL_CI=0` desliga; `ROBOTO_LOCAL_CI_CMDS=lint,typecheck` restringe.
 
 ## 5. Recuperação

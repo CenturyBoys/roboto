@@ -262,9 +262,12 @@ REVIEW_PR_STRUCT_SYSTEM = (
     "confianca: alta|media|baixa\n"
     "titulo: <frase curta>\n"
     "evidencia: <1-2 linhas; cite só o trecho MÍNIMO, nunca cole o arquivo>\n"
-    "recomendacao: <o que fazer, objetivo>\n"
+    "recomendacao: <OBRIGATÓRIO — o passo CONCRETO p/ corrigir, no imperativo (ex.: 'remova o "
+    "bloco it(...) duplicado'); nunca vazio nem genérico>\n"
     "END\n"
-    "Sem problema real = NÃO emita bloco nenhum. Qualquer BLOQUEADOR não-tratado reprova o PR."
+    "Sem problema real = NÃO emita bloco nenhum. Qualquer BLOQUEADOR não-tratado reprova o PR.\n"
+    "Todo finding PRECISA de uma `recomendacao` acionável — quem corrige é um modelo fraco e só "
+    "age sobre o 'como corrigir'; finding sem recomendação é inútil."
 )
 
 
@@ -298,6 +301,10 @@ def _parse_findings(text: str) -> list[Finding]:
             linha = int(campos.get("linha", "0") or 0)
         except ValueError:
             linha = 0
+        evidencia = campos.get("evidencia", "").strip()
+        # #2: reviewer fraco às vezes deixa `recomendacao` vazia → o impl recebe o "o quê" sem o
+        # "como" e não conserta. Garante no código: evidência concreta > derivar do título.
+        recomendacao = campos.get("recomendacao", "").strip() or evidencia or f"Corrigir: {titulo}"
         out.append(
             Finding(
                 titulo=titulo,
@@ -305,8 +312,8 @@ def _parse_findings(text: str) -> list[Finding]:
                 arquivo=campos.get("arquivo", "-").strip() or "-",
                 linha=linha,
                 confianca="media" if conf == "média" else conf,
-                evidencia=campos.get("evidencia", "").strip(),
-                recomendacao=campos.get("recomendacao", "").strip(),
+                evidencia=evidencia,
+                recomendacao=recomendacao,
             )
         )
     return out
