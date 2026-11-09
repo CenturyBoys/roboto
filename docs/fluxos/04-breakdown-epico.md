@@ -39,19 +39,25 @@ flowchart TB
 - **`is_epic(title, body)`** — heurística: "épico"/"epic" como palavra no título é sinal forte;
   senão soma sinais do corpo (palavra épico, ≥8 checkboxes, ≥3 cenários/critérios, menção a
   breakdown) e decide por ≥2 sinais. "epicentro" **não** dispara (casamento por palavra).
-- **`parse_breakdown(text)`** — lê o formato que o motor emite (`ITEM:` + pontos `- `), encadeia
-  sequencialmente (cada item depende do anterior), com `DEPENDE: nenhuma` para quebrar a cadeia.
-- **`skeleton_body(item, prev_number)`** — monta o corpo do esqueleto; a frase `Depende de #N` é a
-  mesma que o gate `blocked_by` reconhece, garantindo o encadeamento ponta a ponta.
+- **`parse_breakdown(text)`** — lê o formato que o motor emite (`ITEM:` + pontos `- `). Resolve a
+  dependência de cada item: `DEPENDE: nenhuma` (independente), `DEPENDE: #N` (dependência **NOMEADA**
+  de um item anterior → forma um **DAG raso**, não uma fila) ou ausente/`da anterior` (encadeia no
+  anterior). Índice nomeado inválido cai no default conservador.
+- **`skeleton_body(item, dep_number)`** — monta o corpo do esqueleto; `dep_number` é o número real já
+  resolvido (encadeamento simples **ou** DAG), e a frase `Depende de #N` é a mesma que o gate
+  `blocked_by` reconhece. Além do bloco `🔎 Pesquisa`, **auto-injeta blocos por DIMENSÃO** da
+  sub-issue (🎭 Jornada & UI, 🗄️ Migração, 🔒 Garantias transversais) — a cobertura vira estrutural.
 
 **Incremento 2 — modo breakdown conversacional** em `agents/refiner.py`:
 
 - **`breakdown_converse(transcript, gateway)`** — passo multi-turno (espelha o `converse()` do
   refino normal): devolve uma **pergunta** (`PERGUNTA:`) quando falta info, ou o **breakdown**
   (lista de esqueletos já encadeados) quando dá pra propor.
-- **`BREAKDOWN_SYSTEM`** — o contrato do prompt: ordena por dependência técnica, limita a 3–6 itens,
-  e **instrui a pesquisar na web** (validar lib/versão/abordagem) **citando a fonte** — efetivo
-  quando o motor por trás tem acesso à internet (Claude Code), como combinado.
+- **`BREAKDOWN_SYSTEM`** — o contrato do prompt: dependência **nomeada** (`DEPENDE: #N`, grafo e não
+  fila), **um item = uma responsabilidade** (não funde concerns; bug nomeado vira item próprio),
+  épico arquitetural começa por **pesquisa + ADR** (com garantias transversais e testes de
+  durabilidade), épico com **usuário final** exige ≥1 item de **UI/jornada**, e doc "antes de
+  implementar" **não** é o último item. Também **instrui a pesquisar na web** citando a fonte.
 
 **Incremento 3 — materializar no GitHub** em `app/breakdown_apply.py`:
 
@@ -84,6 +90,27 @@ flowchart TB
   **descartar rascunho**. Agora dá pra propor, sair, dar F5 (ou trocar de máquina) e voltar pra
   finalizar — a proposta editada continua lá.
 
+**Incremento 6 — dimensões de cobertura + DAG + gate determinístico** (refino do próprio processo):
+
+Revisão de um destrinchamento real (épico #73 do arenavalendo, em 3 lentes: arquitetura de software,
+de sistema e UX) mostrou que os defeitos eram **do processo**, não do épico: cadeia 100% serial,
+dimensões (UX, idempotência, testes duráveis) virando "bala solta" dentro de features, e itens
+inchados. As correções tornam a cobertura **estrutural**, não dependente do motor lembrar:
+
+- **Dependência NOMEADA (DAG):** `SubIssueSkeleton.depends_on_index` + `DEPENDE: #N` no parser e
+  resolução no `materialize_breakdown` — pendura cada item no antecessor REAL (não na fila), sem
+  serializar trabalho paralelizável nem empurrar transversais pro fim.
+- **Detectores de dimensão** em `breakdown.py`: `is_architectural()` (ADR/durável/idempotência/
+  scheduler/"se sobrepõe a #") e `needs_ux()` (usuário final: tela/notificação/jornada/PWA).
+- **Gate de cobertura `review_breakdown(title, body, breakdown)`** — determinístico, **não bloqueia**:
+  avisa o humano o que o destrinchamento provavelmente deixou passar (épico arquitetural sem
+  pesquisa/ADR, épico com usuário sem UI/jornada, doc de fluxo como último item, sub-issue inchada).
+- **Seeding por dimensão** no `skeleton_body`: itens de UI/schema/durável ganham checklists prontos
+  (jornada/notificações, migração/backfill, idempotência/ownership/testes de crash-restart).
+- **Cockpit:** `POST /issues/{n}/breakdown` devolve `warnings`; o `BreakdownPanel` os mostra num
+  painel âmbar **antes** de criar — o operador revisa a cobertura e decide.
+
 ## Próximo
 
-6. Dogfood: destrinchar um épico real (ex.: #66 do arenavalendo) pela UI e materializar.
+7. Dogfood: destrinchar um épico real (ex.: #73 do arenavalendo) pela UI, revisar os avisos de
+   cobertura e materializar.

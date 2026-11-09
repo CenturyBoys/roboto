@@ -138,11 +138,14 @@ export interface BreakdownItem {
   title: string
   points: string[]
   depends_on_prev: boolean
+  depends_on_index?: number | null
 }
 
 export interface BreakdownStep {
   question: string | null
   items: BreakdownItem[] | null
+  // avisos do gate determinístico de cobertura (épico arquitetural sem pesquisa/ADR, sem UI, etc.)
+  warnings?: string[]
 }
 
 export interface CreatedSubIssue {

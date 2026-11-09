@@ -22,7 +22,7 @@ from starlette.responses import HTMLResponse, JSONResponse, Response, StreamingR
 from starlette.routing import BaseRoute, Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from roboto.agents.breakdown import Breakdown, SubIssueSkeleton, is_epic
+from roboto.agents.breakdown import Breakdown, SubIssueSkeleton, is_epic, review_breakdown
 from roboto.agents.refiner import IssueDraft, breakdown_converse, converse
 from roboto.agents.review import (
     PullRequest,
@@ -691,11 +691,18 @@ def console_routes(
         s = step.value
         if s.breakdown is not None:
             items = [
-                {"title": it.title, "points": it.points, "depends_on_prev": it.depends_on_prev}
+                {
+                    "title": it.title,
+                    "points": it.points,
+                    "depends_on_prev": it.depends_on_prev,
+                    "depends_on_index": it.depends_on_index,
+                }
                 for it in s.breakdown.items
             ]
-            return JSONResponse({"question": None, "items": items})
-        return JSONResponse({"question": s.question, "items": None})
+            # gate determinístico de cobertura: avisa o humano o que o destrinchamento deixou passar
+            warnings = review_breakdown(title, body, s.breakdown)
+            return JSONResponse({"question": None, "items": items, "warnings": warnings})
+        return JSONResponse({"question": s.question, "items": None, "warnings": []})
 
     async def issue_breakdown_apply(request: Request) -> JSONResponse:
         # Breakdown de épico (#203): MATERIALIZA os itens confirmados/editados pelo humano — cria as
@@ -717,7 +724,10 @@ def console_routes(
             pts = [str(p) for p in it.get("points", []) if str(p).strip()]
             # 1º item nunca depende; demais: respeita o flag do painel (default: encadeia)
             dep = bool(it.get("depends_on_prev", True)) and i > 0
-            items.append(SubIssueSkeleton(str(it["title"]).strip(), pts, dep))
+            # dependência NOMEADA (DAG): índice 0-based de um item ANTERIOR; vence o encadeamento
+            raw_idx = it.get("depends_on_index")
+            dep_idx = int(raw_idx) if isinstance(raw_idx, int) and 0 <= raw_idx < i else None
+            items.append(SubIssueSkeleton(str(it["title"]).strip(), pts, dep, dep_idx))
         if not items:
             return JSONResponse({"error": "nenhum item válido para criar"}, status_code=400)
         res = await materialize_breakdown(issues, repo, number, Breakdown(items=items))

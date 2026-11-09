@@ -39,17 +39,23 @@ async def materialize_breakdown(
     operador vê no comentário do épico o que entrou.
     """
     created: list[CreatedSubIssue] = []
-    prev_number: int | None = None
+    created_numbers: list[int] = []
     for item in breakdown.items:
-        # a dependência referencia o NÚMERO real da issue anterior (encadeamento ponta a ponta)
-        dep = prev_number if item.depends_on_prev else None
+        # resolve o NÚMERO real da issue da qual esta depende: dependência NOMEADA (DAG) vence o
+        # encadeamento simples; ambas referenciam só itens JÁ criados (por isso a criação em ordem).
+        if item.depends_on_index is not None and 0 <= item.depends_on_index < len(created_numbers):
+            dep = created_numbers[item.depends_on_index]
+        elif item.depends_on_prev and created_numbers:
+            dep = created_numbers[-1]
+        else:
+            dep = None
         body = f"{skeleton_body(item, dep)}\n\nParte do épico #{epic_number}."
         res = await github.create_issue(repo, item.title, body)
         if isinstance(res, Err):
             return Err(res.error)
         ref = res.value
         created.append(CreatedSubIssue(number=ref.number, url=ref.url, title=item.title))
-        prev_number = ref.number
+        created_numbers.append(ref.number)
     if created:
         linhas = "\n".join(f"- [ ] #{c.number} — {c.title}" for c in created)
         await github.comment_pr(repo, epic_number, f"Breakdown criado (sub-issues):\n{linhas}")
