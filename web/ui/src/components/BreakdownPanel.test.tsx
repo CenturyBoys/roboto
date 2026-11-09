@@ -8,7 +8,7 @@ const PROPOSED = [
 ]
 
 // mock de fetch que roteia por URL+método; `draftItems` é o que o GET do rascunho devolve.
-function stub(draftItems: unknown) {
+function stub(draftItems: unknown, warnings: string[] = []) {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init?: RequestInit) => {
@@ -17,7 +17,7 @@ function stub(draftItems: unknown) {
       if (url.endsWith('/breakdown/draft') && method === 'GET') body = { items: draftItems }
       else if (url.endsWith('/breakdown/apply'))
         body = { created: [{ number: 300, url: 'https://x/300', title: 'ADR' }] }
-      else if (url.endsWith('/breakdown')) body = { question: null, items: PROPOSED }
+      else if (url.endsWith('/breakdown')) body = { question: null, items: PROPOSED, warnings }
       return new Response(JSON.stringify(body), {
         status: 200,
         headers: { 'content-type': 'application/json' },
@@ -37,6 +37,14 @@ test('propõe sub-issues (sem criar) e depois materializa', async () => {
   expect(screen.getByDisplayValue('logger')).toBeInTheDocument()
   fireEvent.click(screen.getByText('Criar 2 sub-issue(s)'))
   expect(await screen.findByText('#300')).toBeInTheDocument()
+})
+
+test('mostra os avisos de cobertura do gate determinístico', async () => {
+  stub(null, ['Épico com usuário final SEM sub-issue de UI/JORNADA — a experiência...'])
+  render(<BreakdownPanel number={66} />)
+  fireEvent.click(screen.getByText('Destrinchar épico'))
+  expect(await screen.findByText(/Cobertura do destrinchamento/)).toBeInTheDocument()
+  expect(screen.getByText(/UI\/JORNADA/)).toBeInTheDocument()
 })
 
 test('restaura o rascunho salvo ao abrir (sobrevive ao F5)', async () => {

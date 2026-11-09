@@ -18,6 +18,7 @@ import { useToast } from './ui/toast'
 export function BreakdownPanel({ number }: { number: number }) {
   const [items, setItems] = useState<BreakdownItem[] | null>(null)
   const [question, setQuestion] = useState<string | null>(null)
+  const [warnings, setWarnings] = useState<string[]>([])
   const [created, setCreated] = useState<CreatedSubIssue[] | null>(null)
   const [busy, setBusy] = useState<null | 'propose' | 'apply'>(null)
   const toast = useToast()
@@ -49,6 +50,7 @@ export function BreakdownPanel({ number }: { number: number }) {
       const step = await proposeBreakdown(number, [])
       setQuestion(step.question)
       setItems(step.items)
+      setWarnings(step.warnings ?? [])
       if (step.question) toast('O refiner tem uma dúvida — veja abaixo.')
     } catch (e) {
       if (e instanceof ApiError && e.status === 409)
@@ -66,6 +68,7 @@ export function BreakdownPanel({ number }: { number: number }) {
       const { created } = await applyBreakdown(number, items)
       setCreated(created)
       setItems(null)
+      setWarnings([])
       toast(`${created.length} sub-issue(s) criada(s) e encadeada(s) ⚡`, 'success')
     } catch {
       toast('Erro ao criar as sub-issues.', 'error')
@@ -80,6 +83,7 @@ export function BreakdownPanel({ number }: { number: number }) {
     setItems(null)
     setQuestion(null)
     setCreated(null)
+    setWarnings([])
     toast('Rascunho descartado.')
   }
 
@@ -113,6 +117,19 @@ export function BreakdownPanel({ number }: { number: number }) {
         <p className="mt-2 text-sm text-accent">
           <b>Pergunta do refiner:</b> {question}
         </p>
+      )}
+
+      {warnings.length > 0 && (
+        <div className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2">
+          <p className="text-xs font-semibold text-amber-600">
+            Cobertura do destrinchamento — revise antes de criar:
+          </p>
+          <ul className="ml-4 mt-1 list-disc text-xs text-amber-700">
+            {warnings.map((w, i) => (
+              <li key={i}>{w}</li>
+            ))}
+          </ul>
+        </div>
       )}
 
       {items && items.length > 0 && (

@@ -79,6 +79,24 @@ async def test_item_independente_no_meio_nao_encadeia() -> None:
     assert blocked_by(bodies["B"]) == []  # não encadeou
 
 
+async def test_dependencia_nomeada_pendura_no_item_certo() -> None:
+    # DAG: o 3º item depende do 1º (índice 0), NÃO do imediatamente anterior
+    bd = Breakdown(
+        items=[
+            SubIssueSkeleton("schema", ["campos"], depends_on_prev=False),
+            SubIssueSkeleton("scheduler", ["worker"], depends_on_prev=True),  # depende do schema
+            SubIssueSkeleton("quórum", ["regra"], depends_on_prev=False, depends_on_index=0),
+        ]
+    )
+    gh = _FakeGithub()
+    res = await materialize_breakdown(gh, "o/r", 66, bd)
+    assert isinstance(res, Ok)
+    bodies = {t: b for (_, t, b) in gh.created}
+    assert blocked_by(bodies["scheduler"]) == [100]  # encadeou no schema (#100)
+    # NOMEADO no schema (#100), não no scheduler (#101)
+    assert blocked_by(bodies["quórum"]) == [100]
+
+
 async def test_para_na_primeira_falha() -> None:
     gh = _FakeGithub(fail_on=2)  # falha ao criar a 2ª
     res = await materialize_breakdown(gh, "o/r", 66, _bd())
