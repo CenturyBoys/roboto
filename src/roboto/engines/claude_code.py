@@ -1,20 +1,27 @@
 """Adapter do Claude Code (Agent SDK) — motor de coding real (D22).
 
-Backeado por **Qwen via claude-code-router** (`ANTHROPIC_BASE_URL`). **Primeiro corte**: mapeia o
-stream do SDK para `EngineEvent`; start/resume por `session_id`. A **aprovação por ação** e a
-**interrupção** dependem de detalhes do SDK (callback `can_use_tool` / `ClaudeSDKClient.interrupt`)
-que só fecham no **PoC vivo** — marcados com TODO (ver `research/N2`/`N3`). Import do SDK é **lazy**
-(não quebra o tier-1 quando o SDK não está instalado); dispatch por nome de tipo evita acoplar à
-forma exata das classes do SDK.
+Backeado por **Qwen via claude-code-router** (`ANTHROPIC_BASE_URL`). Mapeia o stream do SDK para
+`EngineEvent`; start/resume por `session_id`. A **aprovação por ação** (#265) liga o callback
+`can_use_tool` ao gate humano (`app.approval_gate` → `SessionHub`/`interaction`): em
+`permission_mode="default"`, cada ação que pede permissão espera o OK humano antes de executar. A
+**interrupção** é cooperativa (corta entre mensagens); o abortar HARD de uma ação em curso é o
+caminho `ClaudeSDKClient.interrupt` do co-piloto. O binding com o SDK vivo valida no PoC (N2/N3).
+Import do SDK é **lazy** (não quebra o tier-1 quando o SDK não está instalado); dispatch por nome de
+tipo evita acoplar à forma exata das classes do SDK.
 """
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING
 
 from roboto.engines.port import EngineEvent, EngineEventKind, RunSpec
 from roboto.orchestrator.model import Engine, Error
 from roboto.result import Ok, Result
+
+if TYPE_CHECKING:  # só p/ anotação: evita a inversão de camada (app→engines) em runtime
+    from roboto.app.approval_gate import ApprovalCallback
 
 
 def _is_max_turns(subtype: str, result: str) -> bool:
@@ -56,6 +63,10 @@ class ClaudeCodeEngine:
         # cap de tool-calls por run (#242): modelo fraco flaila (exec #96: 172 tools, 3.4M tokens).
         # O budget de token só checa no fim do segmento — o cap de tools corta MID-STREAM. 0 = sem.
         max_tools: int = 0,
+        # aprovação por ação (#265, D24/H): quando setado, o motor roda em permission_mode="default"
+        # e cada ação que pede permissão passa por este callback (gate humano via SessionHub) ANTES
+        # de executar. None = sem gate por ação (comportamento antigo: acceptEdits/bypass).
+        approval: ApprovalCallback | None = None,
     ) -> None:
         self._model = model
         self._permission_mode = permission_mode
@@ -68,6 +79,8 @@ class ClaudeCodeEngine:
         self._token_budget = token_budget
         self._max_buffer_size = max_buffer_size
         self._max_tools = max_tools
+        self._approval = approval
+        self._interrupt = asyncio.Event()
         self._spec: RunSpec | None = None
         self._session_id = ""
 
@@ -84,6 +97,10 @@ class ClaudeCodeEngine:
     def session_id(self) -> str:
         return self._session_id
 
+    @property
+    def interrupt_requested(self) -> bool:
+        return self._interrupt.is_set()
+
     async def start(self, spec: RunSpec) -> Result[str, Error]:
         self._spec = spec
         self._session_id = spec.resume_session_id or ""
@@ -92,7 +109,14 @@ class ClaudeCodeEngine:
     async def events(self) -> AsyncIterator[EngineEvent]:
         if self._spec is None:
             return
+        self._interrupt.clear()  # começo de run: limpa um pedido de interrupção de um run anterior
         from claude_agent_sdk import ClaudeAgentOptions, query  # lazy; validar versão no PoC
+
+        # gate por ação (#265): em permission_mode="default", o SDK chama `can_use_tool` ANTES de
+        # cada ação que pede permissão; o callback aguarda o humano e devolve allow/deny (seam fino:
+        # a decisão pura vive em app.approval_gate, testável sem o SDK).
+        can_use_tool = self._build_can_use_tool()
+        permission_mode = "default" if self._approval is not None else self._permission_mode
 
         resume_id = self._spec.resume_session_id or None
         prompt = self._spec.prompt
@@ -102,7 +126,8 @@ class ClaudeCodeEngine:
         while True:
             options = ClaudeAgentOptions(
                 cwd=self._spec.workdir,
-                permission_mode=self._permission_mode,
+                permission_mode=permission_mode,
+                can_use_tool=can_use_tool,
                 allowed_tools=self._allowed_tools,
                 disallowed_tools=self._disallowed_tools,  # least privilege por task (H)
                 resume=resume_id,
@@ -118,6 +143,9 @@ class ClaudeCodeEngine:
             )
             hit_max = False
             async for message in query(prompt=prompt, options=options):
+                if self._interrupt.is_set():  # cancelamento cooperativo (#265): corta entre msgs
+                    yield EngineEvent(EngineEventKind.FAILED, text="interrompido pelo humano")
+                    return
                 name = type(message).__name__
                 if name == "AssistantMessage":
                     for block in getattr(message, "content", []) or []:
@@ -173,12 +201,32 @@ class ClaudeCodeEngine:
                 )
                 continue
             break
-        # TODO(PoC): aprovação por ação (can_use_tool -> NEEDS_APPROVAL) e interrupção real
-        # (ClaudeSDKClient.interrupt; query() não cancela). Ver N2/N3.
+    def _build_can_use_tool(self) -> object | None:
+        """Monta o callback do SDK que gateia cada ação (#265); `None` se não há gate configurado.
+
+        Mapeia o `GateDecision` (puro, de `app.approval_gate`) pro `PermissionResult` do Agent SDK.
+        O import do SDK é lazy (não quebra o tier-1); a decisão em si é testada sem o SDK vivo."""
+        approval = self._approval
+        if approval is None:
+            return None
+        from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny  # lazy
+
+        async def can_use_tool(
+            tool_name: str, tool_input: dict[str, object], _context: object
+        ) -> object:
+            decision = await approval(tool_name, dict(tool_input or {}))
+            if decision.allow:
+                return PermissionResultAllow()
+            return PermissionResultDeny(message=decision.reason or "negado")
+
+        return can_use_tool
 
     async def respond(self, answer: str) -> Result[None, Error]:
         # retomada = novo start(resume_session_id) com a resposta no prompt (N2)
         return Ok(None)
 
     async def interrupt(self) -> Result[None, Error]:
-        return Ok(None)  # TODO(PoC): usar ClaudeSDKClient p/ cancelamento real
+        # cancelamento COOPERATIVO: `events()` corta na próxima mensagem. (Interrupção HARD — a de
+        # abortar uma ação em curso — é o caminho `ClaudeSDKClient.interrupt`, do co-piloto.)
+        self._interrupt.set()
+        return Ok(None)
