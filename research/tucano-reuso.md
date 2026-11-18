@@ -35,10 +35,11 @@ O `roboto` já tinha ~85% do que o Tucano oferece, em Python. Cruzamento (o que 
 - **#265 (feito):** enforcement de aprovação por ação — liga `can_use_tool` ao `approval_guard` +
   `SessionHub` + `interaction`; `interrupt()` cooperativo. Derivado do "harness executa o call
   aprovado, ligado por hash" do Tucano.
-- **#267:** policy de 2 eixos (`verdict()` puro) — tool-class × autonomia por ação (commit/push/pr/
-  merge/delete), high-risk sempre bloqueia (reusa `jev_guard`), **outside-content guard** (anti
-  prompt-injection). Fraqueza concreta que cobre: `tool_policy` é estático/binário (`Bash` tudo-ou-
-  nada); `jev_guard` só surfa. **Decisão arquitetural** — depende de #265, passa por gate humano (D7).
+- **#267 (feito):** policy de 2 eixos — `app/policy.verdict` (puro) + `app/classify` (parsing de
+  `Bash` por subcomando) + `make_policy_callback` ligando ao gate da #265 (`run`→libera, `off`→nega,
+  `ask`→humano). Invariantes: high-risk sempre pede humano (reusa `jev_guard`), merge/delete nunca
+  auto (D7), outside-guard (lógica pronta; sinal por turno é follow-up). Cobre a fraqueza do
+  `tool_policy` estático/binário (`Bash` tudo-ou-nada).
 - **#266 (feito):** guard de sessão — `session_config_hash` em `app/session_guard` + coluna
   `session.config_hash` (migration 0013); o `_engine_turn` (pr_cycle) só retoma sob config igual.
   Previne retomar a sessão do modelo base quando a correção escala pro forte (#242).

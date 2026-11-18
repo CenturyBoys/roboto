@@ -8,9 +8,11 @@ from datetime import UTC, datetime
 from roboto.app.approval_gate import (
     decide_tool_use,
     make_approval_callback,
+    make_policy_callback,
     verify_and_decide,
 )
 from roboto.app.approval_guard import ApprovedAction
+from roboto.app.policy import ActionKind, ActionMode, Autonomy, Policy
 from roboto.app.session_hub import LiveSession
 from roboto.orchestrator.model import InteractionKind, InteractionStatus
 from roboto.orchestrator.store import InMemoryStore
@@ -113,6 +115,43 @@ async def test_make_callback_wires_a_run() -> None:
         store=store, live=live, tenant=tenant, execution_id=3, now=_now
     )
     task = asyncio.create_task(approve("Write", {"file_path": "a.py"}))
+    await _resolve_first_pending(store, live, tenant, approved=True)
+    decision = await task
+    assert decision.allow
+
+
+# --- make_policy_callback: a policy decide auto/ask/off antes do humano (#267) -------------
+
+
+async def test_policy_callback_auto_allows_without_human() -> None:
+    store, live, tenant = InMemoryStore(), LiveSession(execution_id=4), "t1"
+    gate = make_policy_callback(
+        store=store, live=live, tenant=tenant, execution_id=4,
+        policy=Policy(Autonomy.FREE), now=_now,
+    )
+    decision = await gate("Bash", {"command": "git commit -m x"})  # auto no FREE: sem interação
+    assert decision.allow
+    assert await store.pending_interactions(tenant, 10) == []
+
+
+async def test_policy_callback_auto_denies_off_rule() -> None:
+    store, live, tenant = InMemoryStore(), LiveSession(execution_id=5), "t1"
+    policy = Policy(Autonomy.FREE, rules={ActionKind.PUSH: ActionMode.OFF})
+    gate = make_policy_callback(
+        store=store, live=live, tenant=tenant, execution_id=5, policy=policy, now=_now
+    )
+    decision = await gate("Bash", {"command": "git push"})
+    assert not decision.allow
+    assert await store.pending_interactions(tenant, 10) == []  # off nega sem perguntar
+
+
+async def test_policy_callback_asks_human_on_merge() -> None:
+    store, live, tenant = InMemoryStore(), LiveSession(execution_id=6), "t1"
+    gate = make_policy_callback(
+        store=store, live=live, tenant=tenant, execution_id=6,
+        policy=Policy(Autonomy.FREE), now=_now,
+    )
+    task = asyncio.create_task(gate("Bash", {"command": "gh pr merge 1"}))  # merge sempre humano
     await _resolve_first_pending(store, live, tenant, approved=True)
     decision = await task
     assert decision.allow

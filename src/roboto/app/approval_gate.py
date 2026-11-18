@@ -21,6 +21,8 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from roboto.app.approval_guard import ApprovedAction, canonical_action, matches
+from roboto.app.classify import classify
+from roboto.app.policy import Policy, verdict
 from roboto.app.session_hub import LiveSession
 from roboto.orchestrator.model import InteractionKind
 from roboto.orchestrator.store import Store
@@ -116,3 +118,44 @@ def make_approval_callback(
         )
 
     return _approve
+
+
+def make_policy_callback(
+    *,
+    store: Store,
+    live: LiveSession,
+    tenant: str,
+    execution_id: int,
+    policy: Policy,
+    now: Callable[[], datetime],
+    session_id: int | None = None,
+    answered_by: str = "human",
+    outside: bool = False,
+) -> ApprovalCallback:
+    """Callback com a policy de 2 eixos (#267) na frente do humano: a `verdict` decide o destino.
+
+    `run` → libera sozinho (sem interação); `off` → nega sozinho; `ask` → cai no gate humano
+    (`decide_tool_use`). `outside` é estático por ora (o sinal de "leu conteúdo externo" por turno é
+    follow-up do PoC); a lógica do outside-guard já está em `verdict` e testada.
+    """
+
+    async def _gate(tool: str, args: dict[str, object]) -> GateDecision:
+        cls, kinds, high_risk = classify(tool, args)
+        decision = verdict(cls, kinds, policy, high_risk=high_risk, outside=outside)
+        if decision.run:
+            return GateDecision(allow=True)
+        if decision.off:
+            return GateDecision(allow=False, reason=f"proibido pela política ({decision.why})")
+        return await decide_tool_use(
+            store=store,
+            live=live,
+            tenant=tenant,
+            execution_id=execution_id,
+            tool=tool,
+            args=args,
+            now=now,
+            session_id=session_id,
+            answered_by=answered_by,
+        )
+
+    return _gate
