@@ -38,7 +38,7 @@ from roboto.app.jev_guard import assess as assess_risk
 from roboto.app.jev_guard import files_from_diff
 from roboto.app.loops import ISSUE_BODY_END, ISSUE_BODY_START
 from roboto.app.session_hub import SessionHub
-from roboto.app.task_class import TaskType, classificar_task
+from roboto.app.task_class import TaskType, classificar_task, is_single_deliverable
 from roboto.app.tmux_copilot import session_name
 from roboto.app.tool_usage import ToolUsage, summarize
 from roboto.github.app import IssueRef
@@ -676,7 +676,12 @@ def console_routes(
         if isinstance(got, Err):
             return JSONResponse({"error": got.error.message}, status_code=502)
         title, body = got.value
-        if not is_epic(title, body):
+        # unifica com o gate de implementar (#294): toda issue barrada como ÉPICO-por-tamanho
+        # (oversized) é destrinchável aqui — senão o operador ouve "quebre" e não tem o botão.
+        # Spike/definição (entregável único) não conta como oversized (ver check_issue_size).
+        single = is_single_deliverable(title, body)
+        oversized = check_issue_size(IssueDraft(title=title, body=body), single_deliverable=single)
+        if not (is_epic(title, body) or oversized.oversized):
             return JSONResponse(
                 {"error": "issue não parece um épico (sem sinais p/ destrinchar)"},
                 status_code=409,
@@ -865,8 +870,12 @@ def console_routes(
                 status_code=409,
             )
         # right-sizing (#239): issue tamanho-ÉPICO trava o coder/review (raiz = escopo). Bloqueia
-        # implementar como uma issue só; o operador quebra em sub-issues antes.
-        size = check_issue_size(IssueDraft(title=title, body=body))
+        # implementar como uma issue só; o operador quebra antes. Spike/definição (entregável
+        # único) é isenta — #294 era spike de pesquisa com 10 critérios, barrado à toa.
+        single = tclass.task_type in (TaskType.SPIKE, TaskType.DEFINICAO) and (
+            tclass.confianca == "alta"
+        )
+        size = check_issue_size(IssueDraft(title=title, body=body), single_deliverable=single)
         if size.oversized:
             return JSONResponse(
                 {"error": f"issue parece épico — {size.reason}", "criterios": size.criterios},

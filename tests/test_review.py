@@ -58,6 +58,17 @@ def test_issue_size_so_conta_criterios_de_aceite_nao_dod() -> None:
     assert s.oversized is False and s.criterios == 1
 
 
+def test_issue_size_single_deliverable_nunca_e_oversized() -> None:
+    # spike/definição (entregável único): muitos critérios NÃO a tornam épico (#294 era um
+    # spike de pesquisa com 10 critérios, barrado à toa no right-sizing).
+    criterios = "\n".join(f"- [ ] ponto {i}" for i in range(10))
+    body = f"## Contexto\nx\n## Escopo\ny\n## Critérios de aceite\n{criterios}\n## DoD\n- [ ] ci"
+    draft = IssueDraft(title="Pesquisar idempotência", body=body)
+    assert check_issue_size(draft).oversized is True  # sem a flag, dispara (10 > 7)
+    assert check_issue_size(draft, single_deliverable=True).oversized is False  # isento
+    assert check_issue_size(draft, single_deliverable=True).criterios == 10  # mas conta
+
+
 def test_checkbox_under_subsection_is_ready() -> None:
     # '- [ ]' sob um subtítulo '### Teste 1' DENTRO de 'Critérios de aceite' conta (a seção vai
     # até o próximo heading de nível igual/superior, não quebra no primeiro '###').

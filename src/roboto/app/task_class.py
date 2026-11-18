@@ -80,3 +80,12 @@ def classificar_task(title: str, body: str) -> TaskClass:
         sinais.append(f"{arquivos} arquivo(s) citado(s)")
     conf = "alta" if arquivos else "media"
     return TaskClass(TaskType.DESENVOLVIMENTO, _size_from(criterios + arquivos), conf, sinais)
+
+
+def is_single_deliverable(title: str, body: str) -> bool:
+    """Task de UM entregável (spike/definição classificada com confiança): o 'done' é um único
+    artefato (doc/spec/achados), não um multi-PR. Logo NÃO pode ser medida como ÉPICO pela
+    contagem de critérios — um checklist minucioso não a torna grande (#294 era um spike de
+    pesquisa com 10 critérios, barrado à toa no right-sizing)."""
+    c = classificar_task(title, body)
+    return c.task_type in (TaskType.SPIKE, TaskType.DEFINICAO) and c.confianca == "alta"
