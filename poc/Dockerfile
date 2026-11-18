@@ -106,7 +106,9 @@ RUN curl -fsSL https://sh.rustup.rs \
 # Versão PINADA (determinismo primeiro): script E binário na mesma tag. v0.9.1 (fix #18/PR #19):
 # validate_build do TypeScript passa a honrar TYPESCRIPT_CHECK_CMD (antes só rust/dart/csharp/python
 # tinham default; TS errava "sem comando de build" e mandava o motor caçar fantasma). Bump = trocar aqui.
-ENV IDE_CC_VERSION=v0.9.1
+# v0.10.0: guard de move de diretório (move_file recusa dir + receita segura). v0.11.0:
+# document_symbols modo métrica (span_lines/filtros) + move_symbol com suporte a Rust.
+ENV IDE_CC_VERSION=v0.11.0
 ENV PATH="/home/pwuser/.local/bin:$PATH"
 RUN curl -fsSL "https://raw.githubusercontent.com/CenturyBoys/ide_cc/${IDE_CC_VERSION}/install.sh" \
       | VERSION="${IDE_CC_VERSION}" INSTALL_LSP=1 bash \
