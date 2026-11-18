@@ -43,7 +43,8 @@ _DEAD_LETTER_COLS = (
     "id, tenant, source, ref_id, kind, payload, error, attempts, created_at"
 )
 _SESSION_COLS = (
-    "id, tenant, execution_id, engine, native_session_id, state, created_at, updated_at"
+    "id, tenant, execution_id, engine, native_session_id, state, created_at, updated_at, "
+    "config_hash"
 )
 _INTERACTION_COLS = (
     "id, tenant, execution_id, session_id, kind, prompt, options, status, "
@@ -130,6 +131,7 @@ def _row_to_session(row: Any) -> Session:
         created_at=row["created_at"],
         updated_at=row["updated_at"],
         native_session_id=row["native_session_id"],
+        config_hash=row["config_hash"],
     )
 
 
@@ -399,16 +401,22 @@ class PostgresStore:
             return True
 
     async def create_session(
-        self, tenant: str, execution_id: int, engine: Engine, now: datetime
+        self,
+        tenant: str,
+        execution_id: int,
+        engine: Engine,
+        now: datetime,
+        config_hash: str | None = None,
     ) -> Session:
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
                 f"""
-                INSERT INTO session (tenant, execution_id, engine, state, created_at, updated_at)
-                VALUES ($1, $2, $3, 'active', $4, $4)
+                INSERT INTO session
+                    (tenant, execution_id, engine, state, created_at, updated_at, config_hash)
+                VALUES ($1, $2, $3, 'active', $4, $4, $5)
                 RETURNING {_SESSION_COLS}
                 """,
-                tenant, execution_id, engine.value, now,
+                tenant, execution_id, engine.value, now, config_hash,
             )
             return _row_to_session(row)
 

@@ -128,6 +128,8 @@ class Session:
     created_at: datetime
     updated_at: datetime
     native_session_id: str | None = None
+    # hash da config (modelo/tools) que criou a sessão: só retoma sob config igual (#266).
+    config_hash: str | None = None
 
 
 @dataclass(frozen=True)
