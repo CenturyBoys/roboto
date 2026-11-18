@@ -110,7 +110,22 @@ inchados. As correções tornam a cobertura **estrutural**, não dependente do m
 - **Cockpit:** `POST /issues/{n}/breakdown` devolve `warnings`; o `BreakdownPanel` os mostra num
   painel âmbar **antes** de criar — o operador revisa a cobertura e decide.
 
+**Incremento 7 — right-sizing respeita o TIPO da task + unifica épico↔destrinchar:**
+
+O gate de "é épico" media só pela **contagem de critérios de aceite** (`check_issue_size`, teto 7),
+confundindo *minucioso* com *grande*: uma task de **um entregável** (spike/definição) pode ter 10
+critérios sem ser multi-PR. Caso real: a #294 ("Pesquisar idempotência…", um spike cujo done é 1
+doc) foi barrada no implement como "épico". Pior, o `is_epic` (gate do Destrinchar) usava sinais
+diferentes → o operador ouvia *"quebre"* mas **o botão não aparecia**. Correções:
+
+- **`task_class.is_single_deliverable()`** — spike/definição (confiança alta) = entregável único;
+  nunca é épico por contagem de critérios.
+- **`check_issue_size(draft, *, single_deliverable=False)`** — isenta o entregável único; o chamador
+  classifica o tipo e passa (console `implement`/`breakdown`, `loops` do refino).
+- **Unificação:** o gate do `breakdown-propose` passa a ser `is_epic(...) OR oversized` — então toda
+  issue barrada como épico-por-tamanho é **destrinchável** (fim do "quebre, mas sem botão").
+
 ## Próximo
 
-7. Dogfood: destrinchar um épico real (ex.: #73 do arenavalendo) pela UI, revisar os avisos de
+8. Dogfood: destrinchar um épico real (ex.: #73 do arenavalendo) pela UI, revisar os avisos de
    cobertura e materializar.
