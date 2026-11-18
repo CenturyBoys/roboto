@@ -154,6 +154,16 @@ export interface CreatedSubIssue {
   title: string
 }
 
+// switcher de modelo por etapa (trilha I): troca sem restart
+export interface StageModel {
+  key: string
+  label: string
+  default: string
+  value: string // override salvo ("" = usa o default)
+  effective: string // modelo que vale hoje
+  live: boolean // aplica sem restart? (JEV = false)
+}
+
 export interface Terminal {
   terminal_url: string | null
   note?: string

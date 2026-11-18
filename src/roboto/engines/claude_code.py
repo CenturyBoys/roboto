@@ -71,6 +71,11 @@ class ClaudeCodeEngine:
         self._spec: RunSpec | None = None
         self._session_id = ""
 
+    def set_model(self, model: str) -> None:
+        """Troca o modelo do motor EM MEMÓRIA (hot-reload do switcher). Vale do próximo run em
+        diante (o modelo por-run do spec ainda tem precedência). Vazio = default do ccr."""
+        self._model = model
+
     @property
     def engine(self) -> Engine:
         return Engine.CLAUDE_CODE

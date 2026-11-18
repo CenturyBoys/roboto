@@ -14,6 +14,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
+from roboto.app.live_models import LiveModels
 from roboto.app.session_hub import SessionHub
 from roboto.config import Config
 from roboto.github.webhook import handle_webhook
@@ -37,6 +38,7 @@ def build_app(
     issue_source: IssueSource | None = None,
     gateway: ModelGateway | None = None,
     start_session: Callable[[Run, str], Awaitable[bool]] | None = None,
+    live_models: LiveModels | None = None,
 ) -> Starlette:
     async def webhook(request: Request) -> JSONResponse:
         body = await request.body()
@@ -65,7 +67,7 @@ def build_app(
         ttyd_base=config.ttyd_base or None, hub=hub,
         issues=issue_source, default_repo=config.default_repo, gateway=gateway,
         start_session=start_session, budget_usd=config.budget_usd_month,
-        wip_limit=config.wip_limit,
+        wip_limit=config.wip_limit, live_models=live_models,
     )
     routes.append(Route("/webhook", webhook, methods=["POST"]))
     return Starlette(routes=routes)

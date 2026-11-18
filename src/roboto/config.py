@@ -131,6 +131,8 @@ SETTABLE_KEYS: tuple[str, ...] = (
     "JUDGE_MODEL",
     "CHEAP_MODEL",
     "FRONTIER_MODEL",
+    "ROBOTO_ENGINE_MODEL",  # modelo do motor de código (impl) — switcher ao vivo (trilha I)
+    "ROBOTO_STRONG_MODEL",  # tier forte / resgate ao travar — switcher ao vivo
     "ROBOTO_BUDGET_USD",
     "ROBOTO_WIP_LIMIT",
     "ROBOTO_MAX_TOKENS",

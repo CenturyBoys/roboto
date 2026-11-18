@@ -17,6 +17,7 @@ import os
 from datetime import UTC, datetime
 
 from roboto.app.compose import build_adapters
+from roboto.app.live_models import LiveModels
 from roboto.app.loops import poll_tick, process_refine_tick, process_run_tick, run_periodic
 from roboto.app.mcp_config import build_mcp_servers
 from roboto.app.session_hub import SessionHub
@@ -43,6 +44,21 @@ def _now() -> datetime:
 async def _run_daemon(config: Config, store: Store) -> None:
     adapters = build_adapters(config, store)  # router inclui telegram_question
     hub = SessionHub()  # sessões vivas do co-piloto (Fatia 5); o driver interativo as registra
+
+    # switcher de modelo por etapa (trilha I): troca sem restart. Valores iniciais = config/env;
+    # os motores (impl/refino) são registrados abaixo quando construídos. Gateway já plugado.
+    live_models = LiveModels(
+        store, adapters.gateway, _now,
+        {
+            "CHEAP_MODEL": config.cheap_model,
+            "JUDGE_MODEL": config.judge_model,
+            "FRONTIER_MODEL": config.frontier_model,
+            "REFINE_MODEL": config.refine_model,
+            "ROBOTO_ENGINE_MODEL": os.environ.get("ROBOTO_ENGINE_MODEL", ""),
+            "ROBOTO_STRONG_MODEL": os.environ.get("ROBOTO_STRONG_MODEL", ""),
+            "JEV_MODEL": config.jev_model,
+        },
+    )
 
     async def start_live_session(run: Run, initial_prompt: str) -> bool:
         """Abre uma sessão viva/steerable sob demanda para `run`, ligando o driver
@@ -107,7 +123,7 @@ async def _run_daemon(config: Config, store: Store) -> None:
 
     app = build_app(
         store, config=config, hub=hub, issue_source=adapters.github,
-        gateway=adapters.gateway, start_session=start_live_session,
+        gateway=adapters.gateway, start_session=start_live_session, live_models=live_models,
     )
     stop = asyncio.Event()
 
@@ -213,6 +229,10 @@ async def _run_daemon(config: Config, store: Store) -> None:
             mcp_servers=refine_mcp,
             max_turns=60,
         )
+        # liga os motores ao switcher (trilha I): troca de REFINE_MODEL/ROBOTO_ENGINE_MODEL na UI
+        # chama engine.set_model() e vale do próximo run — sem restart.
+        live_models.register_engine("impl", claude)
+        live_models.register_engine("refine", refiner_engine)
         # Jev (degrau-2): decide a CRITICIDADE da pesquisa web no refino (trilha I/#222). Vazio =
         # sem Jev → o gate cai no keyword determinístico (degrau-1). Isolado atrás da porta Decider.
         refine_decider: Decider | None = None

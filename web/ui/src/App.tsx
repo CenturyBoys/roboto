@@ -12,9 +12,10 @@ import { Interactions } from '@/components/Interactions'
 import { IssuesList } from '@/components/IssuesList'
 import { IssueRefine } from '@/components/IssueRefine'
 import { ReviewPr } from '@/components/ReviewPr'
+import { ModelsPanel } from '@/components/ModelsPanel'
 import { Setup } from '@/components/Setup'
 
-type View = 'monitor' | 'execs' | 'issues' | 'interactions' | 'costs' | 'reviewpr'
+type View = 'monitor' | 'execs' | 'issues' | 'interactions' | 'costs' | 'reviewpr' | 'models'
 type Mode = 'loading' | 'setup' | 'running'
 
 const NAV: [View, string][] = [
@@ -24,6 +25,7 @@ const NAV: [View, string][] = [
   ['interactions', 'Interações'],
   ['costs', 'Custos'],
   ['reviewpr', 'Revisar PR'],
+  ['models', 'Modelos'],
 ]
 
 export default function App() {
@@ -177,6 +179,7 @@ export default function App() {
               {view === 'interactions' && <Interactions />}
               {view === 'costs' && <Costs />}
               {view === 'reviewpr' && <ReviewPr />}
+              {view === 'models' && <ModelsPanel />}
             </>
           )}
         </main>
