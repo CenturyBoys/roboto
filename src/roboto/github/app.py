@@ -25,6 +25,51 @@ class IssueRef:
     url: str
 
 
+# Campos NATIVOS de ligação de uma issue (GraphQL): hierarquia de sub-issues + task-lists tracked +
+# cross-references do timeline. Usados em lote (aliases) por ``native_issue_links``.
+_LINKS_FRAGMENT = (
+    "number "
+    "parent { number } "
+    "subIssues(first: 50) { nodes { number } } "
+    "trackedIssues(first: 50) { nodes { number } } "
+    "trackedInIssues(first: 50) { nodes { number } } "
+    "timelineItems(first: 100, itemTypes: [CROSS_REFERENCED_EVENT]) { nodes { "
+    "__typename ... on CrossReferencedEvent { source { "
+    "__typename ... on Issue { number } ... on PullRequest { number } } } } }"
+)
+
+
+def _node_numbers(connection: object) -> list[int]:
+    """Números de uma connection GraphQL ``{nodes: [{number}]}`` (robusto a nulos)."""
+    nodes = connection.get("nodes") if isinstance(connection, dict) else None
+    out: list[int] = []
+    for n in nodes or []:
+        if isinstance(n, dict) and isinstance(n.get("number"), int):
+            out.append(int(n["number"]))
+    return out
+
+
+def _collect_native_links(node: object, edges: list[tuple[int, int, str]]) -> None:
+    """Acumula as arestas nativas de UMA issue (pai/origem → filha/destino) em ``edges``."""
+    if not isinstance(node, dict) or not isinstance(node.get("number"), int):
+        return
+    this = int(node["number"])
+    parent = node.get("parent")
+    if isinstance(parent, dict) and isinstance(parent.get("number"), int):
+        edges.append((int(parent["number"]), this, "subissue-native"))  # pai → esta
+    for sub in _node_numbers(node.get("subIssues")):
+        edges.append((this, sub, "subissue-native"))  # esta → filha
+    for tracked in _node_numbers(node.get("trackedIssues")):
+        edges.append((this, tracked, "subissue-native"))  # esta rastreia → filha
+    for tracked_in in _node_numbers(node.get("trackedInIssues")):
+        edges.append((tracked_in, this, "subissue-native"))  # rastreada em → esta é filha
+    timeline = node.get("timelineItems")
+    for item in (timeline.get("nodes") if isinstance(timeline, dict) else None) or []:
+        source = item.get("source") if isinstance(item, dict) else None
+        if isinstance(source, dict) and isinstance(source.get("number"), int):
+            edges.append((int(source["number"]), this, "xref"))  # mencionada em N → esta
+
+
 class GithubAppClient:
     def __init__(
         self,
@@ -493,6 +538,111 @@ class GithubAppClient:
             return Ok(items)
         except httpx.HTTPError as exc:
             return Err(Error("github", f"list_open_issues {repo}: {exc}"))
+        finally:
+            if owns:
+                await client.aclose()
+
+    async def list_open_issues_full(
+        self, repo: str, *, limit: int = 20
+    ) -> Result[list[tuple[int, str, str, list[str], str]], Error]:
+        """Issues abertas com CORPO (nº, título, corpo, labels, state), excluindo PRs. Para o mapa
+        de issues (árvore/DAG): o corpo carrega as deps ("Parte do épico #N" / "Depende de #N").
+
+        Reusa o mesmo endpoint do ``list_open_issues_rich``, mas devolve também o corpo e o estado —
+        a listagem REST já traz ambos, então não custa uma chamada por issue.
+        """
+        owns = self._client is None
+        client = (
+            self._client if self._client is not None else httpx.AsyncClient(timeout=self._timeout)
+        )
+        try:
+            token = await self._installation_token(client)
+            resp = await client.get(
+                f"{self._api}/repos/{repo}/issues",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                },
+                params={"state": "open", "per_page": limit},
+            )
+            resp.raise_for_status()
+            items: list[tuple[int, str, str, list[str], str]] = []
+            for x in resp.json():
+                if not isinstance(x, dict) or "pull_request" in x:  # exclui PRs
+                    continue
+                labels = [
+                    str(lbl.get("name", ""))
+                    for lbl in x.get("labels", [])
+                    if isinstance(lbl, dict)
+                ]
+                items.append(
+                    (
+                        int(x["number"]),
+                        str(x.get("title", "")),
+                        str(x.get("body") or ""),
+                        labels,
+                        str(x.get("state", "open")),
+                    )
+                )
+            return Ok(items)
+        except httpx.HTTPError as exc:
+            return Err(Error("github", f"list_open_issues_full {repo}: {exc}"))
+        finally:
+            if owns:
+                await client.aclose()
+
+    async def native_issue_links(
+        self, repo: str, numbers: list[int]
+    ) -> Result[list[tuple[int, int, str]], Error]:
+        """Arestas NATIVAS do GitHub via GraphQL: sub-issues (parent/subIssues), trackedIssues/
+        trackedInIssues e cross-references do timeline ("mentioned in #N"). Devolve (source, target,
+        kind) com kind ∈ {"subissue-native","xref"}, no sentido pai/origem → filha/destino.
+
+        Enriquecimento: as NOSSAS deps são a fonte primária. **Degrada gracioso** — se o GraphQL
+        recusar os campos (API nativa indisponível/preview), devolve o que já coletou (ou vazio) em
+        vez de falhar o mapa. Consulta em lotes (aliases) p/ não bater 1 request por issue.
+        """
+        if not numbers:
+            return Ok([])
+        parts = repo.split("/")
+        if len(parts) != 2:
+            return Ok([])
+        owner, name = parts
+        owns = self._client is None
+        client = (
+            self._client if self._client is not None else httpx.AsyncClient(timeout=self._timeout)
+        )
+        edges: list[tuple[int, int, str]] = []
+        try:
+            token = await self._installation_token(client)
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json",
+            }
+            for start in range(0, len(numbers), 50):
+                batch = numbers[start : start + 50]
+                aliases = "\n".join(
+                    f"n{num}: issue(number: {num}) {{ {_LINKS_FRAGMENT} }}" for num in batch
+                )
+                query = (
+                    "query($owner:String!,$name:String!){"
+                    "repository(owner:$owner,name:$name){" + aliases + "}}"
+                )
+                resp = await client.post(
+                    f"{self._api}/graphql",
+                    headers=headers,
+                    json={"query": query, "variables": {"owner": owner, "name": name}},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                if data.get("errors"):  # campo nativo recusado → degrada com o que já temos
+                    return Ok(edges)
+                repo_obj = (data.get("data") or {}).get("repository") or {}
+                for num in batch:
+                    _collect_native_links(repo_obj.get(f"n{num}"), edges)
+            return Ok(edges)
+        except httpx.HTTPError as exc:
+            return Err(Error("github", f"native_issue_links {repo}: {exc}"))
         finally:
             if owns:
                 await client.aclose()

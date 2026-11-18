@@ -11,17 +11,27 @@ import { FleetMonitor } from '@/components/FleetMonitor'
 import { Interactions } from '@/components/Interactions'
 import { IssuesList } from '@/components/IssuesList'
 import { IssueRefine } from '@/components/IssueRefine'
+import { IssueTree } from '@/components/IssueTree'
 import { ReviewPr } from '@/components/ReviewPr'
 import { ModelsPanel } from '@/components/ModelsPanel'
 import { Setup } from '@/components/Setup'
 
-type View = 'monitor' | 'execs' | 'issues' | 'interactions' | 'costs' | 'reviewpr' | 'models'
+type View =
+  | 'monitor'
+  | 'execs'
+  | 'issues'
+  | 'mapa'
+  | 'interactions'
+  | 'costs'
+  | 'reviewpr'
+  | 'models'
 type Mode = 'loading' | 'setup' | 'running'
 
 const NAV: [View, string][] = [
   ['monitor', 'Monitor'],
   ['execs', 'Execuções'],
   ['issues', 'Issues'],
+  ['mapa', 'Mapa'],
   ['interactions', 'Interações'],
   ['costs', 'Custos'],
   ['reviewpr', 'Revisar PR'],
@@ -172,6 +182,14 @@ export default function App() {
                     setSelectedIssue(null)
                     setView('execs')
                     setSelected(runId)
+                  }}
+                />
+              )}
+              {view === 'mapa' && (
+                <IssueTree
+                  onSelect={(n) => {
+                    setSelectedIssue(n)
+                    setView('issues') // clicar num nó abre o refino daquela issue
                   }}
                 />
               )}

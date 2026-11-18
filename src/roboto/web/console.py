@@ -34,6 +34,7 @@ from roboto.agents.review import (
 from roboto.app.breakdown_apply import materialize_breakdown
 from roboto.app.budget import assess as assess_budget
 from roboto.app.comment_poll import BOT_MARKER
+from roboto.app.issue_graph import IssueGraph, RawIssue, build_graph
 from roboto.app.jev_guard import assess as assess_risk
 from roboto.app.jev_guard import files_from_diff
 from roboto.app.live_models import LiveModels
@@ -106,6 +107,14 @@ class IssueSource(Protocol):
         self, repo: str, *, limit: int = 20
     ) -> Result[list[tuple[int, str, list[str]]], Error]: ...
 
+    async def list_open_issues_full(
+        self, repo: str, *, limit: int = 20
+    ) -> Result[list[tuple[int, str, str, list[str], str]], Error]: ...
+
+    async def native_issue_links(
+        self, repo: str, numbers: list[int]
+    ) -> Result[list[tuple[int, int, str]], Error]: ...
+
     async def get_issue(self, repo: str, number: int) -> Result[tuple[str, str], Error]: ...
 
     async def create_issue(
@@ -162,6 +171,27 @@ self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.
 self.addEventListener('fetch',e=>{ if(e.request.mode==='navigate'){
  e.respondWith(fetch(e.request).catch(()=>caches.match('/'))); } });
 """
+
+
+def _graph_dict(repo: str, graph: IssueGraph) -> dict[str, object]:
+    # shape do mapa de issues: nodes + edges (edge usa "from"/"to" — "from" é palavra-chave em py).
+    return {
+        "repo": repo,
+        "nodes": [
+            {
+                "number": n.number,
+                "title": n.title,
+                "labels": n.labels,
+                "is_epic": n.is_epic,
+                "state": n.state,
+            }
+            for n in graph.nodes
+        ],
+        "edges": [
+            {"from": e.source, "to": e.target, "kind": e.kind} for e in graph.edges
+        ],
+        "has_cycle": graph.has_cycle,
+    }
 
 
 def _run_dict(run: Run) -> dict[str, object]:
@@ -595,6 +625,33 @@ def console_routes(
                 ],
             }
         )
+
+    async def issues_tree(request: Request) -> JSONResponse:
+        # Mapa de issues (árvore/DAG): cruza as NOSSAS deps (corpo: "Parte do épico #N" / "Depende
+        # de #N") com as NATIVAS do GitHub (sub-issues/tracked/xref via GraphQL). Determinístico;
+        # as nossas deps são a fonte primária, as nativas degradam gracioso se a API recusar.
+        if _unauthorized(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        repo = request.query_params.get("repo") or default_repo
+        if issues is None or not repo:
+            return JSONResponse(
+                {"repo": repo, "nodes": [], "edges": [], "has_cycle": False,
+                 "note": "GitHub não configurado"}
+            )
+        full = await issues.list_open_issues_full(repo, limit=100)
+        if isinstance(full, Err):
+            return JSONResponse(
+                {"repo": repo, "nodes": [], "edges": [], "has_cycle": False,
+                 "error": full.error.message}
+            )
+        raws = [
+            RawIssue(number=n, title=t, body=b, labels=lbls, state=st)
+            for n, t, b, lbls, st in full.value
+        ]
+        native = await issues.native_issue_links(repo, [r.number for r in raws])
+        native_edges = native.value if isinstance(native, Ok) else []  # Err → degrada p/ só nossas
+        graph = build_graph(raws, native_edges)
+        return JSONResponse(_graph_dict(repo, graph))
 
     async def issue_detail(request: Request) -> JSONResponse:
         # Corpo da issue + check de DoR (determinístico, sem LLM) — base do refino (Fatia 6).
@@ -1037,6 +1094,7 @@ def console_routes(
         Route("/executions/{run_id:int}/interrupt", interrupt_session, methods=["POST"]),
         Route("/executions/{run_id:int}/end", end_session, methods=["POST"]),
         Route("/issues", list_issues),
+        Route("/issues/tree", issues_tree),
         Route("/issues/{number:int}", issue_detail),
         Route("/issues/{number:int}/refine", issue_refine, methods=["POST"]),
         Route("/issues/{number:int}/refine-engine", refine_with_engine, methods=["POST"]),
