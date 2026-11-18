@@ -13,6 +13,7 @@ import type {
   PrDiff,
   RefineStep,
   SetupStatus,
+  StageModel,
   Terminal,
 } from '@/types'
 
@@ -74,6 +75,14 @@ export const applyBreakdown = (n: number, items: BreakdownItem[]) =>
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ items }),
+  })
+// Switcher de modelo por etapa (trilha I): lê o estado e troca SEM restart (persiste no app_config).
+export const getModels = () => api<{ stages: StageModel[] }>(`/models`)
+export const saveModels = (updates: Record<string, string>) =>
+  api<{ stages: StageModel[] }>(`/models`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ updates }),
   })
 // Rascunho DURÁVEL do breakdown (#203): salvo no backend → sobrevive a F5 e troca de dispositivo.
 export const getBreakdownDraft = (n: number) =>

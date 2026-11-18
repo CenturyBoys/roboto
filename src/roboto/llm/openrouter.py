@@ -41,6 +41,11 @@ class OpenRouterGateway:
         self._client = client
         self._timeout = timeout
 
+    def set_routing(self, routing: dict[Tier, tuple[str, ...]]) -> None:
+        """Troca o roteamento tier→modelos EM MEMÓRIA (hot-reload do switcher). A próxima chamada a
+        complete() já usa os novos modelos — sem restart."""
+        self._routing = routing
+
     async def complete(
         self, messages: list[ChatMessage], tier: Tier
     ) -> Result[Completion, Error]:

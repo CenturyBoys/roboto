@@ -36,6 +36,7 @@ from roboto.app.budget import assess as assess_budget
 from roboto.app.comment_poll import BOT_MARKER
 from roboto.app.jev_guard import assess as assess_risk
 from roboto.app.jev_guard import files_from_diff
+from roboto.app.live_models import LiveModels
 from roboto.app.loops import ISSUE_BODY_END, ISSUE_BODY_START
 from roboto.app.session_hub import SessionHub
 from roboto.app.task_class import TaskType, classificar_task
@@ -272,6 +273,7 @@ def console_routes(
     start_session: Callable[[Run, str], Awaitable[bool]] | None = None,
     budget_usd: float = 0.0,  # teto mensal de gasto de API (trilha L); 0 = sem teto
     wip_limit: int = 0,  # cap de runs ativos / backpressure (trilha J); 0 = sem limite
+    live_models: LiveModels | None = None,  # switcher de modelo por etapa (hot-reload, trilha I)
 ) -> list[BaseRoute]:
     def _unauthorized(request: Request) -> bool:
         return not token or request.headers.get("authorization") != f"Bearer {token}"
@@ -964,6 +966,26 @@ def console_routes(
         await issues.comment_pr(run.repo, number, "📝 Issue refinada pelo fleet (via cockpit).")
         return JSONResponse({"ok": True, "number": number})
 
+    async def models_list(request: Request) -> JSONResponse:
+        # switcher (trilha I): modelos por etapa — override salvo + efetivo + se aplica ao vivo.
+        if _unauthorized(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        if live_models is None:
+            return JSONResponse({"error": "switcher indisponível (sem motor)"}, status_code=409)
+        return JSONResponse({"stages": live_models.snapshot()})
+
+    async def models_update(request: Request) -> JSONResponse:
+        # troca SEM restart: persiste no app_config e aplica no gateway/motores em memória.
+        if _unauthorized(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        if live_models is None:
+            return JSONResponse({"error": "switcher indisponível (sem motor)"}, status_code=409)
+        payload = await request.json()
+        raw = payload.get("updates", payload) if isinstance(payload, dict) else {}
+        updates = {str(k): str(v) for k, v in raw.items()} if isinstance(raw, dict) else {}
+        stages = await live_models.set_models(updates)
+        return JSONResponse({"stages": stages})
+
     async def dead_letter_list(request: Request) -> JSONResponse:
         if _unauthorized(request):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
@@ -1025,6 +1047,8 @@ def console_routes(
         Route("/interactions/{interaction_id:int}/answer", answer_interaction, methods=["POST"]),
         Route("/costs", costs),
         Route("/overview", overview),
+        Route("/models", models_list),
+        Route("/models", models_update, methods=["PUT"]),
     ]
 
 
@@ -1041,11 +1065,13 @@ def build_console(
     start_session: Callable[[Run, str], Awaitable[bool]] | None = None,
     budget_usd: float = 0.0,
     wip_limit: int = 0,
+    live_models: LiveModels | None = None,
 ) -> Starlette:
     return Starlette(
         routes=console_routes(
             store, tenant=tenant, token=token, ttyd_base=ttyd_base, hub=hub,
             issues=issues, default_repo=default_repo, gateway=gateway,
             start_session=start_session, budget_usd=budget_usd, wip_limit=wip_limit,
+            live_models=live_models,
         )
     )
