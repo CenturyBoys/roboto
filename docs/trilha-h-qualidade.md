@@ -15,7 +15,8 @@
 - **Aprovação da issue refinada:** o rascunho vai pro humano (interaction `APPROVAL`, estado
   `WAITING`) e só edita o corpo no GitHub com OK (`app/human.py`, `app/refine.py`) — ver trilha A/B.
 - **Calibração:** só irreversível/alto impacto vai ao humano; o resto é determinístico — senão recria
-  o gargalo humano (trilha J). Aprovação por ação (tool-level) está **esboçada** (TODO no PoC vivo).
+  o gargalo humano (trilha J). **Aprovação por ação** (tool-level) agora é **enforcement de verdade**
+  via callback `can_use_tool` (§9); o binding com o SDK vivo valida no PoC.
 
 ## 2. Least privilege de ferramentas por task (novo)
 
@@ -183,8 +184,26 @@ no uso** — o que foi aprovado tem de ser idêntico ao que executa.
 | matches | recomputa no uso e compara por digest; divergiu → **nega** | `app/approval_guard` |
 
 **Entregue:** o primitivo puro + testes (rejeita argumento trocado, tool trocada, argumento extra).
-**Sliver:** o *enforcement* real (gatear a tool via callback `can_use_tool`) depende do **SDK vivo**
-(TODO em `engines/claude_code`); o primitivo já está pronto pra plugar quando o callback existir.
+
+### Enforcement — o callback `can_use_tool` (#265)
+
+O primitivo acima virou **gate de verdade**: em `permission_mode="default"`, o motor chama
+`can_use_tool` ANTES de cada ação que pede permissão, e a decisão passa pela política determinística
+antes de executar. Derivado do modelo "harness executa o call aprovado, ligado por hash" do Tucano
+(Apache-2.0; ver [`research/tucano-reuso.md`](https://github.com/CenturyBoys/roboto/blob/main/research/tucano-reuso.md)).
+
+| Peça | O que faz | Onde |
+|---|---|---|
+| decide_tool_use | cria a `interaction` de aprovação, espera o humano pelo `SessionHub` e verifica por digest antes de liberar | `app/approval_gate` |
+| verify_and_decide | decisão **pura**: libera só se aprovado **e** `matches` (anti-loopjacking); senão nega com motivo | `app/approval_gate` |
+| can_use_tool | seam no motor: mapeia `GateDecision` → `PermissionResultAllow/Deny` do SDK (lazy) | `engines/claude_code._build_can_use_tool` |
+
+- **Binding anti-loopjacking:** cada ação cria a SUA `interaction` — só se aprova a ação exata
+  pendente; a recusa volta ao motor como contexto do próximo turno (ele sugere outro caminho).
+- **Interrupção:** `interrupt()` corta o run de forma **cooperativa** (entre mensagens); o abortar
+  HARD de uma ação em curso é o caminho `ClaudeSDKClient.interrupt` do co-piloto.
+- **Entregue:** núcleo puro de SDK + testes (`tests/test_approval_gate`). O binding com o SDK vivo
+  (`can_use_tool` no `query()`) e o wiring no loop orquestrado validam no **PoC** (padrão do co-piloto).
 
 ## 10. Confiança e escalada
 
@@ -196,4 +215,7 @@ determinística". O veredito do review é determinístico (`aprovado_por_finding
 
 - **evals — LLM-as-judge** (dimensões subjetivas: qualidade de refino/review), em run **agendado**.
 - **jev-guard — escalada automática**: alto risco → esperar OK humano (hoje só surfa o nível).
-- **Aprovação por ação — enforcement**: plugar o primitivo anti-loopjacking no callback do SDK vivo.
+- **Aprovação por ação — PoC vivo**: validar o `can_use_tool` no SDK vivo e ligar o callback no loop
+  orquestrado (`compose`/`engine_loop`) — o enforcement (§9) já está no código, testado.
+- **Policy de 2 eixos (#267)**: trocar o least-privilege estático (§2) por `verdict()` puro —
+  tool-class × autonomia por ação + outside-guard (derivado do Tucano; ver `research/tucano-reuso.md`).
