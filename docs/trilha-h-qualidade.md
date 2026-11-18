@@ -33,6 +33,9 @@ O output é proposta → o agente recebe **só as ferramentas que a task exige**
 - **Navegação continua liberada a todos:** `Read`/`Grep`/`Glob` e o **code-intel** (MCP) não entram na
   lista de negados — least privilege sem quebrar a economia de token (trilha F).
 - Fecha a brecha por **política**, não só pelo prompt "read-only por prompt" (que o modelo pode ignorar).
+- **Camada fina (runtime):** este least-privilege é a camada **grosseira** (na instanciação do motor);
+  a decisão **por chamada** (ex.: liberar `git status`, gatear `git push`) é a **policy de 2 eixos**
+  (`verdict`/`classify`, §9).
 
 ## 3. Secret-scan do diff antes do push (novo)
 
@@ -204,6 +207,28 @@ antes de executar. Derivado do modelo "harness executa o call aprovado, ligado p
   HARD de uma ação em curso é o caminho `ClaudeSDKClient.interrupt` do co-piloto.
 - **Entregue:** núcleo puro de SDK + testes (`tests/test_approval_gate`). O binding com o SDK vivo
   (`can_use_tool` no `query()`) e o wiring no loop orquestrado validam no **PoC** (padrão do co-piloto).
+
+### Política de 2 eixos — quando o gate dispara (#267)
+
+O `can_use_tool` não pergunta para tudo: uma **política determinística** decide **auto/ask/off** por
+chamada, antes do humano. Dois eixos (derivado do `verdict()` do Tucano, Apache-2.0):
+
+- **classe** (`ToolClass` read/write/sensitive) — o que a ferramenta faz;
+- **autonomia** (`ActionMode` ask/auto/off por `ActionKind` commit/push/pr/merge/delete), graduada por
+  nível (`Autonomy` careful/normal/free), resolvida most-specific-first (regra do agente → nível).
+
+| Peça | O que faz | Onde |
+|---|---|---|
+| classify | `(tool, args)` → classe + ações + high_risk; **parsing de `Bash` por subcomando** (`git status` lê, `git push` é push) | `app/classify` |
+| verdict | decisão pura auto/ask/off a partir de classe/ações/nível | `app/policy` |
+| make_policy_callback | liga tudo ao `can_use_tool`: `run`→libera, `off`→nega, `ask`→gate humano (§9) | `app/approval_gate` |
+
+**Invariantes (independem do nível):** **high-risk sempre pede humano** (caminho sensível via
+`jev_guard`, §7); **merge/delete nunca viram auto** (D7/irreversível); **outside-guard** — ação
+*outbound* depois de ler conteúdo externo volta a pedir (anti prompt-injection). Resolve a fraqueza do
+least-privilege estático (§2, `Bash` tudo-ou-nada). **Entregue:** `verdict`/`classify` puros e testados
+(`tests/test_policy`, `tests/test_classify`); o sinal de *outside* por turno e o wiring no loop
+validam no PoC.
 
 ## 10. Confiança e escalada
 
