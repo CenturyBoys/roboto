@@ -164,6 +164,32 @@ export interface StageModel {
   live: boolean // aplica sem restart? (JEV = false)
 }
 
+// Mapa de issues (árvore/DAG): cruza as NOSSAS deps (épico/depende-de) com as NATIVAS do GitHub.
+export interface IssueGraphNode {
+  number: number
+  title: string
+  labels: string[]
+  is_epic: boolean
+  state: string | null
+}
+
+export type IssueEdgeKind = 'epic-child' | 'depends-on' | 'subissue-native' | 'xref'
+
+export interface IssueGraphEdge {
+  from: number
+  to: number
+  kind: IssueEdgeKind
+}
+
+export interface IssueGraph {
+  repo: string
+  nodes: IssueGraphNode[]
+  edges: IssueGraphEdge[]
+  has_cycle: boolean
+  note?: string
+  error?: string
+}
+
 export interface Terminal {
   terminal_url: string | null
   note?: string

@@ -81,5 +81,6 @@ nav:
       - Breakdown de épico: fluxos/04-breakdown-epico.md
   - Operação:
       - Gatilhos: triggers.md
+      - Mapa de issues: mapa-issues.md
       - Telegram: telegram-guia.md
       - Ferramentas (code-intel): TOOLS.md
