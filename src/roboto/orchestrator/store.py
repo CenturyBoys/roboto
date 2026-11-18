@@ -82,7 +82,12 @@ class Store(Protocol):
     async def replay_dead_letter(self, dead_letter_id: int, now: datetime) -> bool: ...
 
     async def create_session(
-        self, tenant: str, execution_id: int, engine: Engine, now: datetime
+        self,
+        tenant: str,
+        execution_id: int,
+        engine: Engine,
+        now: datetime,
+        config_hash: str | None = None,
     ) -> Session: ...
 
     async def set_native_session(
@@ -418,7 +423,12 @@ class InMemoryStore:
         return True
 
     async def create_session(
-        self, tenant: str, execution_id: int, engine: Engine, now: datetime
+        self,
+        tenant: str,
+        execution_id: int,
+        engine: Engine,
+        now: datetime,
+        config_hash: str | None = None,
     ) -> Session:
         self._session_seq += 1
         session = Session(
@@ -429,6 +439,7 @@ class InMemoryStore:
             state="active",
             created_at=now,
             updated_at=now,
+            config_hash=config_hash,
         )
         self._sessions[session.id] = session
         return session

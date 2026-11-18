@@ -42,6 +42,7 @@ from roboto.app.repo_profile import (
     sample_test_excerpt,
 )
 from roboto.app.secret_scan import SecretLeakError, scan_diff
+from roboto.app.session_guard import may_resume, session_config_hash
 from roboto.app.task_class import TaskType, classificar_task
 from roboto.app.tiering import precisa_forte
 from roboto.app.transient import is_transient
@@ -402,9 +403,22 @@ async def run_pr_cycle(
     async def _engine_turn(prompt: str, resume: str | None, model: str | None = None) -> None:
         # um turno do motor: edita o repo, alimenta o feed ao vivo (Fatia 2) e mede o token (D10/L).
         # `model` override = degrau de escalonamento (#242): força o modelo forte se o base travar.
+        modelo_efetivo = model or modelo_do_motor
+        config_hash = session_config_hash(model=modelo_efetivo)
+        # guard de sessão (#266): só retoma se a config bate com a que criou a sessão nativa. O
+        # escalonamento (#242) troca o modelo na correção → NÃO retomar sob modelo diferente (o
+        # contexto/cache da sessão do modelo base não vale pro forte).
+        if resume and not may_resume(coder.get("hash"), config_hash):
+            resume = None
+            if store is not None and now is not None:
+                await store.append_session_event(
+                    run.tenant, run.id, "message", now,
+                    text="♻️ sessão não retomada: a config do motor mudou (ex.: modelo "
+                         "escalonado) — começo sessão nova p/ não herdar contexto incompatível.",
+                )
         spec = RunSpec(
             tenant=run.tenant, repo=run.repo, workdir=workdir,
-            prompt=prompt, model=model or modelo_do_motor, resume_session_id=resume,
+            prompt=prompt, model=modelo_efetivo, resume_session_id=resume,
         )
         started = await engine.start(spec)
         native = getattr(engine, "session_id", "") or (
@@ -412,6 +426,7 @@ async def run_pr_cycle(
         )
         if native:
             coder["native"] = native  # fixa p/ a próxima correção resumir o MESMO contexto
+            coder["hash"] = config_hash  # e a config dela, p/ o guard de resume (#266)
         tin = tout = 0
         async for event in guarded_events(engine.events()):  # deixa o motor editar o repo
             if store is not None and now is not None:
@@ -426,7 +441,9 @@ async def run_pr_cycle(
             if event.kind is EngineEventKind.FINISHED:
                 tin, tout = event.tokens_in, event.tokens_out
         if store is not None and now is not None:
-            session = await store.create_session(run.tenant, run.id, engine.engine, now)
+            session = await store.create_session(
+                run.tenant, run.id, engine.engine, now, config_hash=config_hash
+            )
             if native:
                 await store.set_native_session(session.id, native, now)
             await store.record_llm_call(

@@ -93,3 +93,21 @@ derrubar runs. A fonte da verdade segue o `app_config` (trilha O): a troca **per
   `LiveModels` e registra os motores quando nascem.
 - **Formato do valor:** tiers do gateway usam o slug puro (`qwen/qwen3.8-flash`); refino/impl/strong
   passam pelo **ccr** e usam a sintaxe de override `openrouter,<slug>`.
+
+## 8. Guard de sessão: resume só sob config compatível (#266)
+
+Trocar o modelo por etapa (§7) e o **escalonamento** (#242, correção no modelo forte) criam um risco:
+**retomar uma sessão nativa criada sob outro modelo** — o contexto/cache do modelo base não vale pro
+forte. O guard previne isso guardando um **hash da config** (modelo + tools) na sessão e só retomando
+quando ele bate. Derivado do `sessionConfig`-hash do Tucano (Apache-2.0; `research/tucano-reuso.md`).
+
+| Peça | O que faz | Onde |
+|---|---|---|
+| session_config_hash | hash estável da config que torna a sessão retomável (mesma config → mesmo hash) | `app/session_guard` |
+| may_resume / resumable_native_id | só retoma sob hash igual; senão começa sessão nova | `app/session_guard` |
+| persistência | `session.config_hash` (migration `0013`); gravado em `create_session` | `orchestrator/*`, `migrations/0013` |
+| wiring | no `_engine_turn` (pr_cycle): config mudou → **não** passa `resume` + avisa no feed (`♻️`) | `app/pr_cycle` |
+
+- **Puro e testável** (`tests/test_session_guard`): hash estável/muda com modelo-tools-extra;
+  `resumable_native_id` escolhe a sessão compatível mais recente, `None` se nenhuma bate.
+- **Conservador:** sem hash guardado → não retoma (começa limpo); nunca retoma "no escuro".
