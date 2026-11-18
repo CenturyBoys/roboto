@@ -2,9 +2,17 @@
 
 from __future__ import annotations
 
-from roboto.app.task_class import TaskType, classificar_task
+from roboto.app.task_class import TaskType, classificar_task, is_single_deliverable
 
 _DEV = "## Critérios de aceite\n- [ ] faz X em `apps/web/foo.ts`\n- [ ] testa Y"
+
+
+def test_single_deliverable_spike_e_definicao_sim_dev_nao() -> None:
+    # spike (keyword "pesquisar") e definição (sem critério + keyword) são entregável único
+    assert is_single_deliverable("Pesquisar orquestração de salas", "- [ ] doc\n- [ ] prós/contras")
+    assert is_single_deliverable("Escrever a spec do fluxo", "decidir o contrato; ADR")
+    # desenvolvimento (critério + arquivo) NÃO é entregável único
+    assert is_single_deliverable("feat: implementar X", _DEV) is False
 
 
 def test_desenvolvimento_com_criterio_e_arquivo() -> None:

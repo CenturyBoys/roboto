@@ -19,6 +19,7 @@ from roboto.app.inbound import IssueLister, dispatch_inbound
 from roboto.app.memory import recall_block
 from roboto.app.related_issues import related_issues_block
 from roboto.app.repo_profile import read_agents_conventions
+from roboto.app.task_class import is_single_deliverable
 from roboto.app.web_research import research_block, research_is_critical
 from roboto.channels.model import OutboundMessage
 from roboto.channels.port import Channel
@@ -224,7 +225,10 @@ async def process_refine_tick(
     # right-sizing (#239): issue BEM ESTRUTURADA mas tamanho-ÉPICO passa no DoR e depois trava o
     # coder/review (raiz = escopo, não modelo). Avisa pra quebrar em sub-issues (determinístico).
     if body:
-        size = check_issue_size(IssueDraft(title=title, body=body))
+        # spike/definição (entregável único) não leva o aviso de "quebre em sub-issues" — um
+        # checklist minucioso não a torna épico (#294 era spike de pesquisa com 10 critérios).
+        single = is_single_deliverable(title, body)
+        size = check_issue_size(IssueDraft(title=title, body=body), single_deliverable=single)
         if size.oversized:
             nota += f"\n\n⚠️ Right-sizing: {size.reason}. NÃO implemente como uma issue só."
     await store.append_session_event(run.tenant, run.id, "message", now(), text=nota)

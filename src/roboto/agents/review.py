@@ -130,12 +130,18 @@ def check_issue_readiness(draft: IssueDraft) -> ReadinessVerdict:
 _MAX_ACEITE = 7
 
 
-def check_issue_size(draft: IssueDraft) -> SizeVerdict:
+def check_issue_size(draft: IssueDraft, *, single_deliverable: bool = False) -> SizeVerdict:
     """Right-sizing (tier 1, sem LLM): a issue cabe em 1 PR ou é um épico? Heurística determinística
     pelo nº de Critérios de aceite (proxy de entregáveis). Oversized → quebrar em sub-issues (#239).
-    Conservador: só dispara BEM acima do normal (issue focada tem ~3–6 critérios)."""
+    Conservador: só dispara BEM acima do normal (issue focada tem ~3–6 critérios).
+
+    ``single_deliverable``: task de UM entregável (spike/definição — ver ``task_class``) NUNCA é
+    épico por critérios; seu done é um único artefato e um checklist minucioso não a torna multi-PR.
+    O chamador classifica o tipo (determinístico) e passa aqui."""
     aceite = _section_text(draft.body, "Critérios de aceite")
     n = aceite.count("- [ ]")
+    if single_deliverable:
+        return SizeVerdict(oversized=False, criterios=n)
     if n > _MAX_ACEITE:
         return SizeVerdict(
             oversized=True,
