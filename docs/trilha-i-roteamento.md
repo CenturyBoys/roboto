@@ -76,3 +76,20 @@ OpenRouter é **uma** implementação (a arquitetura fala com a interface, não 
 **Follow-ups (backlog):** Jev/System One como juiz estruturado plugável (hoje: Qwen no JUDGE);
 RouteLLM pra espremer o tier frontier; roteamento por **sensibilidade de dado** (self-host pra
 projetos privados); re-pinagem periódica contra o golden set (trilha H).
+
+## 7. Switcher de modelo por etapa (hot-reload, sem restart)
+
+O operador troca o modelo de **cada etapa** pela aba **Modelos** do cockpit, **ao vivo** — sem
+derrubar runs. A fonte da verdade segue o `app_config` (trilha O): a troca **persiste** lá e é
+**aplicada em memória** na hora.
+
+- **`app/live_models.py` (`LiveModels`):** `snapshot()` (estado por etapa p/ a UI) + `set_models()`
+  (persiste + aplica). Rebuilda o roteamento do gateway (`OpenRouterGateway.set_routing`), troca o
+  modelo dos motores (`ClaudeCodeEngine.set_model`) e atualiza o env (STRONG é lido por chamada).
+- **Etapas expostas:** cheap (breakdown/chat), judge (review), frontier, refine, impl, strong/resgate
+  e jev. **JEV** é a exceção: o decisor é construído 1x no boot, então a troca só vale no **próximo
+  restart** (selo `restart` na UI; as demais mostram `ao vivo`).
+- **API:** `GET /models` (estado) e `PUT /models` (troca) no console (bearer). `runtime` constrói o
+  `LiveModels` e registra os motores quando nascem.
+- **Formato do valor:** tiers do gateway usam o slug puro (`qwen/qwen3.8-flash`); refino/impl/strong
+  passam pelo **ccr** e usam a sintaxe de override `openrouter,<slug>`.
