@@ -39,8 +39,9 @@ O `roboto` já tinha ~85% do que o Tucano oferece, em Python. Cruzamento (o que 
   merge/delete), high-risk sempre bloqueia (reusa `jev_guard`), **outside-content guard** (anti
   prompt-injection). Fraqueza concreta que cobre: `tool_policy` é estático/binário (`Bash` tudo-ou-
   nada); `jev_guard` só surfa. **Decisão arquitetural** — depende de #265, passa por gate humano (D7).
-- **#266:** guard de sessão — rotacionar `native_session_id` quando muda model/effort/system/tools
-  (`sessionConfig`-hash), pro switcher de modelo por etapa não retomar sessão sob config incompatível.
+- **#266 (feito):** guard de sessão — `session_config_hash` em `app/session_guard` + coluna
+  `session.config_hash` (migration 0013); o `_engine_turn` (pr_cycle) só retoma sob config igual.
+  Previne retomar a sessão do modelo base quando a correção escala pro forte (#242).
 
 ## Fora de escopo (já coberto / não se aplica)
 - Casca Electron/desktop + metáfora "channels de chat" (nossa verdade é a **issue**, não o chat).
