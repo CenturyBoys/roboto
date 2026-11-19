@@ -132,6 +132,20 @@ porta do próprio CI.
   só o *o quê*.
 - **Configurável:** `ROBOTO_LOCAL_CI=0` desliga; `ROBOTO_LOCAL_CI_CMDS=lint,typecheck` restringe.
 
+### Fecha MENORES automaticamente (`ROBOTO_CLOSE_MINORS`)
+
+Situação recorrente: o review **aprova** (0 bloqueador) mas aponta ressalvas **menores** (não-bloqueantes)
+que a gente quer resolver mesmo assim. Com `ROBOTO_CLOSE_MINORS=1`, quando o review aprova com menores,
+o ciclo faz **UMA passada BOUNDED de polimento** — reinjeta os findings menores na correção (o impl
+recebe o *como corrigir*) e re-revisa; depois **aceita** o que sobrar. O feed deixa rastro
+(`🧹 Fechando N menor(es)…`). Desligado (default `0`) = comportamento antigo (aprova e segue).
+
+Garantias (`_should_polish_minors`, puro/testável em `test_pr_cycle.py`): só poli se **aprovou**, toggle
+ligado, há menores, **ainda não poliu** (1 passada só, conservador) e **há orçamento de tentativa**
+(`review_calls < max_attempts`). Esse último guard assegura que sempre sobra uma volta para **aceitar** —
+um menor **nunca** derruba o run por esgotar o budget (menor é polimento, não bloqueio). Um bloqueador
+que porventura surja do polimento cai na correção normal.
+
 ## 5. Recuperação
 
 - **Dead-letter + replay** (trilha B): run/efeito que falha após os retries vai pra dead-letter (com

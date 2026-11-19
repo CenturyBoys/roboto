@@ -5,7 +5,12 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from roboto.app.git_ops import GitError
-from roboto.app.pr_cycle import process_correct_tick, process_pr_run_tick, run_pr_cycle
+from roboto.app.pr_cycle import (
+    _should_polish_minors,
+    process_correct_tick,
+    process_pr_run_tick,
+    run_pr_cycle,
+)
 from roboto.engines.port import EngineEvent, EngineEventKind
 from roboto.engines.stub import StubEngine
 from roboto.github.app import IssueRef
@@ -1108,3 +1113,37 @@ async def test_correct_tick_bound_escalates_after_max_attempts() -> None:
 
 # (removido: o gate de tamanho no impl foi revertido — contar critério é proxy ruim de épico; o
 # right-sizing agora é advisory no refino (epic_signal/Jev). Cobertura: test_epic_signal.py.)
+
+
+# --- fecha MENORES (ROBOTO_CLOSE_MINORS): passada BOUNDED de polimento, nunca falha o run ---
+
+def _poli(**kw: object) -> bool:
+    base = dict(
+        aprovado=True, close_minors=True, n_minores=2,
+        minor_done=False, review_calls=1, max_attempts=3,
+    )
+    base.update(kw)
+    return _should_polish_minors(**base)  # type: ignore[arg-type]
+
+
+def test_poli_menores_caso_feliz() -> None:
+    # aprovou (0 bloqueador) + toggle + há menores + não poliu + há orçamento → faz a passada.
+    assert _poli() is True
+
+
+def test_poli_so_uma_passada() -> None:
+    # já poliu uma vez (minor_done) → não poli de novo (conservador); aceita o que sobrar.
+    assert _poli(minor_done=True) is False
+
+
+def test_poli_respeita_orcamento() -> None:
+    # na ÚLTIMA tentativa (review_calls == max_attempts) NÃO poli — sobra 1 volta p/ aceitar,
+    # garantindo que um menor jamais derruba o run por esgotar o budget.
+    assert _poli(review_calls=3, max_attempts=3) is False
+    assert _poli(review_calls=2, max_attempts=3) is True
+
+
+def test_poli_so_com_toggle_e_sem_bloqueador() -> None:
+    assert _poli(close_minors=False) is False  # toggle desligado = comportamento antigo
+    assert _poli(aprovado=False) is False  # tem bloqueador → correção normal, não polimento
+    assert _poli(n_minores=0) is False  # aprovou limpo → nada a polir
