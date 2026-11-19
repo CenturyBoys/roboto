@@ -18,6 +18,7 @@ Fluxo (per a pesquisa do SDK):
 from __future__ import annotations
 
 import asyncio
+import os
 from collections.abc import Callable
 from datetime import datetime
 
@@ -84,7 +85,7 @@ async def drive_session(
 
     # Motor fixo do PoC: sem isto o CLI cai num default (ex.: um "claude-opus-*" inexistente no
     # roteamento via ccr/OpenRouter), que derrubava a sessão do chat com erro de modelo.
-    model = model or "qwen/qwen3-coder"
+    model = model or os.environ.get("ROBOTO_COPILOT_MODEL", "").strip() or "qwen/qwen3-coder"
 
     # RETOMA a última sessão nativa do run (o refino / a mensagem anterior do chat): o motor volta
     # COM o contexto já lido, então responde DIRETO em vez de revarrer o repo do zero a cada

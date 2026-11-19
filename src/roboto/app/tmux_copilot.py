@@ -86,6 +86,11 @@ async def _start(name: str, workdir: str, *, read_only: bool, code_intel: bool) 
         "ANTHROPIC_API_KEY", "sk-ccr-noop"
     )
     flags = "--permission-mode bypassPermissions"
+    # modelo do co-piloto (conversa): o default é fraco demais p/ navegar+editar → modelo mais forte
+    # via ROBOTO_COPILOT_MODEL (ex.: qwen3.8-27b). Sem a env, segue o default do ccr (compat).
+    copilot_model = os.environ.get("ROBOTO_COPILOT_MODEL", "").strip()
+    if copilot_model:
+        flags += f" --model {copilot_model}"
     if read_only:
         flags += " --disallowedTools " + " ".join(_READ_ONLY_BLOCKED)
     if code_intel:

@@ -197,6 +197,21 @@ def _hook_fix_prompt(saida: str) -> str:
     )
 
 
+def _should_polish_minors(
+    *, aprovado: bool, close_minors: bool, n_minores: int,
+    minor_done: bool, review_calls: int, max_attempts: int,
+) -> bool:
+    """Decide a passada BOUNDED de polimento dos MENORES (ROBOTO_CLOSE_MINORS). Puro/testável.
+
+    SÓ poli se: review APROVOU (0 bloqueador) + toggle ligado + há menores + ainda não poliu (1 só)
+    + há orçamento de tentativa (`review_calls < max_attempts`). O guard de orçamento garante que
+    SEMPRE sobra uma volta p/ ACEITAR — menor NUNCA falha/bloqueia o run (é só polimento)."""
+    return (
+        aprovado and close_minors and n_minores > 0
+        and not minor_done and review_calls < max_attempts
+    )
+
+
 async def run_pr_cycle(
     *,
     engine: CodingEngine,
@@ -783,6 +798,29 @@ async def run_pr_cycle(
                 f"Review PR #{pr.number} (issue #{run.issue_id}): {veredito}. {titulos}"[:400],
                 kind="fato", ref=f"#{run.issue_id}", now=now, unique_by_ref=True,
             )
+        # fecha MENORES (toggle ROBOTO_CLOSE_MINORS): review aprovou (0 bloqueador) mas sobraram
+        # ressalvas MENORES → UMA passada de polimento BOUNDED, SÓ se há orçamento de tentativa
+        # (senão aceita). Menor NUNCA bloqueia/falha o run; os findings vão injetados na correção.
+        menores = [
+            f"[{f.severidade}] {f.titulo} ({f.arquivo}:{f.linha}) — {f.recomendacao}"
+            for f in findings
+            if f.severidade == "menor"
+        ]
+        state["review_calls"] = state.get("review_calls", 0) + 1
+        close_minors = os.environ.get("ROBOTO_CLOSE_MINORS", "0") in ("1", "true", "yes")
+        if _should_polish_minors(
+            aprovado=aprovado, close_minors=close_minors, n_minores=len(menores),
+            minor_done=bool(state.get("minor_done")), review_calls=state["review_calls"],
+            max_attempts=max_attempts,
+        ):
+            state["minor_done"] = 1  # uma passada só (conservador); depois aceita o que sobrar
+            if store is not None and now is not None:
+                await store.append_session_event(
+                    run.tenant, run.id, "message", now,
+                    text=f"🧹 Fechando {len(menores)} menor(es) não-bloqueante(s) — passada de "
+                    "polimento (depois aceita o que sobrar; menor não bloqueia).",
+                )
+            return ReviewVerdict(approved=False, issues=menores, summary=body[:200])
         return ReviewVerdict(approved=aprovado, issues=issues, summary=body[:200])
 
     return await correction_cycle(implement=implement, review=review, max_attempts=max_attempts)

@@ -62,6 +62,12 @@ e, atrás, o **baseline conhecido-bom** como fallback.
 | juiz semântico da issue (DoR) | `JUDGE` → escala `FRONTIER` se confiança baixa (#160) |
 | review de PR | `JUDGE` (temp=0, reviewer≠autor) |
 | implementação (motor Claude Code) | right-sizing via `classificar_tier` → modelo do motor (ccr) |
+| co-piloto (conversa no cockpit) | `ROBOTO_COPILOT_MODEL` (ex.: `openrouter,qwen/qwen3.8-27b`) |
+
+O **co-piloto** (a conversa ao vivo no cockpit — tmux via CLI ou SDK) tinha um default fraco demais
+para navegar e editar o repo. `ROBOTO_COPILOT_MODEL` fixa um modelo mais forte nos dois caminhos
+(`tmux_copilot` injeta `--model` no CLI; `copilot.drive_session` usa como default). Vazio = default
+antigo (compat).
 
 ## 5. Observabilidade (onde o operador vê o roteamento)
 
