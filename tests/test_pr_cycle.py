@@ -1107,7 +1107,7 @@ async def test_correct_tick_bound_escalates_after_max_attempts() -> None:
 
 
 async def test_tick_bloqueia_issue_grande_demais() -> None:
-    # #239: issue que parece ÉPICO (muitos critérios) → NÃO implementa; WAITING + comenta p/ quebrar.
+    # #239: issue que parece ÉPICO (muitos critérios) → NÃO implementa; WAITING + comenta.
     from roboto.orchestrator.model import RunState
 
     store = InMemoryStore()
