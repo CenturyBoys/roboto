@@ -17,6 +17,10 @@
 - **Calibração:** só irreversível/alto impacto vai ao humano; o resto é determinístico — senão recria
   o gargalo humano (trilha J). **Aprovação por ação** (tool-level) agora é **enforcement de verdade**
   via callback `can_use_tool` (§9); o binding com o SDK vivo valida no PoC.
+- **Right-sizing no impl (#239):** antes de implementar, se a issue parece **épico** (muitos critérios,
+  `check_issue_size`), o run vai pra `WAITING` e comenta "quebre em sub-issues (breakdown)" — não coda
+  grande demais. Determinístico, sem LLM. (Custo por fase: `llm_call.tier` grava a fase — refine/scope
+  — não "frontier" fixo, #221.)
 
 ## 2. Least privilege de ferramentas por task (novo)
 

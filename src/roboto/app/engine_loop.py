@@ -115,7 +115,7 @@ async def drive_turn(
                         run_id=run.id,
                         provider="openrouter",
                         model=str(engine.engine),
-                        tier="frontier",
+                        tier=run.agent,  # #221: custo por FASE (refine/scope), não "frontier" fixo
                         tokens_in=tin,
                         tokens_out=tout,
                         cost_usd=(tin + tout) / 1_000_000 * _COST_PER_MTOK,
