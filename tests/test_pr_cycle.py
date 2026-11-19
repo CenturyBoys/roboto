@@ -306,7 +306,8 @@ async def test_porta_ci_local_infra_nao_trava(tmp_path) -> None:  # type: ignore
     assert result.approved is True
     assert git.pushes  # infra não trava: seguiu e empurrou
     events = await store.session_events(run.id, 0, 90)
-    assert any("NÃO validado" in e.text and "OBRIGATÓRIO" in e.text for e in events)
+    # mensagem HONESTA (sem setup no repo p/ subir o ambiente): surfa e aponta o CI do GitHub.
+    assert any("CI local" in e.text and "OBRIGATÓRIO" in e.text for e in events)
 
 
 async def test_cycle_reuses_live_pr() -> None:

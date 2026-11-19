@@ -11,6 +11,7 @@ trava, não culpa o modelo — o CI do GitHub segue juiz final). I/O injetável 
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 from collections.abc import Callable
@@ -51,6 +52,8 @@ class CiResult:
     which: str = ""  # nome do check que reprovou (lint/typecheck/test)
     red: str = ""  # saída trimada do vermelho (alimenta o motor)
     infra: bool = False  # vermelho parece INFRA → não realimenta o motor, só surfa
+    prepared: bool = False  # tentamos SUBIR o ambiente (setup do repo) e re-rodar antes de julgar
+    services: tuple[str, ...] = ()  # serviços que o CI do alvo exige (p/ mensagem honesta)
 
     @property
     def fixable(self) -> bool:
@@ -76,18 +79,28 @@ def _strip_ansi(s: str) -> str:
     return re.sub(r"\x1b\[[0-9;]*m", "", s)
 
 
-def _default_runner(cmd: str, cwd: str, timeout: float) -> tuple[int, str]:
-    # cmd é um script do package.json (config do repo), não input do modelo — shell p/ casar o CI.
-    p = subprocess.run(  # noqa: S602
-        cmd, cwd=cwd, shell=True, capture_output=True, text=True, timeout=timeout,
-    )
-    return p.returncode, _strip_ansi((p.stdout or "") + "\n" + (p.stderr or ""))
+def _make_default_runner(env: dict[str, str] | None) -> Runner:
+    """Runner de subprocess com o `env` do CI do alvo aplicado (DATABASE_URL/REDIS_URL…) por cima
+    do os.environ. `env` vazio/None → ambiente do processo (comportamento antigo)."""
+    full_env = {**os.environ, **env} if env else None
+
+    def runner(cmd: str, cwd: str, timeout: float) -> tuple[int, str]:
+        # cmd é script do package.json (config do repo), não input do modelo — shell p/ casar o CI.
+        p = subprocess.run(  # noqa: S602
+            cmd, cwd=cwd, shell=True, capture_output=True, text=True, timeout=timeout, env=full_env,
+        )
+        return p.returncode, _strip_ansi((p.stdout or "") + "\n" + (p.stderr or ""))
+
+    return runner
 
 
 def run_ci(
     workdir: str,
     commands: list[tuple[str, str]],
     *,
+    setup: tuple[tuple[str, str], ...] = (),
+    env: dict[str, str] | None = None,
+    services: tuple[str, ...] = (),
     runner: Runner | None = None,
     timeout: float = 300.0,
     max_red_chars: int = 3000,
@@ -98,9 +111,14 @@ def run_ci(
     Fase ESTÁTICA (lint/typecheck): análise pura, sem infra. Roda TODOS e junta os vermelhos num
     feedback só — o motor corrige lint+typecheck de UMA vez (1 turno), não um turno por check (mata
     o ping-pong "arruma lint → quebra typecheck"). Fase de SERVIÇO (`test`): barato→caro, para no
-    1º vermelho e dá benefício da dúvida p/ INFRA (DB fora/não migrado) — CI do GitHub é o juiz.
-    Cada vermelho é trimado pelo FIM (onde o erro real aparece) p/ caber no prompt."""
-    run = runner or _default_runner
+    1º vermelho.
+
+    RESILIÊNCIA (determinismo 1º): em vez de chutar "infra" e pular, se o `test` reprova com cara de
+    ambiente E temos `setup` (do CI do alvo, ver `target_env`), SOBE o ambiente (roda o setup com o
+    `env` do CI) e RE-RODA o teste UMA vez — o resultado REAL decide: verde = validado de verdade;
+    vermelho de CÓDIGO = realimenta o motor (`fixable`); só degrada p/ `infra` (honesto, nomeando os
+    `services`) se nem subindo resolver. Cada vermelho é trimado pelo FIM p/ caber no prompt."""
+    run = runner or _make_default_runner(env)
 
     def executar(name: str, cmd: str) -> tuple[int, str] | CiResult:
         # exceção (timeout/exec não-iniciado) = ambiente, não a mudança do modelo → infra.
@@ -131,15 +149,34 @@ def run_ci(
         )
         return CiResult(False, which=which, red=red)
 
-    # FASE 2 — checks que tocam serviços (`test`): estáticos já verdes; para no 1º e separa INFRA.
+    # FASE 2 — checks que tocam serviços (`test`): estáticos já verdes; para no 1º vermelho.
+    prepared = False
     for name, cmd in ((n, c) for n, c in commands if n in _INFRA_CAPABLE):
         resultado = executar(name, cmd)
         if isinstance(resultado, CiResult):
             return resultado
         rc, saida = resultado
-        if rc != 0:
-            return CiResult(
-                False, which=name, red=saida.strip()[-max_red_chars:],
-                infra=bool(_INFRA_RED.search(saida)),
-            )
-    return CiResult(True)
+        if rc == 0:
+            continue
+        infra = bool(_INFRA_RED.search(saida))
+        # RESILIÊNCIA: vermelho com cara de ambiente + temos setup + ainda não preparamos → SOBE o
+        # ambiente (migrate/generate do próprio repo) e RE-RODA uma vez; a realidade decide.
+        if infra and setup and not prepared:
+            prepared = True
+            for sname, scmd in setup:
+                executar(sname, scmd)  # best-effort, idempotente (ignora retorno/exceção)
+            rerun = executar(name, cmd)
+            if isinstance(rerun, CiResult):  # exceção no re-run → infra (ainda indisponível)
+                return CiResult(False, which=name, red=rerun.red, infra=True,
+                                prepared=True, services=services)
+            rc, saida = rerun
+            if rc == 0:
+                continue  # ambiente subiu, teste passou DE VERDADE
+            infra = bool(_INFRA_RED.search(saida))  # re-classifica pela saída REAL do re-run
+        return CiResult(
+            False, which=name, red=saida.strip()[-max_red_chars:],
+            infra=infra, prepared=prepared, services=services,
+        )
+    # verde: propaga `prepared` — se subimos o ambiente e o teste passou, é sinal POSITIVO (validado
+    # de verdade, não pulado), que o ciclo pode surfar ("subi o ambiente e o test passou ✅").
+    return CiResult(True, prepared=prepared)

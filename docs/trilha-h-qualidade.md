@@ -117,9 +117,22 @@ porta do próprio CI.
   isso infra fica restrita a `test`/`build`. Em ambiente sem o DB de teste,
   `ROBOTO_LOCAL_CI_CMDS=lint,typecheck,build` evita rodar a suíte de integração que só o CI julga.
 - **Esgotou e segue vermelho:** **não abre PR vermelho** — escala p/ humano (feed + Telegram).
-- **Honestidade do "infra" (#280):** quando o `test` degrada p/ infra, a mensagem **não** diz "ok, o
-  CI do GitHub é juiz" (parecia aprovação) — diz **"NÃO validado localmente — o CI do GitHub é
-  OBRIGATÓRIO antes do merge"**. Não valida teste não pode parecer que validou.
+- **Resiliência — SOBE o ambiente e roda o teste de verdade (não chuta "infra"):** antes, um `test`
+  vermelho com cara de ambiente (ex.: *"table does not exist"*) era chutado como infra e **pulado** —
+  mas isso podia ser (a) DB não-migrado (infra, resolvível) **ou** (b) bug real (o PR esqueceu a
+  migração). Agora o fleet **lê o CI do próprio repo-alvo** (`app/target_env` → `.github/workflows/*`):
+  extrai o **env** dos testes (`DATABASE_URL`/`REDIS_URL`), os **services** (postgres/redis) e os
+  comandos de **setup** (`db:generate`/`db:migrate` do `package.json`); quando o `test` reprova por
+  ambiente, **roda o setup com esse env e RE-RODA o teste UMA vez** — o resultado **real** decide:
+  **verde** = `🔧 subi o ambiente e o test passou ✅` (validado de verdade, não pulado); **vermelho de
+  código** = vira `fixable` e **realimenta o motor** (o ganho: bug antes mascarado como infra agora é
+  corrigido); só degrada p/ infra se **nem subindo** resolver. `ROBOTO_PREPARE_ENV=0` desliga.
+  *(Subir os containers de postgres/redis em si é o próximo incremento; hoje usa os serviços já
+  alcançáveis.)*
+- **Honestidade do "infra" (#280):** quando o `test` segue infra, a mensagem **não** diz "ok, o CI do
+  GitHub é juiz" (parecia aprovação) — diz, honesta, **se tentamos subir o ambiente e qual serviço
+  faltou** (`tentei subir o ambiente … faltou: postgres, redis`) e que **o CI do GitHub é OBRIGATÓRIO
+  antes do merge**. Teste não validado não pode parecer que validou.
 - **Validar o committado, não a árvore suja (#281):** antes do `push`, um `commit_all` defensivo
   (`git add -A`, no-op se limpo) garante que o PUSH inclui **tudo que o CI local validou** — fecha o
   *false-green* de um arquivo deixado fora do commit (o import órfão `region-lock` do #310: verde

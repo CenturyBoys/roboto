@@ -195,3 +195,74 @@ def test_run_ci_trima_saida_pelo_fim() -> None:
     r = run_ci("/w", [("lint", "x")], runner=runner, max_red_chars=50)
     assert len(r.red) <= 50
     assert r.red.endswith(cauda)
+
+
+# --- RESILIÊNCIA: se o `test` reprova por ambiente E temos setup, SOBE o ambiente e RE-RODA ---
+
+_SETUP = (("db:generate", "pnpm -s db:generate"), ("db:migrate", "pnpm -s db:migrate"))
+
+
+def test_run_ci_sobe_ambiente_e_fica_verde() -> None:
+    # test 1ª vez = DB não migrado (infra); roda o setup; re-roda → verde (validado DE VERDADE).
+    calls: list[str] = []
+
+    def runner(cmd: str, cwd: str, timeout: float) -> tuple[int, str]:
+        calls.append(cmd)
+        if "db:" in cmd:
+            return 0, "migrated"
+        n_test = sum(1 for c in calls if c.endswith("test"))
+        if n_test == 1:
+            return 1, "The table public.account does not exist (code P2021)"
+        return 0, "all tests passed"
+
+    r = run_ci("/w", [("test", "pnpm -s test")], setup=_SETUP, runner=runner)
+    assert r.passed is True  # subiu o ambiente e o teste passou de verdade
+    assert r.prepared is True
+    assert any("db:migrate" in c for c in calls)  # rodou o setup do repo
+
+
+def test_run_ci_sobe_ambiente_e_revela_erro_real_fixable() -> None:
+    # O GANHO: o 1º vermelho PARECIA infra ("table does not exist"); subimos o ambiente e o re-run
+    # falhou com erro de CÓDIGO → re-classificado FIXABLE (realimenta o motor). Antes: mascarado.
+    calls: list[str] = []
+
+    def runner(cmd: str, cwd: str, timeout: float) -> tuple[int, str]:
+        calls.append(cmd)
+        if "db:" in cmd:
+            return 0, "ok"
+        n_test = sum(1 for c in calls if c.endswith("test"))
+        if n_test == 1:
+            return 1, "relation \"games\" does not exist"  # cara de infra
+        return 1, "AssertionError: expected 2 to equal 3"  # erro REAL, pós-ambiente
+
+    r = run_ci("/w", [("test", "pnpm -s test")], setup=_SETUP, runner=runner)
+    assert r.passed is False
+    assert r.infra is False  # re-classificado pela saída REAL do re-run
+    assert r.fixable is True  # AGORA volta ao motor (antes ficava mascarado como infra)
+    assert r.prepared is True
+
+
+def test_run_ci_sobe_ambiente_mas_segue_infra_honesto() -> None:
+    # serviço genuinamente ausente: nem subindo resolve → infra HONESTO, com os services nomeados.
+    def runner(cmd: str, cwd: str, timeout: float) -> tuple[int, str]:
+        return 1, "Error: connect ECONNREFUSED 127.0.0.1:5432"
+
+    r = run_ci(
+        "/w", [("test", "pnpm -s test")], setup=_SETUP,
+        services=("postgres", "redis"), runner=runner,
+    )
+    assert r.passed is False
+    assert r.infra is True
+    assert r.prepared is True  # tentamos subir
+    assert r.fixable is False
+    assert r.services == ("postgres", "redis")  # p/ a mensagem honesta
+
+
+def test_run_ci_sem_setup_mantem_comportamento_antigo() -> None:
+    # sem setup (repo sem scripts de ambiente) → infra segue infra, SEM tentar preparar (compat).
+    def runner(cmd: str, cwd: str, timeout: float) -> tuple[int, str]:
+        return 1, "The table public.account does not exist (P2021)"
+
+    r = run_ci("/w", [("test", "pnpm -s test")], runner=runner)
+    assert r.infra is True
+    assert r.prepared is False  # não havia como subir o ambiente → não tentou
