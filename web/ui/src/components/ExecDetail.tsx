@@ -15,7 +15,7 @@ import type { ExecutionDetail, PrDiff, Risk, Terminal, ToolUsage } from '@/types
 import { Button } from './ui/button'
 import { Card, CardLabel, CardTitle } from './ui/card'
 import { Chat } from './Chat'
-import { Feed } from './Feed'
+import { Timeline } from './Timeline'
 import { StatePill } from './ui/state-pill'
 import { Td, TableWrap, Th } from './ui/table'
 
@@ -263,39 +263,12 @@ export function ExecDetail({
         )}
       </Card>
 
-      <Card>
-        <CardLabel>Conversa / interações</CardLabel>
-        {data.interactions.length ? (
-          <TableWrap>
-          <table className="w-full min-w-[560px] text-sm">
-            <thead>
-              <tr className="text-muted">
-                <Th>id</Th>
-                <Th>tipo</Th>
-                <Th>pergunta</Th>
-                <Th>status</Th>
-                <Th>resposta</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.interactions.map((i) => (
-                <tr key={i.id} className="border-t border-border">
-                  <Td mono>{i.id}</Td>
-                  <Td>{i.kind}</Td>
-                  <Td>{i.prompt}</Td>
-                  <Td>{i.status}</Td>
-                  <Td>{i.answer ?? '—'}</Td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          </TableWrap>
-        ) : (
-          <p className="text-muted">nenhuma</p>
-        )}
-      </Card>
-
-      <Feed id={id} />
+      <Timeline
+        id={id}
+        interactions={data.interactions}
+        live={data.live}
+        onChange={() => void load()}
+      />
 
       {term && (
         <Card>
