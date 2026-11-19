@@ -1,10 +1,10 @@
 """Pré-fetch de símbolos da issue → direciona o code-intel (trilha F, #223).
 
-Medido: o motor subusa o code-intel (cai em Bash/Read) — e quando usa, nem sempre nos símbolos certos
-(causa do import órfão do #310). Em vez de só pedir "use code-intel", o harness **extrai
+Medido: o motor subusa o code-intel (cai em Bash/Read) — e quando usa, nem sempre nos símbolos
+certos (causa do import órfão do #310). Em vez de só pedir "use code-intel", o harness **extrai
 determinísticamente** os símbolos prováveis da issue (spans em crase + identificadores CamelCase/
-snake_case) e injeta uma DIRETIVA pra o motor rodar `find_references`/`find_symbol` NELES **antes** de
-editar. Puro e testável; a execução do `find_references` pelo próprio harness (como o `repo_map` do
+snake) e injeta uma DIRETIVA pra o motor rodar `find_references`/`find_symbol` NELES antes de editar.
+Puro e testável; a execução do `find_references` pelo próprio harness (como o `repo_map` do
 `code_intel_brief`) é a camada que valida no PoC vivo.
 """
 
@@ -26,7 +26,7 @@ _STOP = frozenset(
 
 
 def extract_symbols(text: str, *, limit: int = 8) -> list[str]:
-    """Símbolos prováveis da issue (crase primeiro, depois identificadores), dedup, em ordem. Puro."""
+    """Símbolos prováveis da issue (crase primeiro, depois identificadores), dedup. Puro."""
     seen: dict[str, None] = {}
     for raw in _BACKTICK.findall(text):
         for tok in _IDENT.findall(raw):

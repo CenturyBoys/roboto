@@ -341,7 +341,7 @@ async def run_pr_cycle(
         brief = await asyncio.to_thread(code_intel_brief, workdir, cmd=ci_cmd)
         ci_block = f"\n{brief}\n" if brief else ""
     # #223: extrai os símbolos prováveis da issue e MANDA o motor rodar code-intel NELES antes de
-    # editar (determinístico) — ataca o subuso de code-intel nos alvos certos (causa do import órfão).
+    # editar (determinístico) — ataca o subuso de code-intel nos alvos certos (import órfão do #310).
     symbols_block = ""
     if os.environ.get("ROBOTO_CODE_INTEL", "1") not in ("0", "false", "no"):
         _directive = symbols_directive(extract_symbols(contexto))
