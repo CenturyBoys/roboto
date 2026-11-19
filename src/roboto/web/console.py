@@ -930,18 +930,9 @@ def console_routes(
                 {"error": "issue não está pronta (DoR)", "missing": verdict.missing},
                 status_code=409,
             )
-        # right-sizing (#239): issue tamanho-ÉPICO trava o coder/review (raiz = escopo). Bloqueia
-        # implementar como uma issue só; o operador quebra antes. Spike/definição (entregável
-        # único) é isenta — #294 era spike de pesquisa com 10 critérios, barrado à toa.
-        single = tclass.task_type in (TaskType.SPIKE, TaskType.DEFINICAO) and (
-            tclass.confianca == "alta"
-        )
-        size = check_issue_size(IssueDraft(title=title, body=body), single_deliverable=single)
-        if size.oversized:
-            return JSONResponse(
-                {"error": f"issue parece épico — {size.reason}", "criterios": size.criterios},
-                status_code=409,
-            )
+        # right-sizing NÃO bloqueia o implementar (revertido): contar critério é proxy ruim de épico
+        # — feature coesa / análise pode ter 9 critérios (#297). O sinal é advisory no refino
+        # (`app/epic_signal` + Jev); o implementar confia que o refino já right-sizou.
         # guard: recusa se já há impl ATIVO pra esta issue (evita duplo-clique / dois runs).
         # "Ativo" = ainda não terminou (queued/running/verifying).
         active_states = {RunState.QUEUED, RunState.RUNNING, RunState.VERIFYING}
