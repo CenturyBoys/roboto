@@ -399,6 +399,11 @@ async def main() -> int:
         # num banco existente não se aplica sozinha. Idempotente (IF NOT EXISTS).
         applied = await store.migrate()
         print(f"[migrations] {len(applied)} aplicada(s)" + (f": {applied}" if applied else ""))
+        # hook anti-co-author (#279): barra `Co-Authored-By: Claude`/rodapé de ferramenta em TODO
+        # commit (determinístico; pega o trailer manual do modelo — includeCoAuthoredBy não basta).
+        from roboto.app.commit_hygiene import install_hook
+
+        print(f"[commit-hook] anti-co-author em {install_hook()}")
         # semeia o .env no banco (origem env vira registro; o banco é a fonte única — trilha O)
         seed = settable_from_env(env)
         if seed:
