@@ -19,6 +19,7 @@ from roboto.agents.review import (
     PullRequest,
     ReviewVerdict,
     check_issue_readiness,
+    check_issue_size,
     montar_review,
     revisar_pr,
 )
@@ -841,6 +842,17 @@ async def process_pr_run_tick(
                     run.repo, int(run.issue_id),
                     "Esta é uma task de **definição** (produz spec/decisão, não código) — não vou "
                     f"implementar. Sinais: {', '.join(tclass.sinais)}. 'Done' = spec aprovada.",
+                )
+                await store.set_state(run.id, RunState.WAITING, moment)
+                return
+            # gate de RIGHT-SIZING (#239): issue grande demais (parece épico) → NÃO implementa; pede
+            # pra quebrar em sub-issues (o breakdown já existe). Detecção determinística, sem LLM.
+            size = check_issue_size(IssueDraft(title=title, body=body))
+            if size.oversized:
+                await github.comment_pr(
+                    run.repo, int(run.issue_id),
+                    f"Esta issue parece um ÉPICO ({size.criterios} critérios de aceite) — grande "
+                    "demais p/ 1 PR. Quebre em sub-issues (breakdown) antes de implementar.",
                 )
                 await store.set_state(run.id, RunState.WAITING, moment)
                 return
