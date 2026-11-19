@@ -21,7 +21,7 @@ _TOOL_FOOTER = re.compile(r"(generated with .*claude|🤖 generated with)", re.I
 
 
 def strip_ai_trailers(message: str) -> str:
-    """Remove co-autor de IA e rodapé de ferramenta; preserva o resto (co-autor humano inclusive)."""
+    """Remove co-autor de IA e rodapé de ferramenta; preserva o resto (co-autor humano)."""
     kept = [
         line
         for line in message.splitlines()
