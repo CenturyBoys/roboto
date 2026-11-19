@@ -38,7 +38,7 @@ from roboto.app.memory import recall_block
 from roboto.app.policy import Policy
 from roboto.app.provider_errors import classify_provider_error
 from roboto.app.related_issues import related_issues_block
-from roboto.app.repo_ci import Runner, discover_ci_commands, run_ci
+from roboto.app.repo_ci import CiResult, Runner, discover_ci_commands, run_ci
 from roboto.app.repo_profile import (
     build_repo_profile,
     read_agents_conventions,
@@ -47,6 +47,7 @@ from roboto.app.repo_profile import (
 from roboto.app.secret_scan import SecretLeakError, scan_diff
 from roboto.app.session_guard import may_resume, session_config_hash
 from roboto.app.session_hub import SessionHub
+from roboto.app.target_env import TargetEnv, read_target_env
 from roboto.app.task_class import TaskType, classificar_task
 from roboto.app.tiering import precisa_forte
 from roboto.app.transient import is_transient
@@ -663,7 +664,21 @@ async def run_pr_cycle(
                 workdir, override=os.environ.get("ROBOTO_LOCAL_CI_CMDS", "")
             )
             if ci_cmds:
-                ci = await asyncio.to_thread(run_ci, workdir, ci_cmds, runner=ci_runner)
+                # RESILIÊNCIA: lê o CI do alvo (env/services/setup) p/ SUBIR o ambiente de teste e
+                # rodar o `test` de verdade (não chutar "infra"). ROBOTO_PREPARE_ENV=0 desliga.
+                tenv = (
+                    read_target_env(workdir)
+                    if os.environ.get("ROBOTO_PREPARE_ENV", "1") not in ("0", "off", "false", "no")
+                    else TargetEnv()
+                )
+
+                def _run_ci() -> CiResult:  # closure: fixa setup/env/services do alvo nas re-rodas
+                    return run_ci(
+                        workdir, ci_cmds, setup=tenv.setup, env=tenv.env,
+                        services=tenv.services, runner=ci_runner,
+                    )
+
+                ci = await asyncio.to_thread(_run_ci)
                 ci_tries = 0
                 while ci.fixable and ci_tries < _LOCAL_CI_FIX_ATTEMPTS:
                     ci_tries += 1
@@ -685,14 +700,29 @@ async def run_pr_cycle(
                         await git.commit_all(f"{title} (fix CI {ci.which})")
                     except GitError:
                         pass  # hooks já passaram no 1º commit; re-commit dos fixes é best-effort
-                    ci = await asyncio.to_thread(run_ci, workdir, ci_cmds, runner=ci_runner)
+                    ci = await asyncio.to_thread(_run_ci)
                 if ci.infra:
                     if store is not None and now is not None:
+                        # mensagem HONESTA: diz se TENTAMOS subir o ambiente e qual serviço faltou,
+                        # em vez do antigo "infra, não a sua mudança" cego.
+                        if ci.prepared:
+                            svc = (
+                                f" (faltou subir: {', '.join(ci.services)})"
+                                if ci.services else ""
+                            )
+                            detalhe = (
+                                f"tentei subir o ambiente de teste (setup do repo) e `{ci.which}` "
+                                f"seguiu indisponível por infra{svc}"
+                            )
+                        else:
+                            detalhe = (
+                                f"`{ci.which}` indisponível localmente e sem setup no repo p/ "
+                                "subir o ambiente de teste"
+                            )
                         await store.append_session_event(
                             run.tenant, run.id, "message", now,
-                            text=f"⚠️ CI local `{ci.which}` NÃO validado (serviço de teste "
-                                 "ausente/infra, não a sua mudança) — o CI do GitHub é OBRIGATÓRIO "
-                                 "antes do merge.",
+                            text=f"⚠️ CI local: {detalhe} — o CI do GitHub é OBRIGATÓRIO antes "
+                                 "do merge.",
                         )
                 elif not ci.passed:
                     if store is not None and now is not None:
@@ -712,6 +742,13 @@ async def run_pr_cycle(
                     raise RuntimeError(
                         f"CI local ({ci.which}) segue vermelho após {_LOCAL_CI_FIX_ATTEMPTS} "
                         "tentativas — escala p/ humano (não abre PR vermelho)"
+                    )
+                elif ci.prepared and store is not None and now is not None:
+                    # resiliência: subimos o ambiente e o teste passou DE VERDADE (não pulado)
+                    await store.append_session_event(
+                        run.tenant, run.id, "message", now,
+                        text="🔧 subi o ambiente de teste (setup do repo) e o `test` passou ✅ — "
+                             "validado de verdade, não pulado.",
                     )
                 elif ci_tries and store is not None and now is not None:
                     await store.append_session_event(
