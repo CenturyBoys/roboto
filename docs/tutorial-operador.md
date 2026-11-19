@@ -80,3 +80,15 @@ Deu problema num PR já entregue? No detalhe da execução, **↩️ Reverter PR
 segura: o fleet abre um **PR de revert** (não mexe direto na base) e **reabre a issue** pra refazer.
 O **merge do revert continua seu** — como todo merge. Se o revert conflitar, ele avisa no feed e **não
 empurra nada**.
+
+## 9. Conversar com o agente (timeline)
+
+No detalhe de uma execução, a **Conversa com o agente** é uma linha do tempo única: as mensagens do
+motor, as ferramentas que ele usou e as **aprovações pendentes** aparecem na ordem em que acontecem —
+um só lugar, em vez de abas separadas.
+
+- **Aprovar/recusar na hora:** quando o agente pede pra fazer algo que precisa do seu OK (ex.: `git
+  push`), um cartão aparece ali mesmo com a ação e os argumentos — **✓ aprovar** ou **✕ recusar**
+  (com um motivo opcional, que volta pro agente). É o mesmo canal do Telegram: a 1ª resposta vale.
+- **Orientar (steer):** a caixa embaixo manda uma mensagem pro agente no meio do trabalho.
+- **Interromper:** o botão **⛔ interromper** corta o run quando a sessão está viva.
