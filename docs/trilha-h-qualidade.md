@@ -19,11 +19,12 @@
   via callback `can_use_tool` (§9); o binding com o SDK vivo valida no PoC.
 - **Right-sizing SEMÂNTICO (advisory, não bloqueia):** contar critério de aceite era um proxy ruim de
   épico — uma feature coesa pode ter 9 critérios (falso-positivo real, #297). O sinal agora pergunta
-  **"entrega mais de 1 artefato que seria um PR separado?"** em camadas (`app/epic_signal`): Tier 0
-  determinístico (fases, spread de subsistemas, múltiplos entregáveis) → **Jev** no ambíguo
-  (`assess_epic`, `{decision, confidence, reason}`). **Só surfa no refino** com confiança alta, com o
-  motivo acionável — **nunca bloqueia o impl** (o impl confia no refino). Custo por fase:
-  `llm_call.tier=refine/scope` (não "frontier" fixo, #221).
+  **"entrega mais de 1 artefato que seria um PR separado?"** em camadas (`app/epic_signal`): o **Tier 0
+  determinístico só DESCARTA** (`small`) — task de análise/spike/definição (verbo do título) nunca é
+  épico, e raízes de monorepo (`apps/`, `packages/`) não contam como subsistema (os 2 falso-positivos
+  do #297). Quem **AFIRMA** épico é sempre o **Jev** no ambíguo (`assess_epic`, `{decision, confidence,
+  reason}`) — heurística afirmar gera falso+. **Só surfa no refino** com confiança alta e motivo
+  acionável — **nunca bloqueia o impl**. Custo por fase: `llm_call.tier=refine/scope` (#221).
 
 ## 2. Least privilege de ferramentas por task (novo)
 
