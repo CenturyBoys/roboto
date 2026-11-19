@@ -84,6 +84,11 @@ class ClaudeCodeEngine:
         self._spec: RunSpec | None = None
         self._session_id = ""
 
+    def set_approval(self, approval: ApprovalCallback | None) -> None:
+        """Liga/desliga o gate por ação neste motor (#271). Com ele, `events()` roda em
+        `permission_mode="default"` e cada ação passa pelo callback (policy → auto/ask/off)."""
+        self._approval = approval
+
     def set_model(self, model: str) -> None:
         """Troca o modelo do motor EM MEMÓRIA (hot-reload do switcher). Vale do próximo run em
         diante (o modelo por-run do spec ainda tem precedência). Vazio = default do ccr."""

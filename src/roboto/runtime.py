@@ -266,6 +266,14 @@ async def _run_daemon(config: Config, store: Store) -> None:
                 persona=config.refine_persona,
             )
 
+        # gate por ação no loop (#271, opt-in via ROBOTO_APPROVAL=1). Default OFF → fluxo autônomo
+        # intacto. Nível FREE = só irreversível/high-risk pede humano (ROBOTO_AUTONOMY troca).
+        from roboto.app.policy import policy_from_autonomy
+
+        _approval_on = os.environ.get("ROBOTO_APPROVAL", "") in ("1", "true", "yes")
+        _autonomy = os.environ.get("ROBOTO_AUTONOMY", "free")
+        _approval_policy = policy_from_autonomy(_autonomy) if _approval_on else None
+
         async def _run_claude() -> None:
             # ciclo completo: motor->git->PR->review(≠autor)->correção. Merge = gate humano (D7).
             await process_pr_run_tick(
@@ -283,6 +291,8 @@ async def _run_daemon(config: Config, store: Store) -> None:
                 self_assign_login=config.bot_login,  # self-assign ao assumir (#150)
                 persona=config.impl_persona,  # âncora de papel (A/B atrás de flag)
                 decider=refine_decider,  # Jev degrau-2 do tier (#242); None = só determinístico
+                hub=hub if _approval_on else None,  # gate por ação (#271)
+                approval_policy=_approval_policy,
             )
 
         async def _run_scope() -> None:

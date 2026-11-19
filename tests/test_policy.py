@@ -60,3 +60,12 @@ def test_careful_write_asks() -> None:
 
 def test_sensitive_asks() -> None:
     assert verdict(ToolClass.SENSITIVE, _NONE, Policy(Autonomy.FREE)).ask
+
+
+def test_policy_from_autonomy_mapeia_niveis() -> None:
+    from roboto.app.policy import policy_from_autonomy
+
+    assert policy_from_autonomy("free").autonomy is Autonomy.FREE
+    assert policy_from_autonomy("careful").autonomy is Autonomy.CAREFUL
+    assert policy_from_autonomy("normal").autonomy is Autonomy.NORMAL
+    assert policy_from_autonomy("invalido").autonomy is Autonomy.NORMAL  # fallback

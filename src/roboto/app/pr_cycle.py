@@ -22,6 +22,7 @@ from roboto.agents.review import (
     montar_review,
     revisar_pr,
 )
+from roboto.app.approval_gate import make_policy_callback
 from roboto.app.autoformat import autoformat
 from roboto.app.code_intel_brief import code_intel_brief
 from roboto.app.code_intel_diag import code_intel_diagnostics
@@ -33,6 +34,7 @@ from roboto.app.git_ops import GitError
 from roboto.app.i18n_assist import apply_i18n_stubs
 from roboto.app.jev_guard import assess as assess_risk
 from roboto.app.memory import recall_block
+from roboto.app.policy import Policy
 from roboto.app.provider_errors import classify_provider_error
 from roboto.app.related_issues import related_issues_block
 from roboto.app.repo_ci import Runner, discover_ci_commands, run_ci
@@ -43,6 +45,7 @@ from roboto.app.repo_profile import (
 )
 from roboto.app.secret_scan import SecretLeakError, scan_diff
 from roboto.app.session_guard import may_resume, session_config_hash
+from roboto.app.session_hub import SessionHub
 from roboto.app.task_class import TaskType, classificar_task
 from roboto.app.tiering import precisa_forte
 from roboto.app.transient import is_transient
@@ -786,6 +789,8 @@ async def process_pr_run_tick(
     self_assign_login: str = "",  # #150: login do fleet p/ self-assign; "" = não atribui
     persona: str = "",  # âncora de papel opcional (A/B atrás de flag) — ver roboto/persona.py
     decider: Decider | None = None,  # Jev degrau-2 do tier (#242); None = só determinístico
+    hub: SessionHub | None = None,  # gate por ação (#271): sessão viva p/ o callback aguardar
+    approval_policy: Policy | None = None,  # policy de 2 eixos; None = sem gate (fluxo autônomo)
 ) -> None:
     """Pega o próximo run da fila e roda o ciclo. Aprovado -> VERIFYING; desistiu -> FAILED.
 
@@ -849,6 +854,18 @@ async def process_pr_run_tick(
     workdir = f"{workdir_root}/{run.repo}"
     # override humano do secret-scan (B): operador liberou este run (FP) → ciclo não aborta no scan
     secret_ok = await store.is_secret_allowed(run.id)
+    # gate por ação (#271, opt-in): com hub+policy, cada ação do motor passa pelo gate humano
+    # (policy → auto/ask/off). Default OFF → fluxo autônomo (bypassPermissions) intacto.
+    set_approval = getattr(engine, "set_approval", None)
+    gate_hub = hub if (approval_policy is not None and callable(set_approval)) else None
+    if gate_hub is not None and approval_policy is not None and set_approval is not None:
+        live = gate_hub.open(run.id)
+        set_approval(
+            make_policy_callback(
+                store=store, live=live, tenant=tenant, execution_id=run.id,
+                policy=approval_policy, now=now,
+            )
+        )
     try:
         result = await run_pr_cycle(
             engine=engine,
@@ -885,6 +902,10 @@ async def process_pr_run_tick(
             text=op or f"⚠️ execução falhou: {exc}",
         )
         return
+    finally:
+        if gate_hub is not None and set_approval is not None:
+            set_approval(None)  # limpa o gate do motor compartilhado após o run (#271)
+            gate_hub.close(run.id)
     await store.set_state(
         run.id, RunState.VERIFYING if result.approved else RunState.FAILED, moment
     )
