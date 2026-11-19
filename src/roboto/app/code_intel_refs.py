@@ -3,7 +3,7 @@
 Medido: o motor subusa o code-intel (cai em Bash/Read) — e quando usa, nem sempre nos símbolos
 certos (causa do import órfão do #310). Em vez de só pedir "use code-intel", o harness **extrai
 determinísticamente** os símbolos prováveis da issue (spans em crase + identificadores CamelCase/
-snake) e injeta uma DIRETIVA pra o motor rodar `find_references`/`find_symbol` NELES antes de editar.
+snake) e injeta uma DIRETIVA pra o motor rodar `find_references` NELES antes de editar.
 Puro e testável; a execução do `find_references` pelo próprio harness (como o `repo_map` do
 `code_intel_brief`) é a camada que valida no PoC vivo.
 """
