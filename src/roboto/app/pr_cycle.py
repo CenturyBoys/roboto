@@ -696,7 +696,7 @@ async def run_pr_cycle(
                         text=f"✅ CI local verde após {ci_tries} correção(ões) — PR nasce verde.",
                     )
         # #281: o PUSH tem de incluir TUDO que o CI local validou (o worktree). Motor deixou arquivo
-        # fora do commit (ex.: import órfão `region-lock` do #310) → CI local verde, GitHub vermelho.
+        # fora do commit (ex.: import órfão do #310) → CI local verde, GitHub vermelho.
         # commit_all faz `git add -A` e é no-op se a árvore está limpa.
         try:
             await git.commit_all(f"{title} (worktree validado localmente, #281)")
