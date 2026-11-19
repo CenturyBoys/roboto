@@ -395,6 +395,10 @@ async def main() -> int:
 
     store = await PostgresStore.connect(database_url)
     try:
+        # migrations pendentes no boot (#276): o initdb só roda no 1º boot do volume; migration nova
+        # num banco existente não se aplica sozinha. Idempotente (IF NOT EXISTS).
+        applied = await store.migrate()
+        print(f"[migrations] {len(applied)} aplicada(s)" + (f": {applied}" if applied else ""))
         # semeia o .env no banco (origem env vira registro; o banco é a fonte única — trilha O)
         seed = settable_from_env(env)
         if seed:

@@ -48,13 +48,17 @@ export default function App() {
   // sessões — só fica off se o usuário desligar explicitamente ('0'). Antes resetava a cada navegação.
   const [auto, setAuto] = useState<boolean>(() => localStorage.getItem('rt_auto') !== '0')
   const [mode, setMode] = useState<Mode>('loading')
+  const [engine, setEngine] = useState<string | null>(null) // '' = sem motor (#277)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [canInstall, install] = useInstallPrompt()
 
   // /healthz diz se o daemon está em modo setup (falta config) ou normal. Falha = assume normal.
   useEffect(() => {
     getHealth()
-      .then((h) => setMode(h.mode))
+      .then((h) => {
+        setMode(h.mode)
+        setEngine(h.engine ?? null)
+      })
       .catch(() => setMode('running'))
   }, [])
 
@@ -135,6 +139,16 @@ export default function App() {
 
           {mode === 'running' && (
             <>
+              {engine === '' && (
+                <div
+                  data-testid="no-engine-banner"
+                  className="mb-4 rounded-lg border border-accent/60 bg-accent/10 px-3 py-2 text-sm text-accent"
+                >
+                  ⚠️ Nenhum motor configurado (<code className="font-mono">ROBOTO_ENGINE</code> vazio) —
+                  runs ficam na fila sem processar. Defina <code className="font-mono">stub</code> ou{' '}
+                  <code className="font-mono">claude_code</code>.
+                </div>
+              )}
               <div className="mb-5 flex flex-wrap items-center gap-1">
                 {NAV.map(([v, label]) => (
                   <Button

@@ -304,6 +304,7 @@ def console_routes(
     budget_usd: float = 0.0,  # teto mensal de gasto de API (trilha L); 0 = sem teto
     wip_limit: int = 0,  # cap de runs ativos / backpressure (trilha J); 0 = sem limite
     live_models: LiveModels | None = None,  # switcher de modelo por etapa (hot-reload, trilha I)
+    engine: str = "",  # ROBOTO_ENGINE: ""=sem motor → runs ficam na fila (aviso no cockpit, #277)
 ) -> list[BaseRoute]:
     def _unauthorized(request: Request) -> bool:
         return not token or request.headers.get("authorization") != f"Bearer {token}"
@@ -313,7 +314,8 @@ def console_routes(
         return run if run is not None and run.tenant == tenant else None  # isolamento (D17)
 
     async def healthz(request: Request) -> JSONResponse:
-        return JSONResponse({"ok": True, "mode": "running"})  # front distingue de "setup"
+        # `engine` vazio → nenhum laço processa runs (ficam na fila); o front avisa (#277).
+        return JSONResponse({"ok": True, "mode": "running", "engine": engine})
 
     async def costs(request: Request) -> JSONResponse:
         if _unauthorized(request):
@@ -1133,12 +1135,13 @@ def build_console(
     budget_usd: float = 0.0,
     wip_limit: int = 0,
     live_models: LiveModels | None = None,
+    engine: str = "",
 ) -> Starlette:
     return Starlette(
         routes=console_routes(
             store, tenant=tenant, token=token, ttyd_base=ttyd_base, hub=hub,
             issues=issues, default_repo=default_repo, gateway=gateway,
             start_session=start_session, budget_usd=budget_usd, wip_limit=wip_limit,
-            live_models=live_models,
+            live_models=live_models, engine=engine,
         )
     )

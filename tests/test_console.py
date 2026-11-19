@@ -41,7 +41,18 @@ async def test_healthz_is_public() -> None:
     async with _client(store) as c:
         resp = await c.get("/healthz")
         assert resp.status_code == 200
-        assert resp.json() == {"ok": True, "mode": "running"}  # front distingue de "setup"
+        # front distingue de "setup"; engine "" = sem motor (aviso no cockpit, #277)
+        assert resp.json() == {"ok": True, "mode": "running", "engine": ""}
+
+
+async def test_healthz_reports_engine() -> None:
+    store = InMemoryStore()
+    app = build_console(store, tenant="acme", token=_TOKEN, engine="claude_code")
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://console"
+    ) as c:
+        resp = await c.get("/healthz")
+        assert resp.json()["engine"] == "claude_code"
 
 
 async def test_viewer_is_served() -> None:

@@ -171,6 +171,12 @@ class PostgresStore:
     async def close(self) -> None:
         await self._pool.close()
 
+    async def migrate(self) -> list[str]:
+        """Aplica migrations pendentes no boot (#276); devolve os nomes aplicados nesta rodada."""
+        from roboto.orchestrator.migrate import apply_migrations
+
+        return await apply_migrations(self._pool)
+
     async def insert_run_if_absent(self, ev: GithubEvent, now: datetime) -> tuple[Run, bool]:
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
