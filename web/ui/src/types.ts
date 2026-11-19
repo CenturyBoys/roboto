@@ -198,6 +198,7 @@ export interface Terminal {
 export interface Health {
   ok: boolean
   mode: 'setup' | 'running'
+  engine?: string // ROBOTO_ENGINE; '' = sem motor → runs ficam na fila (#277)
 }
 
 export interface SetupStatus {

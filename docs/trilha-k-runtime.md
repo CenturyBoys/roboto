@@ -43,6 +43,28 @@ Validação **determinística** no startup do daemon (`app/preflight.check`), a 
 - **1 instância por empresa, N repos via GitHub App** (D17); observabilidade em Docker (D3).
 - Secrets: **ansible-vault** (1 var `ANSIBLE_VAULT_PASSWORD` no GitHub) p/ config estática (D4).
 
+## 4b. Migrations no boot (#276, novo)
+
+O schema era aplicado só pelo **initdb** do Postgres (1º boot do volume) — uma migration nova num banco
+**já existente** não se aplicava sozinha (incidente: `config_hash`/`breakdown_draft` faltando → erro
+em runtime). Agora o daemon aplica as **pendentes no boot**:
+
+| Peça | O que faz | Onde |
+|---|---|---|
+| apply_migrations | cria `schema_migrations(filename)`; aplica em ordem os `.sql` não registrados; registra | `orchestrator/migrate` |
+| gancho | `PostgresStore.migrate()` roda no `runtime.main` **antes** de subir os laços | `orchestrator/pg_store`, `runtime` |
+
+- **Idempotente:** todas as migrations usam `IF NOT EXISTS` → re-rodar é no-op; um banco criado via
+  initdb é só **registrado** (baseline), sem efeito colateral. `pending_migrations` é puro e testado.
+- A imagem do app empacota `migrations/` (`Dockerfile`).
+
+## 4c. Aviso de "sem motor" no cockpit (#277, novo)
+
+`ROBOTO_ENGINE=""` (default) = **sem motor** → nenhum laço processa runs, que ficam `queued` pra
+sempre **sem feedback**. Agora o `/healthz` expõe `engine` e o cockpit mostra um **banner** quando
+vazio ("nenhum motor configurado — runs ficam na fila; defina `stub` ou `claude_code`"). Fecha a
+cegueira operacional (`web/console`→`/healthz`, `web/ui/App`).
+
 ## 5. Follow-ups (backlog)
 
 - **Egress deny-all + allowlist** (GitHub, OpenRouter, feeds) + `--cap-drop=ALL` + `--read-only`.

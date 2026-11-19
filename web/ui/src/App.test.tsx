@@ -35,3 +35,31 @@ test('desligar persiste e sobrevive a remontar (nova aba)', async () => {
   render(<App />) // simula abrir de novo / outra aba (mesmo localStorage)
   expect(await screen.findByTestId('auto-refresh')).toHaveTextContent('Auto-refresh off')
 })
+
+function _mockHealth(engine: string | undefined) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => {
+      const body = url.includes('/healthz')
+        ? { ok: true, mode: 'running', engine }
+        : { executions: [] }
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    }),
+  )
+}
+
+test('avisa quando nenhum motor está configurado (engine vazio) — #277', async () => {
+  _mockHealth('')
+  render(<App />)
+  expect(await screen.findByTestId('no-engine-banner')).toBeInTheDocument()
+})
+
+test('sem aviso quando há motor (engine=stub)', async () => {
+  _mockHealth('stub')
+  render(<App />)
+  await screen.findByTestId('auto-refresh') // espera montar
+  expect(screen.queryByTestId('no-engine-banner')).not.toBeInTheDocument()
+})
