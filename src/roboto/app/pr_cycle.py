@@ -19,7 +19,6 @@ from roboto.agents.review import (
     PullRequest,
     ReviewVerdict,
     check_issue_readiness,
-    check_issue_size,
     montar_review,
     revisar_pr,
 )
@@ -853,17 +852,9 @@ async def process_pr_run_tick(
                 )
                 await store.set_state(run.id, RunState.WAITING, moment)
                 return
-            # gate de RIGHT-SIZING (#239): issue grande demais (parece épico) → NÃO implementa; pede
-            # pra quebrar em sub-issues (o breakdown já existe). Detecção determinística, sem LLM.
-            size = check_issue_size(IssueDraft(title=title, body=body))
-            if size.oversized:
-                await github.comment_pr(
-                    run.repo, int(run.issue_id),
-                    f"Esta issue parece um ÉPICO ({size.criterios} critérios de aceite) — grande "
-                    "demais p/ 1 PR. Quebre em sub-issues (breakdown) antes de implementar.",
-                )
-                await store.set_state(run.id, RunState.WAITING, moment)
-                return
+            # right-sizing NÃO bloqueia o impl (revertido): contar critério é proxy ruim de
+            # épico — uma feature coesa pode ter 9 critérios (#297). O sinal é advisory no REFINO
+            # (loops, via `assess_epic` + Jev); aqui o impl confia que o refino já right-sizou.
             verdict = check_issue_readiness(IssueDraft(title=title, body=body))
             if not verdict.ready:
                 falta = ", ".join(verdict.missing)

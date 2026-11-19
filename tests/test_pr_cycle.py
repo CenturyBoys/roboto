@@ -1106,20 +1106,5 @@ async def test_correct_tick_bound_escalates_after_max_attempts() -> None:
     assert any(r.state is RunState.FAILED for r in store._runs.values())
 
 
-async def test_tick_bloqueia_issue_grande_demais() -> None:
-    # #239: issue que parece ÉPICO (muitos critérios) → NÃO implementa; WAITING + comenta.
-    from roboto.orchestrator.model import RunState
-
-    store = InMemoryStore()
-    run = await _run(store)  # type: ignore[assignment]
-    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
-    oversized = "## Critérios de aceite\n" + "".join(f"- [ ] item {i}\n" for i in range(9))
-    github = _FakeGithub(custom_body=oversized)
-    await process_pr_run_tick(
-        engine, _SeqGateway([""]), github, store,  # type: ignore[arg-type]
-        tenant="acme", workdir_root="/work", reviewer="review",
-        git_factory=lambda ws: _FakeGit(), now=lambda: _T0,
-    )
-    assert store._runs[run.id].state is RunState.WAITING  # type: ignore[attr-defined]
-    assert github.opened == 0  # não abriu PR
-    assert any("ÉPICO" in c for c in github.comments)
+# (removido: o gate de tamanho no impl foi revertido — contar critério é proxy ruim de épico; o
+# right-sizing agora é advisory no refino (epic_signal/Jev). Cobertura: test_epic_signal.py.)
