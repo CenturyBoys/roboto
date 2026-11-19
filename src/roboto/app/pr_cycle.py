@@ -26,8 +26,8 @@ from roboto.agents.review import (
 from roboto.app.approval_gate import make_policy_callback
 from roboto.app.autoformat import autoformat
 from roboto.app.code_intel_brief import code_intel_brief
-from roboto.app.code_intel_refs import extract_symbols, symbols_directive
 from roboto.app.code_intel_diag import code_intel_diagnostics
+from roboto.app.code_intel_refs import extract_symbols, symbols_directive
 from roboto.app.comment_poll import BOT_MARKER
 from roboto.app.correction import CycleResult, correction_cycle
 from roboto.app.deps import blocked_by
