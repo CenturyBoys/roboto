@@ -19,6 +19,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from roboto.app.task_class import is_single_deliverable
 from roboto.llm.decide import Decider
 from roboto.result import Ok
 
@@ -30,18 +31,25 @@ _JEV_QUESTION = (
 )
 _CONF_AGE = 0.7  # só age (sugere quebrar) com confiança >= isto; abaixo, não surfa (evita falso+)
 
+# task de ANÁLISE/pesquisa/decisão (pelo verbo do TÍTULO): entrega 1 artefato (estudo/ADR), não é
+# épico — mesmo citando vários paths/fases na pesquisa (era o falso-positivo do #297).
+_ANALYSIS = re.compile(
+    r"\b(analisar|investigar|pesquisar|estudar|avaliar|documentar|decidir|definir|desenhar)\b|\badr\b",
+    re.I,
+)
 _PHASES = re.compile(r"\b(fase|etapa)\s*\d|primeiro.{0,40}\b(depois|em seguida|ent[aã]o)\b", re.I)
 _DELIVERABLE = re.compile(r"(?mi)^[\s\-*]*(implementar|criar|adicionar|desenvolver|escrever)\b")
-# raízes/camadas de subsistema (spread = toca várias partes do sistema).
+# camadas/subsistemas REAIS (spread = toca várias partes). NÃO inclui raízes de monorepo (apps/,
+# packages/) — num monorepo todo path tem isso e inflaria o sinal (falso-positivo real, #297).
 _SUBSYS = (
     "migrations", "api", "ui", "frontend", "backend", "worker", "realtime", "infra", "schema",
-    "scheduler", "auth", "db", "apps/", "packages/",
+    "scheduler", "auth",
 )
 
 
 @dataclass(frozen=True)
 class EpicSignal:
-    bucket: str  # "small" | "big" | "ambiguous"
+    bucket: str  # "small" (não-épico) | "ambiguous" (→ Jev decide); Tier 0 nunca afirma "big"
     reasons: list[str] = field(default_factory=list)
 
 
@@ -54,7 +62,11 @@ class EpicVerdict:
 
 
 def epic_signal(title: str, body: str) -> EpicSignal:
-    """Tier 0 determinístico: classifica em small/big/ambiguous por sinais estruturais. Puro."""
+    """Tier 0 determinístico: só DESCARTA (small) ou manda pro Jev (ambiguous). Nunca AFIRMA épico —
+    'rule in' é sempre o Jev (heurística afirmar gera falso+: contagem, paths de monorepo). Puro."""
+    # task de UM entregável (spike/análise/definição) NUNCA é épico — "Analisar X" entrega 1 estudo.
+    if is_single_deliverable(title, body) or _ANALYSIS.search(title):
+        return EpicSignal("small", ["entregável único (análise/spike/definição)"])
     text = f"{title}\n{body}"
     phases = bool(_PHASES.search(text))
     deliverables = len(set(m.lower() for m in _DELIVERABLE.findall(body)))
@@ -66,11 +78,9 @@ def epic_signal(title: str, body: str) -> EpicSignal:
         reasons.append(f"{deliverables} verbos de entrega distintos")
     if len(subsys) >= 2:
         reasons.append(f"toca {len(subsys)} subsistemas ({', '.join(subsys[:4])})")
-    if phases and len(subsys) >= 3:
-        return EpicSignal("big", reasons)
-    if not phases and deliverables <= 1 and len(subsys) <= 1:
-        return EpicSignal("small", reasons or ["entregável único"])
-    return EpicSignal("ambiguous", reasons)
+    if not reasons:  # nenhum sinal estrutural → claramente não é épico
+        return EpicSignal("small", ["sem sinal de múltiplos entregáveis"])
+    return EpicSignal("ambiguous", reasons)  # tem sinal → o Jev decide (não afirmo por heurística)
 
 
 async def assess_epic(title: str, body: str, decider: Decider | None) -> EpicVerdict:
@@ -79,8 +89,7 @@ async def assess_epic(title: str, body: str, decider: Decider | None) -> EpicVer
     motivo = "; ".join(sig.reasons)
     if sig.bucket == "small":
         return EpicVerdict(False, 0.9, motivo or "entregável único", "heuristica")
-    if sig.bucket == "big":
-        return EpicVerdict(True, 0.9, motivo, "heuristica")
+    # ambíguo (tem sinal estrutural): o Jev decide — heurística não afirma épico.
     if decider is None:
         return EpicVerdict(False, 0.3, "ambíguo, sem Jev", "heuristica")
     result = await decider.decide(_JEV_QUESTION, f"{title}\n{body}")

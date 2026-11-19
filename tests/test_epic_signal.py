@@ -31,8 +31,20 @@ def test_tier0_coeso_com_muitos_criterios_e_small() -> None:
     assert epic_signal("feat: ownership", _COESO).bucket == "small"  # #297: não-épico
 
 
-def test_tier0_multi_entregavel_com_fases_e_big() -> None:
-    assert epic_signal("feat: torneio", _EPICO).bucket == "big"
+def test_tier0_multi_entregavel_vai_pro_jev_nao_afirma() -> None:
+    # Tier 0 NÃO afirma épico (nem no multi-entregável): manda pro Jev decidir (ambiguous).
+    assert epic_signal("feat: torneio", _EPICO).bucket == "ambiguous"
+
+
+def test_task_de_analise_e_small() -> None:
+    # #297: "Analisar X" = 1 entregável (o estudo) → NUNCA épico, mesmo tocando vários paths.
+    body = "Analisar o chaveamento tocando apps/realtime, packages/db e migrations em fases."
+    assert epic_signal("Analisar otimização de chaveamento de torneios", body).bucket == "small"
+
+
+def test_raizes_de_monorepo_nao_contam_como_subsistema() -> None:
+    # apps/ e packages/ sozinhos não inflam o sinal (eram o falso-positivo do #297).
+    assert epic_signal("feat: x", "muda apps/realtime e packages/db").bucket == "small"
 
 
 def test_tier0_borderline_e_ambiguous() -> None:
