@@ -96,6 +96,14 @@ class Decision:
     why: str
 
 
+def policy_from_autonomy(autonomy: str) -> Policy:
+    """`Policy` a partir do nome do nível (`careful`/`normal`/`free`); inválido → NORMAL."""
+    try:
+        return Policy(Autonomy(autonomy))
+    except ValueError:
+        return Policy(Autonomy.NORMAL)
+
+
 def _gate_mode(kinds: frozenset[ActionKind], policy: Policy) -> ActionMode:
     """O modo mais restritivo entre as ações da chamada (sem ação → auto)."""
     if not kinds:

@@ -254,7 +254,9 @@ que motivou: `arenavalendo/main#310` nasceu com o trailer (remediado por `--amen
 
 - **evals — LLM-as-judge** (dimensões subjetivas: qualidade de refino/review), em run **agendado**.
 - **jev-guard — escalada automática**: alto risco → esperar OK humano (hoje só surfa o nível).
-- **Aprovação por ação — PoC vivo**: validar o `can_use_tool` no SDK vivo e ligar o callback no loop
-  orquestrado (`compose`/`engine_loop`) — o enforcement (§9) já está no código, testado.
+- **Aprovação por ação — ligada no loop (#271, opt-in)**: `process_pr_run_tick` passa
+  `approval=make_policy_callback(...)` ao motor quando `ROBOTO_APPROVAL=1` (nível por `ROBOTO_AUTONOMY`,
+  default `free`). Default OFF → fluxo autônomo (bypassPermissions) intacto. Falta só **validar o
+  `can_use_tool` no SDK vivo** no PoC.
 - **Policy de 2 eixos (#267)**: trocar o least-privilege estático (§2) por `verdict()` puro —
   tool-class × autonomia por ação + outside-guard (derivado do Tucano; ver `research/tucano-reuso.md`).

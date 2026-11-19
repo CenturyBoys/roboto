@@ -157,3 +157,17 @@ def test_accepts_max_tools() -> None:
     # #96: cap de flailing (tool-calls) — modelo fraco loopa a 3.4M tokens → corta mid-stream
     assert ClaudeCodeEngine(max_tools=80)._max_tools == 80
     assert ClaudeCodeEngine()._max_tools == 0  # 0 = sem cap
+
+
+def test_set_approval_liga_e_desliga_o_gate() -> None:
+    """set_approval (#271) seta o callback; None desliga (volta ao fluxo sem gate)."""
+
+    async def _cb(tool: str, args: dict[str, object]) -> object:
+        return None
+
+    engine = ClaudeCodeEngine()
+    assert engine._approval is None
+    engine.set_approval(_cb)  # type: ignore[arg-type]
+    assert engine._approval is _cb
+    engine.set_approval(None)
+    assert engine._approval is None
