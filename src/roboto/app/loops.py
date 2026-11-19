@@ -12,14 +12,14 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime
 
 from roboto.agents.refiner import IssueDraft
-from roboto.agents.review import check_issue_readiness, check_issue_size
+from roboto.agents.review import check_issue_readiness
 from roboto.app.code_intel_brief import code_intel_brief
 from roboto.app.engine_loop import TurnOutcome, drive_turn
+from roboto.app.epic_signal import assess_epic, epic_advisory
 from roboto.app.inbound import IssueLister, dispatch_inbound
 from roboto.app.memory import recall_block
 from roboto.app.related_issues import related_issues_block
 from roboto.app.repo_profile import read_agents_conventions
-from roboto.app.task_class import is_single_deliverable
 from roboto.app.web_research import research_block, research_is_critical
 from roboto.channels.model import OutboundMessage
 from roboto.channels.port import Channel
@@ -225,12 +225,12 @@ async def process_refine_tick(
     # right-sizing (#239): issue BEM ESTRUTURADA mas tamanho-ÉPICO passa no DoR e depois trava o
     # coder/review (raiz = escopo, não modelo). Avisa pra quebrar em sub-issues (determinístico).
     if body:
-        # spike/definição (entregável único) não leva o aviso de "quebre em sub-issues" — um
-        # checklist minucioso não a torna épico (#294 era spike de pesquisa com 10 critérios).
-        single = is_single_deliverable(title, body)
-        size = check_issue_size(IssueDraft(title=title, body=body), single_deliverable=single)
-        if size.oversized:
-            nota += f"\n\n⚠️ Right-sizing: {size.reason}. NÃO implemente como uma issue só."
+        # right-sizing SEMÂNTICO (não contagem): o sinal é "entrega mais de 1 artefato que seria um
+        # PR separado?" — Tier 0 determinístico + Jev no ambíguo (`assess_epic`). SÓ surfa, nunca
+        # bloqueia; só com confiança alta (mata o falso+ da contagem, ex.: #297, 9 critérios).
+        advisory = epic_advisory(await assess_epic(title, body, decider))
+        if advisory:
+            nota += f"\n\n{advisory}"
     await store.append_session_event(run.tenant, run.id, "message", now(), text=nota)
     if verdict is not None and verdict.ready and body:
         # second brain (Fatia 1): grava a DECISÃO de escopo do refino — greppável; o refino/impl de

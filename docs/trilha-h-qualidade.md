@@ -17,10 +17,13 @@
 - **Calibração:** só irreversível/alto impacto vai ao humano; o resto é determinístico — senão recria
   o gargalo humano (trilha J). **Aprovação por ação** (tool-level) agora é **enforcement de verdade**
   via callback `can_use_tool` (§9); o binding com o SDK vivo valida no PoC.
-- **Right-sizing no impl (#239):** antes de implementar, se a issue parece **épico** (muitos critérios,
-  `check_issue_size`), o run vai pra `WAITING` e comenta "quebre em sub-issues (breakdown)" — não coda
-  grande demais. Determinístico, sem LLM. (Custo por fase: `llm_call.tier` grava a fase — refine/scope
-  — não "frontier" fixo, #221.)
+- **Right-sizing SEMÂNTICO (advisory, não bloqueia):** contar critério de aceite era um proxy ruim de
+  épico — uma feature coesa pode ter 9 critérios (falso-positivo real, #297). O sinal agora pergunta
+  **"entrega mais de 1 artefato que seria um PR separado?"** em camadas (`app/epic_signal`): Tier 0
+  determinístico (fases, spread de subsistemas, múltiplos entregáveis) → **Jev** no ambíguo
+  (`assess_epic`, `{decision, confidence, reason}`). **Só surfa no refino** com confiança alta, com o
+  motivo acionável — **nunca bloqueia o impl** (o impl confia no refino). Custo por fase:
+  `llm_call.tier=refine/scope` (não "frontier" fixo, #221).
 
 ## 2. Least privilege de ferramentas por task (novo)
 
