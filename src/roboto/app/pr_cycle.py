@@ -27,6 +27,7 @@ from roboto.app.approval_gate import make_policy_callback
 from roboto.app.autoformat import autoformat
 from roboto.app.code_intel_brief import code_intel_brief
 from roboto.app.code_intel_diag import code_intel_diagnostics
+from roboto.app.code_intel_refs import extract_symbols, symbols_directive
 from roboto.app.comment_poll import BOT_MARKER
 from roboto.app.correction import CycleResult, correction_cycle
 from roboto.app.deps import blocked_by
@@ -339,6 +340,12 @@ async def run_pr_cycle(
         ci_cmd = os.environ.get("ROBOTO_CODE_INTEL_CMD", "code-intel-mcp")
         brief = await asyncio.to_thread(code_intel_brief, workdir, cmd=ci_cmd)
         ci_block = f"\n{brief}\n" if brief else ""
+    # #223: extrai os símbolos prováveis da issue e MANDA o motor rodar code-intel NELES antes de
+    # editar (determinístico) — ataca o subuso de code-intel nos alvos (import órfão do #310).
+    symbols_block = ""
+    if os.environ.get("ROBOTO_CODE_INTEL", "1") not in ("0", "false", "no"):
+        _directive = symbols_directive(extract_symbols(contexto))
+        symbols_block = f"\n{_directive}\n" if _directive else ""
     # convenções do repo-alvo (E, determinismo primeiro): o harness LÊ o AGENTS.md e injeta — não
     # manda o motor "ler sozinho" (gasta token F e pode ignorar). Capado pelo orçamento de token.
     conventions = read_agents_conventions(workdir)
@@ -371,7 +378,8 @@ async def run_pr_cycle(
     base_prompt = (
         f"{anchor_line(persona)}"
         f"Implemente a issue {run.issue_id} no repo {run.repo} (cwd {workdir}).{contexto}"
-        f"{profile_block}{test_block}{ci_block}{conventions_block}{memory_block}{aprendizado_block}\n"
+        f"{profile_block}{test_block}{ci_block}{symbols_block}"
+        f"{conventions_block}{memory_block}{aprendizado_block}\n"
         "ESCOPO MÍNIMO: entregue APENAS o que os Critérios de aceite da issue pedem — nada além. "
         "NÃO crie documentos/arquivos extras (ex.: breakdown ou 'update' de épico), NÃO edite o "
         "épico nem outras issues, NÃO toque em código não relacionado, NÃO commite lockfile/deps "

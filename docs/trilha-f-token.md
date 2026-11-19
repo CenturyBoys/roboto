@@ -74,6 +74,13 @@ modelo de custo (trilha L) e expõe regressão de comportamento (motor voltando 
 O **custo** vive em `llm_call`; o **comportamento** em `session_event` (agregado em `tool_usage`). As
 duas são medições determinísticas do harness, não estimativa.
 
+**Símbolos da issue → code-intel direcionado (#223):** além de injetar o catálogo+repo_map
+(`code_intel_brief`), o harness **extrai determinísticamente** os símbolos prováveis da issue (spans em
+crase + CamelCase/snake, `app/code_intel_refs.extract_symbols`) e injeta uma diretiva pra o motor
+rodar `find_references`/`find_symbol` **nesses alvos** antes de editar — ataca o subuso de code-intel
+*nos símbolos certos* (causa do import órfão do #310). Execução do `find_references` pelo próprio
+harness (como o `repo_map`) valida no PoC.
+
 **Follow-ups (backlog):** cache quente do índice do code-intel (container efêmero re-indexa por run —
 trilha K); **orçamento** de token por tipo de agente (trilhas H/L); busca semântica AST+vetor além do
 code-intel; context engineering (compaction / note-taking — trilha G).
