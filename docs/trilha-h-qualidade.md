@@ -236,6 +236,20 @@ A validação de prontidão (DoR, trilha A) escala **JUDGE → FRONTIER** quando
 (`agents/review.validar_issue_semantica`) — o mesmo fio de "proposta validada por camada
 determinística". O veredito do review é determinístico (`aprovado_por_findings`, trilha D).
 
+## 12. Higiene de commit — sem atribuição de IA (#279, novo)
+
+A org **proíbe** `Co-Authored-By: Claude` e rodapés "Generated with …" em commit ou PR — *mesmo que o
+harness sugira*. O setting `includeCoAuthoredBy:false` do Claude Code **não basta**: o modelo escreve
+o trailer **à mão** no `git commit -m`. A garantia é **determinística**:
+
+| Peça | O que faz | Onde |
+|---|---|---|
+| strip_ai_trailers | remove linhas de co-autor de IA / rodapé de ferramenta; preserva co-autor humano | `app/commit_hygiene` (puro, testado) |
+| install_hook | instala um `commit-msg` global (`core.hooksPath`) que roda o strip em TODO commit, no boot | `app/commit_hygiene` + `runtime` |
+
+Pega o commit **manual** do modelo (que o setting não barra) e vale pro motor no repo-alvo. Incidente
+que motivou: `arenavalendo/main#310` nasceu com o trailer (remediado por `--amend`).
+
 ## 11. Follow-ups (backlog)
 
 - **evals — LLM-as-judge** (dimensões subjetivas: qualidade de refino/review), em run **agendado**.
