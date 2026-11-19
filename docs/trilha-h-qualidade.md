@@ -24,7 +24,8 @@
   épico, e raízes de monorepo (`apps/`, `packages/`) não contam como subsistema (os 2 falso-positivos
   do #297). Quem **AFIRMA** épico é sempre o **Jev** no ambíguo (`assess_epic`, `{decision, confidence,
   reason}`) — heurística afirmar gera falso+. **Só surfa no refino** com confiança alta e motivo
-  acionável — **nunca bloqueia o impl**. Custo por fase: `llm_call.tier=refine/scope` (#221).
+  acionável — **nunca bloqueia o impl** (nem no `pr_cycle` nem no endpoint `/implement` do console).
+  Custo por fase: `llm_call.tier=refine/scope` (#221).
 
 ## 2. Least privilege de ferramentas por task (novo)
 
