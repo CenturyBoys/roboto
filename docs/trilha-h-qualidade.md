@@ -108,6 +108,13 @@ porta do próprio CI.
   isso infra fica restrita a `test`/`build`. Em ambiente sem o DB de teste,
   `ROBOTO_LOCAL_CI_CMDS=lint,typecheck,build` evita rodar a suíte de integração que só o CI julga.
 - **Esgotou e segue vermelho:** **não abre PR vermelho** — escala p/ humano (feed + Telegram).
+- **Honestidade do "infra" (#280):** quando o `test` degrada p/ infra, a mensagem **não** diz "ok, o
+  CI do GitHub é juiz" (parecia aprovação) — diz **"NÃO validado localmente — o CI do GitHub é
+  OBRIGATÓRIO antes do merge"**. Não valida teste não pode parecer que validou.
+- **Validar o committado, não a árvore suja (#281):** antes do `push`, um `commit_all` defensivo
+  (`git add -A`, no-op se limpo) garante que o PUSH inclui **tudo que o CI local validou** — fecha o
+  *false-green* de um arquivo deixado fora do commit (o import órfão `region-lock` do #310: verde
+  local na árvore, vermelho no CI no commit).
 - **Visibilidade:** cada passo vai pro feed (`🔴 CI local lint reprovou…`, `✅ CI local verde…`) —
   a falha de CI deixa de ser invisível. O mesmo vale para o **review**: cada tentativa deixa o veredito
   no feed (`🔍 Review: aprovado/reprovou (N)`) e, ao esgotar sem aprovação, o motivo (`🚩 Encerrado

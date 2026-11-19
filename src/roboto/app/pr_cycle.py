@@ -667,8 +667,9 @@ async def run_pr_cycle(
                     if store is not None and now is not None:
                         await store.append_session_event(
                             run.tenant, run.id, "message", now,
-                            text=f"⚠️ CI local `{ci.which}` indisponível (parece INFRA, não a sua "
-                                 "mudança) — sigo; o CI do GitHub é o juiz final.",
+                            text=f"⚠️ CI local `{ci.which}` NÃO validado (serviço de teste "
+                                 "ausente/infra, não a sua mudança) — o CI do GitHub é OBRIGATÓRIO "
+                                 "antes do merge.",
                         )
                 elif not ci.passed:
                     if store is not None and now is not None:
@@ -694,6 +695,13 @@ async def run_pr_cycle(
                         run.tenant, run.id, "message", now,
                         text=f"✅ CI local verde após {ci_tries} correção(ões) — PR nasce verde.",
                     )
+        # #281: o PUSH tem de incluir TUDO que o CI local validou (o worktree). Motor deixou arquivo
+        # fora do commit (ex.: import órfão `region-lock` do #310) → CI local verde, GitHub vermelho.
+        # commit_all faz `git add -A` e é no-op se a árvore está limpa.
+        try:
+            await git.commit_all(f"{title} (worktree validado localmente, #281)")
+        except GitError:
+            pass  # hook já passou antes; re-commit defensivo é best-effort
         await git.push(branch)
         if "pr" not in state:
             # idempotência contra PR vivo: reaproveita o PR aberto do branch, se houver
