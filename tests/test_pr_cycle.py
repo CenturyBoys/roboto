@@ -1147,3 +1147,54 @@ def test_poli_so_com_toggle_e_sem_bloqueador() -> None:
     assert _poli(close_minors=False) is False  # toggle desligado = comportamento antigo
     assert _poli(aprovado=False) is False  # tem bloqueador → correção normal, não polimento
     assert _poli(n_minores=0) is False  # aprovou limpo → nada a polir
+
+
+# finding MENOR (não-bloqueante): review APROVA, mas aponta uma ressalva menor.
+_FIND_MENOR = (
+    "FINDING\nseveridade: menor\narquivo: a.ts\nlinha: 1\nconfianca: alta\n"
+    "titulo: nome pouco claro\nevidencia: x\nrecomendacao: renomear a var\nEND"
+)
+
+
+async def test_close_minors_polimenta_e_aprova(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # fiação REAL (review()→correction_cycle→implement): toggle ON, review aprova COM um menor →
+    # 1 passada de polimento (re-implementa com o menor injetado) → re-review limpo → aprovado.
+    monkeypatch.setenv("ROBOTO_CLOSE_MINORS", "1")
+    result, engine, _git, _gh = await _cycle(_SeqGateway([_FIND_MENOR, ""]))
+    assert result.approved is True
+    assert result.attempts == 2  # a volta extra = o polimento rodou
+    assert len(engine.started) == 2  # re-implementou (o menor foi pro feedback)
+
+
+async def test_close_minors_desligado_nao_polimenta(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # default (toggle OFF): menor não bloqueia e NÃO dispara polimento (comportamento antigo).
+    monkeypatch.delenv("ROBOTO_CLOSE_MINORS", raising=False)
+    result, engine, _git, _gh = await _cycle(_SeqGateway([_FIND_MENOR]))
+    assert result.approved is True
+    assert result.attempts == 1
+    assert len(engine.started) == 1
+
+
+async def test_close_minors_persistente_nunca_falha(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # SEGURANÇA: mesmo que o menor PERSISTA, aceita na review seguinte (1 passada só) — o run
+    # NUNCA falha por um menor (é polimento, não bloqueio).
+    monkeypatch.setenv("ROBOTO_CLOSE_MINORS", "1")
+    gw = _SeqGateway([_FIND_MENOR, _FIND_MENOR])
+    result, engine, _git, _gh = await _cycle(gw, max_attempts=3)
+    assert result.approved is True  # aceitou o menor remanescente
+    assert result.attempts == 2
+
+
+async def test_close_minors_surfa_no_feed(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # o polimento deixa rastro no feed (🧹) p/ o operador ver no cockpit.
+    monkeypatch.setenv("ROBOTO_CLOSE_MINORS", "1")
+    store = InMemoryStore()
+    run = await _run(store)
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    git, github = _FakeGit(), _FakeGithub()
+    await run_pr_cycle(
+        engine=engine, gateway=_SeqGateway([_FIND_MENOR, ""]), github=github, git=git,  # type: ignore[arg-type]
+        run=run, workdir="/work/acme/app", reviewer="review", store=store, now=_T0,
+    )
+    evs = await store.session_events(run.id, 0, 100)
+    assert any("🧹" in (e.text or "") for e in evs)  # surfou "Fechando N menor(es)"
