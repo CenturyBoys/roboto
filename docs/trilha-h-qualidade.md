@@ -145,6 +145,26 @@ porta do próprio CI.
   só o *o quê*.
 - **Configurável:** `ROBOTO_LOCAL_CI=0` desliga; `ROBOTO_LOCAL_CI_CMDS=lint,typecheck` restringe.
 
+### Triagem de CI — o AGENTE faz o levantamento, a política decide (`ROBOTO_CI_TRIAGE`)
+
+Nem toda CI do GitHub vermelha é **nossa**. Pode ser vuln de dependência **pré-existente** (`pnpm
+audit`/GHSA), erro de **configuração de pipeline** (secret/runner/env) ou **infra/flaky**. Forçar o
+PR atual a "consertar" isso é errado — ele flaila, muda fora de escopo e escala pro humano à toa (ex.:
+um PR de doc esbarrando num ReDoS transitivo do `effect`). Resiliência: no `process_correct_tick`,
+quando a CI vem vermelha, o **agente lê a falha + o diff do PR** (`app/ci_triage`) e classifica a
+**procedência** — `nosso_codigo | dependencia_seguranca | config_pipeline | infra_flaky` + confiança.
+O modelo **propõe**; a **política pura decide** a ação (determinismo 1º):
+- **nosso_codigo** → corrige no próprio PR (comportamento de sempre; CI é autoritativa);
+- **dependencia_seguranca / config_pipeline** (não é nosso) → **abre uma issue dedicada**
+  (deduplicada por GHSA/pacote via `enqueue_effect`), **não força** este PR a consertar, e surfa
+  `🔎 Triagem de CI: … não causado por este PR`;
+- **infra_flaky** ou **baixa confiança** → **escala pro humano** (não chuta correção nem abre issue).
+
+Antes, o `check_failures` ia cru pra correção (buraco: o fleet não distinguia erro introduzido pelo
+diff × pré-existente, e **nunca gerava task** — a issue de segurança era aberta na mão). `ROBOTO_CI_TRIAGE=0`
+desliga (volta ao comportamento antigo). *(Próximo incremento: triar também por log completo do job,
+não só o resumo dos checks.)*
+
 ### Fecha MENORES automaticamente (`ROBOTO_CLOSE_MINORS`)
 
 Situação recorrente: o review **aprova** (0 bloqueador) mas aponta ressalvas **menores** (não-bloqueantes)

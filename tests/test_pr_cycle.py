@@ -85,6 +85,20 @@ _FIND_REPROVA = (
     "FINDING\nseveridade: bloqueador\narquivo: a.ts\nlinha: 1\nconfianca: alta\n"
     "titulo: falta teste\nevidencia: x\nrecomendacao: adicionar teste\nEND"
 )
+# triagem de CI (ci_triage): classifica a falha como NOSSA → a correção no PR segue normal. O
+# process_correct_tick, com ci_errs não-vazio, faz 1 chamada extra ao gateway (a triagem) entre o
+# review e o re-review — por isso os testes de CI vermelha injetam esta resposta.
+_TRIAGE_NOSSO = (
+    "CATEGORIA: nosso_codigo\nNOSSO: sim\nCONFIANCA: alta\n"
+    "TITULO:\nRESUMO: erro de tipo em arquivo do PR\nDEDUP:"
+)
+# triagem classifica a falha como vuln de dependência PRÉ-EXISTENTE (não nossa) → abre issue, não
+# força o PR a consertar.
+_TRIAGE_SEGURANCA = (
+    "CATEGORIA: dependencia_seguranca\nNOSSO: nao\nCONFIANCA: alta\n"
+    "TITULO: Vuln HIGH ReDoS no pacote effect\n"
+    "RESUMO: bump effect p/ >=3.22.1 (transitiva via prisma)\nDEDUP: GHSA-7589-6fvf-x4pw"
+)
 
 
 class _FakeGithub:
@@ -1066,7 +1080,8 @@ async def test_correct_tick_ci_red_forces_correction_even_if_judge_approves() ->
     github.ci_errs = "✖ verify: Typecheck\n  route.test.ts:20 TS2345 Request não é NextRequest"
     await process_correct_tick(
         engine,
-        _SeqGateway(["", ""]),  # type: ignore[arg-type]  # juiz aprova nas 2 rodadas
+        # juiz aprova (rodadas), triagem classifica NOSSO → corrige mesmo assim (CI manda)
+        _SeqGateway(["", _TRIAGE_NOSSO, ""]),  # type: ignore[arg-type]
         github,
         store,
         tenant="acme",
@@ -1097,7 +1112,7 @@ async def test_correct_tick_bound_escalates_after_max_attempts() -> None:
     github.ci_errs = "✖ verify: ainda vermelha"
     await process_correct_tick(
         engine,
-        _SeqGateway([""]),  # type: ignore[arg-type]
+        _SeqGateway(["", _TRIAGE_NOSSO]),  # type: ignore[arg-type]  # review + triagem (NOSSO)
         github,
         store,
         tenant="acme",
@@ -1110,6 +1125,39 @@ async def test_correct_tick_bound_escalates_after_max_attempts() -> None:
     assert git.pushes == []
     assert any("🚩" in c and "humano" in c for c in github.comments)  # escalou
     assert any(r.state is RunState.FAILED for r in store._runs.values())
+
+
+async def test_correct_tick_ci_nao_nosso_abre_issue_e_nao_corrige() -> None:
+    # pedido do dono: vuln de dep PRÉ-EXISTENTE (pnpm audit) não é nosso código → o AGENTE tria e a
+    # política NÃO força este PR a consertar; abre issue dedicada (dedup) e segue.
+    store = InMemoryStore()
+    ev = GithubEvent(
+        tenant="acme", repo="acme/app", issue_id="318", agent="correct", idempotency_key="sec"
+    )
+    run, _ = await store.insert_run_if_absent(ev, _T0)
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    git, github = _FakeGit(), _FakeGithub()
+    github.ci_errs = "✖ scan: Audit (produção — high+)\n  high ReDoS in effect <=3.22.0"
+    await process_correct_tick(
+        engine,
+        _SeqGateway(["", _TRIAGE_SEGURANCA]),  # type: ignore[arg-type]  # review aprova + triagem
+        github,
+        store,
+        tenant="acme",
+        workdir_root="/work",
+        reviewer="review",
+        git_factory=lambda ws: git,
+        now=lambda: _T0,
+    )
+    assert engine.started == []  # NÃO forçou correção (não é nosso código)
+    assert git.pushes == []
+    issues = [e for e in store._effects.values() if e.kind == "create_issue"]
+    assert len(issues) == 1  # abriu UMA issue de follow-up
+    assert "effect" in issues[0].payload["title"]
+    assert "GHSA-7589-6fvf-x4pw" in issues[0].dedup_key  # deduplicada pela chave do GHSA
+    evs = await store.session_events(run.id, 0, 90)
+    assert any("Triagem de CI" in (e.text or "") for e in evs)
+    assert store._runs[run.id].state is RunState.DONE  # review ok + vermelho alheio neutralizado
 
 
 # (removido: o gate de tamanho no impl foi revertido — contar critério é proxy ruim de épico; o

@@ -24,6 +24,14 @@ from roboto.agents.review import (
 )
 from roboto.app.approval_gate import make_policy_callback
 from roboto.app.autoformat import autoformat
+from roboto.app.ci_triage import (
+    ACAO_ABRIR_ISSUE,
+    ACAO_CORRIGIR,
+    acao_ci,
+    changed_files_from_diff,
+    ci_issue_body,
+    triar_ci,
+)
 from roboto.app.code_intel_brief import code_intel_brief
 from roboto.app.code_intel_diag import code_intel_diagnostics
 from roboto.app.code_intel_refs import extract_symbols, symbols_directive
@@ -1107,6 +1115,37 @@ async def process_correct_tick(
         # juiz lê só o diff e pode não ver o erro de tipo (deixou o #252 vermelho e "aprovado").
         cf = await github.check_failures(run.repo, pr_number)
         ci_errs = cf.value if isinstance(cf, Ok) else ""
+
+        # TRIAGEM de CI (o AGENTE faz o levantamento; a POLÍTICA decide): nem toda CI vermelha é
+        # NOSSA. Vuln de dep pré-existente, erro de config de pipeline ou infra NÃO devem forçar
+        # ESTE PR a consertar (flail/out-of-scope). Se não for do diff deste PR → abre issue
+        # dedicada (dedup) ou escala, e remove o vermelho alheio do feedback. ROBOTO_CI_TRIAGE=0.
+        if ci_errs and os.environ.get("ROBOTO_CI_TRIAGE", "1") not in ("0", "off", "false", "no"):
+            diff_pr = await github.get_pr_diff(run.repo, pr_number)
+            diff_txt = diff_pr.value if isinstance(diff_pr, Ok) else ""
+            triage = await triar_ci(ci_errs, changed_files_from_diff(diff_txt), diff_txt, gateway)
+            if acao_ci(triage) != ACAO_CORRIGIR:
+                ci_errs = ""  # não é nosso → não realimenta a correção com o vermelho alheio
+                if acao_ci(triage) == ACAO_ABRIR_ISSUE and triage.titulo:
+                    aberta = await store.enqueue_effect(
+                        run.tenant, run.id, "create_issue",
+                        {"repo": run.repo, "title": f"[CI] {triage.titulo}",
+                         "body": ci_issue_body(triage, run.repo, pr_number)},
+                        f"ci-task:{run.repo}:{triage.dedup or triage.titulo}", moment,
+                    )
+                    texto = (
+                        f"🔎 Triagem de CI: `{triage.categoria}` NÃO causado por este PR → "
+                        + ("abri issue de follow-up" if aberta else "issue já aberta (dedup)")
+                        + ". O vermelho é pré-existente; este PR não precisa consertar."
+                    )
+                else:
+                    texto = (
+                        f"🔎 Triagem de CI: `{triage.categoria}` (conf {triage.confianca}) não é "
+                        "código deste PR → escala p/ humano (retry/ignorar); o PR não conserta."
+                    )
+                await store.append_session_event(
+                    run.tenant, run.id, "message", moment, text=texto
+                )
 
         if verdict.approved and not ci_errs:
             await github.comment_pr(
