@@ -9,6 +9,7 @@ no real). Aprovação NÃO mergeia — gate humano (D7).
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from collections.abc import Callable
 from datetime import datetime
@@ -70,6 +71,7 @@ from roboto.orchestrator.store import Store
 from roboto.persona import anchor_line
 from roboto.result import Err, Ok, Result
 
+_log = logging.getLogger(__name__)
 _COST_PER_MTOK = 0.4  # custo aprox. Qwen/OpenRouter ($/milhão de tokens) — medir/afinar (L)
 _MAX_RUN_ATTEMPTS = 3  # teto de re-tentativas em erro transitório (B) antes de FAILED terminal
 
@@ -985,6 +987,11 @@ async def process_pr_run_tick(
             decider=decider,
         )
     except Exception as exc:  # noqa: BLE001 — motor travado (watchdog) / git / PR: tira de RUNNING
+        # OBSERVABILIDADE: alguns erros (ex.: engine/CLI) têm str() vazio → a msg virava "execução
+        # falhou:" sem nada (inútil p/ diagnóstico). Agora caímos no TIPO do erro + logamos o
+        # traceback no daemon (antes era engolido no append_session_event).
+        detalhe = str(exc).strip() or type(exc).__name__
+        _log.exception("process_pr_run_tick run #%s falhou: %s", run.id, detalhe)
         # Erro TRANSITÓRIO de provedor (402 sem crédito, 429, 5xx, overloaded) → re-enfileira com
         # backoff (B): quando a condição passa (ex.: humano recarrega), o daemon retoma SOZINHO. Só
         # vira FAILED terminal se não-transitório ou se estourar o teto de tentativas.
@@ -994,14 +1001,14 @@ async def process_pr_run_tick(
             await store.append_session_event(
                 run.tenant, run.id, "message", moment,
                 text=f"⏳ erro transitório (provedor) — re-enfileirado (tentativa {nxt}) com "
-                f"backoff; retoma sozinho quando passar: {exc}",
+                f"backoff; retoma sozinho quando passar: {detalhe}",
             )
             return
         await store.set_state(run.id, RunState.FAILED, moment)
         op = classify_provider_error(str(exc))  # billing/cota do provider → msg clara, não bug
         await store.append_session_event(
             run.tenant, run.id, "message", moment,
-            text=op or f"⚠️ execução falhou: {exc}",
+            text=op or f"⚠️ execução falhou: {detalhe}",
         )
         return
     finally:
