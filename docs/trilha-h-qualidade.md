@@ -165,6 +165,14 @@ diff × pré-existente, e **nunca gerava task** — a issue de segurança era ab
 desliga (volta ao comportamento antigo). *(Próximo incremento: triar também por log completo do job,
 não só o resumo dos checks.)*
 
+**Erro da API de checks ≠ "CI verde" (resiliência):** ler os check-runs exige a permissão **`Checks:
+read`** no token. Sem ela, a API devolve **403** — e antes o código tratava `Err → ""` como "sem
+falhas", então o run afirmava **"CI verde"** e seguia (um erro de permissão disfarçado de aprovação —
+achado no #318, onde o `scan` 🔴 ficou invisível). Agora distinguimos **"indisponível"** de **"sem
+falhas"**: o `process_correct_tick` surfa `⚠️ status de CI INDISPONÍVEL (confira Checks:read)` e **não**
+afirma verde; o `pr_poll` loga **uma vez** por repo que está cego p/ CI. O token do fleet precisa de
+**`Checks: read`** (além de Contents/Issues/PRs/Actions) — senão toda automação de CI roda às cegas.
+
 ### Fecha MENORES automaticamente (`ROBOTO_CLOSE_MINORS`)
 
 Situação recorrente: o review **aprova** (0 bloqueador) mas aponta ressalvas **menores** (não-bloqueantes)
