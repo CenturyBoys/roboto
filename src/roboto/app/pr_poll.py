@@ -28,6 +28,7 @@ class PrDecision:
     sha: str
     dispatch: bool  # True = estabilizou e deve ser avaliado agora
     new_state: PrState
+    ci_recheck: bool = False  # dispatch por CI que VIROU vermelha num sha JÁ avaliado (re-check)
 
 
 def decide_pr(
@@ -48,7 +49,14 @@ def decide_pr(
         # mudou desde a última checagem → reinicia o debounce (preserva o que já foi revisado)
         return PrDecision(number, head_sha, False, PrState(head_sha, now, prev.reviewed_sha))
     if head_sha == prev.reviewed_sha:
-        return PrDecision(number, head_sha, False, prev)  # já avaliado neste sha
+        # já avaliamos ESTE commit. MAS a CI é ortogonal ao commit: um check lento (ex.: `scan` de
+        # segurança) pode VIRAR vermelho DEPOIS do review. Resiliência: re-dispara o `correct` (que
+        # tria a CI) mesmo sem commit novo — UMA vez (dedup pela chave de idempotência do run, com
+        # namespace próprio p/ não colidir com o correct do review). Sem isto, CI que flipa
+        # pós-review fica invisível pro poll (o buraco que o #318 expôs).
+        if ci_failed:
+            return PrDecision(number, head_sha, True, prev, ci_recheck=True)
+        return PrDecision(number, head_sha, False, prev)  # avaliado e CI ok → nada a fazer
     if ci_failed or now - prev.last_activity_at >= debounce:
         # CI falhou OU estável há ≥ debounce, e ainda não avaliado → dispara e marca como avaliado
         stable = PrState(head_sha, prev.last_activity_at, head_sha)
@@ -93,21 +101,24 @@ async def process_pr_poll_tick(
             if is_bot_author(author):
                 continue  # PR de bot de dependência (renovate/dependabot) — fleet não revisa
             prev = await store.get_pr_state(tenant, repo, number)
-            # só checa CI quando é candidato (estável e ainda não avaliado neste sha) — evita bater
-            # na API à toa. CI falhou -> antecipa o disparo (não espera o debounce).
+            # checa CI de qualquer PR ESTÁVEL (já visto neste sha) — inclusive os já avaliados, p/
+            # pegar a CI que VIRA vermelha DEPOIS do review (resiliência). CI falhou -> antecipa o
+            # disparo (não espera o debounce). 1 chamada por PR estável a cada tick (60s): barato.
             ci_failed = False
-            candidato = prev is not None and head_sha == prev.last_seen_sha
-            if candidato and prev is not None and head_sha != prev.reviewed_sha:
+            if prev is not None and head_sha == prev.last_seen_sha:
                 cf = await github.checks_failed(repo, head_sha)
                 ci_failed = isinstance(cf, Ok) and cf.value
             decision = decide_pr(number, head_sha, prev, moment, debounce, ci_failed=ci_failed)
             await store.set_pr_state(tenant, repo, number, decision.new_state)
             if decision.dispatch:
+                # re-check de CI (pós-review) usa namespace PRÓPRIO na chave: senão colidiria com o
+                # `correct` do review (mesmo sha) e o insert_if_absent deduparia com um run antigo.
+                prefixo = "poll-correct-ci" if decision.ci_recheck else "poll-correct"
                 ev = GithubEvent(
                     tenant=tenant,
                     repo=repo,
                     issue_id=str(number),
                     agent="correct",
-                    idempotency_key=f"poll-correct:{repo}:{number}:{head_sha}",
+                    idempotency_key=f"{prefixo}:{repo}:{number}:{head_sha}",
                 )
                 await store.insert_run_if_absent(ev, moment)

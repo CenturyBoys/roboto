@@ -104,6 +104,15 @@ mudou?"** periodicamente. Agnóstico: um *adapter de plataforma* lista o estado;
 Estado por PR (`last_seen_sha`, `last_activity_at`, `reviewed_sha`) vive em `pr_review_state`
 (mig. `0010`). Idempotente pelo sha — não re-dispara o mesmo estado.
 
+**Resiliência — CI que vira vermelha DEPOIS do review:** a CI é **ortogonal ao commit** — um check
+lento (ex.: o `scan` de segurança) pode flipar pra vermelho **depois** de o PR já ter sido avaliado.
+Antes o poll só checava CI num sha **ainda não avaliado**, então esse vermelho tardio ficava
+**invisível** (buraco exposto pelo #318: `review` ✅ + `scan` 🔴, e nada re-disparava). Agora o poll
+**checa `checks_failed` em qualquer PR estável** (inclusive já avaliado) e, se a CI virou vermelha,
+**re-dispara o `correct`** (que faz a **triagem de CI** — §trilha-h) **sozinho, sem commit novo nem
+botão**. Dedup: o re-check usa um **namespace próprio de idempotência** (`poll-correct-ci:…:<sha>`),
+então dispara **uma vez por sha** e não repete enquanto a CI segue vermelha.
+
 > O passo "corrigir conforme review" é o `process_correct_tick` (`app/pr_cycle.py`): checkout da
 > branch do PR → review (revisor≠autor) → corrige → force-push → re-review → comenta.
 

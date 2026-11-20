@@ -46,6 +46,16 @@ def test_already_reviewed_sha_is_noop() -> None:
     assert d.dispatch is False
 
 
+def test_ci_flip_apos_review_redispara() -> None:
+    # resiliência: commit JÁ avaliado, mas a CI VIROU vermelha depois (scan lento) → re-dispara o
+    # correct (ci_recheck) sem commit novo. Preserva o reviewed_sha (não "re-avalia" o review).
+    prev = PrState("sha1", _T0, "sha1")
+    d = decide_pr(1, "sha1", prev, _T0 + timedelta(hours=2), _DB, ci_failed=True)
+    assert d.dispatch is True
+    assert d.ci_recheck is True
+    assert d.new_state == prev  # estado inalterado (dedup é pela chave do run)
+
+
 class _FakeGH:
     def __init__(self, prs: list[tuple[int, str]], ci_failed: bool = False) -> None:
         self._prs = prs
@@ -115,3 +125,23 @@ async def test_tick_ci_failed_dispatches_before_debounce() -> None:
     )
     runs = await store.list_runs("acme", 10)
     assert len(runs) == 1 and runs[0].agent == "correct"
+
+
+async def test_tick_ci_flip_apos_review_redispara_e_deduplica() -> None:
+    # O BURACO do #318: PR JÁ avaliado (reviewed_sha == head) e a CI (scan lento) vira vermelha
+    # DEPOIS → o poll re-dispara o correct SOZINHO, sem commit novo nem botão. E não repete.
+    store = InMemoryStore()
+    await store.set_pr_state("acme", "acme/app", 7, PrState("shaX", _T0, "shaX"))  # já avaliado
+    gh = _FakeGH([(7, "shaX", "alice")], ci_failed=True)
+    t1 = _T0 + timedelta(minutes=1)
+    await process_pr_poll_tick(
+        gh, store, tenant="acme", repos=["acme/app"], now=lambda: t1, debounce_seconds=1800
+    )
+    runs = await store.list_runs("acme", 10)
+    assert len(runs) == 1 and runs[0].agent == "correct"  # re-disparou por CI vermelha pós-review
+    # 2ª passada: CI ainda vermelha, MESMO sha → dedup pela chave (não cria run duplicado)
+    t2 = t1 + timedelta(minutes=1)
+    await process_pr_poll_tick(
+        gh, store, tenant="acme", repos=["acme/app"], now=lambda: t2, debounce_seconds=1800
+    )
+    assert len(await store.list_runs("acme", 10)) == 1  # sem spam
