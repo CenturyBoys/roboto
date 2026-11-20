@@ -1114,7 +1114,17 @@ async def process_correct_tick(
         # CI VERMELHA é AUTORITATIVA (#233): lê o erro REAL (tsc/lint) e alimenta a correção — o
         # juiz lê só o diff e pode não ver o erro de tipo (deixou o #252 vermelho e "aprovado").
         cf = await github.check_failures(run.repo, pr_number)
+        # RESILIÊNCIA: um ERRO da API de checks (403 sem `Checks:read`, timeout) NÃO é "CI verde".
+        # Antes `Err → ""` fazia o run afirmar "CI verde" e seguir — um erro de permissão disfarçado
+        # de aprovação (achado no #318). Agora separamos "indisponível" de "sem falhas".
+        ci_unknown = isinstance(cf, Err)
         ci_errs = cf.value if isinstance(cf, Ok) else ""
+        if ci_unknown:
+            await store.append_session_event(
+                run.tenant, run.id, "message", moment,
+                text="⚠️ status de CI INDISPONÍVEL (não consegui ler os check-runs — confira a "
+                     "permissão `Checks: read` do token). NÃO afirmo CI verde.",
+            )
 
         # TRIAGEM de CI (o AGENTE faz o levantamento; a POLÍTICA decide): nem toda CI vermelha é
         # NOSSA. Vuln de dep pré-existente, erro de config de pipeline ou infra NÃO devem forçar
@@ -1148,12 +1158,15 @@ async def process_correct_tick(
                 )
 
         if verdict.approved and not ci_errs:
+            # honesto: só afirma "CI verde" se REALMENTE leu os checks (ci_unknown=False).
+            ci_txt = "CI indisponível (não lida)" if ci_unknown else "CI verde"
             await github.comment_pr(
-                run.repo, pr_number, "✅ Correção: nada a ajustar — review aprovado e CI verde."
+                run.repo, pr_number,
+                f"✅ Correção: nada a ajustar — review aprovado ({ci_txt}).",
             )
             await store.append_session_event(
                 run.tenant, run.id, "message", moment,
-                text="✅ review aprovado + CI verde — nada a corrigir",
+                text=f"✅ review aprovado + {ci_txt} — nada a corrigir",
             )
             await store.set_state(run.id, RunState.DONE, moment)
             return

@@ -12,6 +12,7 @@ corrige; se aprovar, comenta "nada a ajustar". Estado por PR vive no banco (`pr_
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -19,7 +20,12 @@ from typing import Protocol
 
 from roboto.orchestrator.model import Error, GithubEvent, PrState
 from roboto.orchestrator.store import Store
-from roboto.result import Ok, Result
+from roboto.result import Err, Ok, Result
+
+_log = logging.getLogger(__name__)
+# avisa UMA vez por (tenant,repo) que o token não lê os check-runs (sem Checks:read) — senão o 403
+# vira "CI verde" silencioso (achado no #318) e o poll fica cego p/ CI, sem ninguém saber.
+_checks_blind_warned: set[tuple[str, str]] = set()
 
 
 @dataclass(frozen=True)
@@ -107,6 +113,17 @@ async def process_pr_poll_tick(
             ci_failed = False
             if prev is not None and head_sha == prev.last_seen_sha:
                 cf = await github.checks_failed(repo, head_sha)
+                if isinstance(cf, Err) and (tenant, repo) not in _checks_blind_warned:
+                    # erro ao ler checks (403 sem Checks:read, timeout) NÃO é "sem falhas": loga
+                    # uma vez p/ o operador saber que o poll está cego p/ CI (falta Checks:read).
+                    _checks_blind_warned.add((tenant, repo))
+                    _log.warning(
+                        "pr_poll: não consigo ler check-runs de %s (%s) — CI invisível p/ o poll; "
+                        "confira a permissão `Checks: read` do token. Erro: %s",
+                        repo, head_sha[:8], cf.error.message,
+                    )
+                elif isinstance(cf, Ok):
+                    _checks_blind_warned.discard((tenant, repo))  # recuperou → re-arma o aviso
                 ci_failed = isinstance(cf, Ok) and cf.value
             decision = decide_pr(number, head_sha, prev, moment, debounce, ci_failed=ci_failed)
             await store.set_pr_state(tenant, repo, number, decision.new_state)
