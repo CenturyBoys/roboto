@@ -324,21 +324,43 @@ class GithubAppClient:
             if owns:
                 await client.aclose()
 
+    async def _ci_via_actions(
+        self, client: httpx.AsyncClient, repo: str, sha: str, hdr: dict[str, str]
+    ) -> tuple[bool, str]:
+        """FALLBACK quando falta a permissão `Checks:read` (API de check-runs dá 403): lê o status
+        da CI pela API de ACTIONS (precisa só de `Actions:read`, que o token do fleet costuma ter).
+        Granularidade = WORKFLOW (não job), mas basta p/ saber se falhou e p/ a triagem classificar.
+        Devolve `(algum_falhou, resumo_dos_que_falharam)`."""
+        resp = await client.get(
+            f"{self._api}/repos/{repo}/actions/runs",
+            headers=hdr, params={"head_sha": sha, "per_page": "50"},
+        )
+        resp.raise_for_status()
+        runs = resp.json().get("workflow_runs", [])
+        ruins = [r for r in runs if r.get("conclusion") in ("failure", "timed_out")]
+        resumo = "\n".join(
+            f"✖ {r.get('name', 'workflow')}: {r.get('conclusion')}"
+            + (f" ({r.get('html_url')})" if r.get("html_url") else "")
+            for r in ruins
+        )
+        return bool(ruins), resumo[:2000]
+
     async def checks_failed(self, repo: str, sha: str) -> Result[bool, Error]:
-        """True se algum check-run do commit falhou (gatilho check_suite failed, #166)."""
+        """True se algum check-run do commit falhou (gatilho check_suite failed, #166).
+        Sem `Checks:read` (403), cai no fallback pela API de Actions (`_ci_via_actions`)."""
         owns = self._client is None
         client = (
             self._client if self._client is not None else httpx.AsyncClient(timeout=self._timeout)
         )
         try:
             token = await self._installation_token(client)
+            hdr = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
             resp = await client.get(
-                f"{self._api}/repos/{repo}/commits/{sha}/check-runs",
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Accept": "application/vnd.github+json",
-                },
+                f"{self._api}/repos/{repo}/commits/{sha}/check-runs", headers=hdr
             )
+            if resp.status_code == 403:  # sem Checks:read → status da CI via Actions (Actions:read)
+                failed, _ = await self._ci_via_actions(client, repo, sha, hdr)
+                return Ok(failed)
             resp.raise_for_status()
             runs = resp.json().get("check_runs", [])
             return Ok(any(r.get("conclusion") in ("failure", "timed_out") for r in runs))
@@ -367,6 +389,9 @@ class GithubAppClient:
             cr = await client.get(
                 f"{self._api}/repos/{repo}/commits/{sha}/check-runs", headers=hdr
             )
+            if cr.status_code == 403:  # sem Checks:read → resumo (workflow+conclusão) via Actions
+                _, resumo = await self._ci_via_actions(client, repo, sha, hdr)
+                return Ok(resumo)
             cr.raise_for_status()
             partes: list[str] = []
             for r in cr.json().get("check_runs", []):
