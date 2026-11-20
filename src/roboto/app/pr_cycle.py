@@ -1110,7 +1110,12 @@ async def process_correct_tick(
         branch = head.value
         await git.checkout_remote(branch)  # estado do PR na árvore ANTES de editar (B: seguro)
 
-        verdict = await _review_now()
+        # RE-CHECK de CI (poll-correct-ci): o poll disparou SÓ porque a CI virou vermelha num commit
+        # JÁ avaliado. Aqui NÃO re-revisamos o doc — senão o juiz acha um bloqueador novo a cada
+        # rodada, corrige, empurra (novo sha) e vira churn. Trata-se SÓ da CI (via triagem abaixo):
+        # força o veredito aprovado p/ que apenas a CI decida o que fazer.
+        ci_recheck = run.idempotency_key.startswith("poll-correct-ci")
+        verdict = ReviewVerdict(approved=True, issues=[]) if ci_recheck else await _review_now()
         # CI VERMELHA é AUTORITATIVA (#233): lê o erro REAL (tsc/lint) e alimenta a correção — o
         # juiz lê só o diff e pode não ver o erro de tipo (deixou o #252 vermelho e "aprovado").
         cf = await github.check_failures(run.repo, pr_number)
@@ -1119,6 +1124,7 @@ async def process_correct_tick(
         # de aprovação (achado no #318). Agora separamos "indisponível" de "sem falhas".
         ci_unknown = isinstance(cf, Err)
         ci_errs = cf.value if isinstance(cf, Ok) else ""
+        ci_triada = False  # True quando a triagem removeu um vermelho ALHEIO (≠ CI verde)
         if ci_unknown:
             await store.append_session_event(
                 run.tenant, run.id, "message", moment,
@@ -1136,6 +1142,7 @@ async def process_correct_tick(
             triage = await triar_ci(ci_errs, changed_files_from_diff(diff_txt), diff_txt, gateway)
             if acao_ci(triage) != ACAO_CORRIGIR:
                 ci_errs = ""  # não é nosso → não realimenta a correção com o vermelho alheio
+                ci_triada = True  # neutralizamos um vermelho ALHEIO (não é "CI verde")
                 if acao_ci(triage) == ACAO_ABRIR_ISSUE and triage.titulo:
                     aberta = await store.enqueue_effect(
                         run.tenant, run.id, "create_issue",
@@ -1158,8 +1165,13 @@ async def process_correct_tick(
                 )
 
         if verdict.approved and not ci_errs:
-            # honesto: só afirma "CI verde" se REALMENTE leu os checks (ci_unknown=False).
-            ci_txt = "CI indisponível (não lida)" if ci_unknown else "CI verde"
+            # honesto: "CI verde" só se REALMENTE leu e não havia falha; se a triagem removeu um
+            # vermelho ALHEIO, diz isso; se não leu os checks, diz indisponível.
+            ci_txt = (
+                "CI alheia triada (issue aberta)" if ci_triada
+                else "CI indisponível (não lida)" if ci_unknown
+                else "CI verde"
+            )
             await github.comment_pr(
                 run.repo, pr_number,
                 f"✅ Correção: nada a ajustar — review aprovado ({ci_txt}).",

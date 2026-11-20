@@ -111,7 +111,10 @@ Antes o poll só checava CI num sha **ainda não avaliado**, então esse vermelh
 **checa `checks_failed` em qualquer PR estável** (inclusive já avaliado) e, se a CI virou vermelha,
 **re-dispara o `correct`** (que faz a **triagem de CI** — §trilha-h) **sozinho, sem commit novo nem
 botão**. Dedup: o re-check usa um **namespace próprio de idempotência** (`poll-correct-ci:…:<sha>`),
-então dispara **uma vez por sha** e não repete enquanto a CI segue vermelha.
+então dispara **uma vez por sha** e não repete enquanto a CI segue vermelha. O run de re-check
+**NÃO re-revisa o PR** (anti-churn): ele força o veredito aprovado e trata **só a CI** (via triagem) —
+senão o juiz acharia um bloqueador novo a cada rodada, corrigiria, empurraria (novo sha) e entraria em
+loop. A revisão de conteúdo fica com o run de review normal (`poll-correct`).
 
 > O passo "corrigir conforme review" é o `process_correct_tick` (`app/pr_cycle.py`): checkout da
 > branch do PR → review (revisor≠autor) → corrige → force-push → re-review → comenta.

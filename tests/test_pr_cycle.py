@@ -1160,6 +1160,37 @@ async def test_correct_tick_ci_nao_nosso_abre_issue_e_nao_corrige() -> None:
     assert store._runs[run.id].state is RunState.DONE  # review ok + vermelho alheio neutralizado
 
 
+async def test_correct_tick_ci_recheck_nao_re_revisa_o_doc() -> None:
+    # refino anti-churn: um run de CI-recheck (poll-correct-ci) NÃO re-revisa o doc — só tria a CI.
+    # Mesmo com um review que REPROVARIA, não corrige o doc; o gateway só é chamado p/ a triagem.
+    store = InMemoryStore()
+    ev = GithubEvent(
+        tenant="acme", repo="acme/app", issue_id="318", agent="correct",
+        idempotency_key="poll-correct-ci:acme/app:318:deadbeef",
+    )
+    run, _ = await store.insert_run_if_absent(ev, _T0)
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    git, github = _FakeGit(), _FakeGithub()
+    github.ci_errs = "✖ Security: failure (ReDoS in effect)"
+    # 1 só reply no gateway = a TRIAGEM (o review do doc é PULADO no ci-recheck). Re-revisar
+    # consumiria outra reply e estouraria a sequência.
+    await process_correct_tick(
+        engine,
+        _SeqGateway([_TRIAGE_SEGURANCA]),  # type: ignore[arg-type]
+        github,
+        store,
+        tenant="acme",
+        workdir_root="/work",
+        reviewer="review",
+        git_factory=lambda ws: git,
+        now=lambda: _T0,
+    )
+    assert engine.started == []  # não re-corrigiu o doc
+    assert git.pushes == []  # não empurrou (sem churn de sha)
+    assert len([e for e in store._effects.values() if e.kind == "create_issue"]) == 1  # abriu issue
+    assert store._runs[run.id].state is RunState.DONE
+
+
 # (removido: o gate de tamanho no impl foi revertido — contar critério é proxy ruim de épico; o
 # right-sizing agora é advisory no refino (epic_signal/Jev). Cobertura: test_epic_signal.py.)
 
