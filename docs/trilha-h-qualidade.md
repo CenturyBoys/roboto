@@ -337,3 +337,10 @@ que motivou: `arenavalendo/main#310` nasceu com o trailer (remediado por `--amen
   `can_use_tool` no SDK vivo** no PoC.
 - **Policy de 2 eixos (#267)**: trocar o least-privilege estático (§2) por `verdict()` puro —
   tool-class × autonomia por ação + outside-guard (derivado do Tucano; ver `research/tucano-reuso.md`).
+
+### Erro de run nunca vazio (observabilidade)
+
+Alguns erros de run (ex.: engine/CLI que morre) têm `str(exc)` vazio — a msg virava
+`⚠️ execução falhou:` **sem nada**, inútil p/ diagnóstico (visto ao tentar implementar a #319). Agora
+o `process_pr_run_tick` cai no **tipo do erro** (`type(exc).__name__`) quando a mensagem é vazia e
+**loga o traceback** no daemon (antes era engolido no `append_session_event`). Erro nunca mais é mudo.
