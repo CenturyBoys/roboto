@@ -170,8 +170,14 @@ read`** no token. Sem ela, a API devolve **403** — e antes o código tratava `
 falhas", então o run afirmava **"CI verde"** e seguia (um erro de permissão disfarçado de aprovação —
 achado no #318, onde o `scan` 🔴 ficou invisível). Agora distinguimos **"indisponível"** de **"sem
 falhas"**: o `process_correct_tick` surfa `⚠️ status de CI INDISPONÍVEL (confira Checks:read)` e **não**
-afirma verde; o `pr_poll` loga **uma vez** por repo que está cego p/ CI. O token do fleet precisa de
-**`Checks: read`** (além de Contents/Issues/PRs/Actions) — senão toda automação de CI roda às cegas.
+afirma verde; o `pr_poll` loga **uma vez** por repo que está cego p/ CI.
+
+**Fallback via API de Actions (não exige `Checks:read`):** como os checks são workflows do Actions, o
+adapter lê o status também por `/actions/runs?head_sha=` (precisa só de **`Actions: read`**, que o
+token costuma ter). `checks_failed`/`check_failures` tentam `check-runs` e, em **403**, caem no
+fallback (`_ci_via_actions`) — granularidade de **workflow** (não job), mas basta p/ o gatilho do poll
+e p/ a triagem. Com `Checks:read`, volta ao detalhado (anotações `file:line`). Assim o fleet **não
+fica cego** mesmo sem a permissão `Checks` no token.
 
 ### Fecha MENORES automaticamente (`ROBOTO_CLOSE_MINORS`)
 
