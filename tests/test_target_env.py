@@ -149,3 +149,24 @@ services:
     assert svcs["db"].env == {"POSTGRES_USER": "app"}  # ${} fora
     assert svcs["cache"].env == {"REDIS_PASS": "x"}  # formato lista
     assert "nada" not in svcs  # sem image → ignorado
+
+
+def test_parse_ci_setup_steps_para_no_primeiro_gate() -> None:
+    from roboto.app.target_env import parse_ci_setup_steps
+
+    wf = """
+jobs:
+  v:
+    steps:
+      - run: pnpm db:migrate
+      - run: docker run psql < role.sql
+      - run: node scripts/check-design.mjs --all
+      - run: pnpm check:i18n
+      - run: pnpm --filter x test:int
+"""
+    steps = parse_ci_setup_steps(wf)
+    assert any("db:migrate" in s for s in steps)
+    assert any("role.sql" in s for s in steps)  # setup antes do 1º check
+    assert not any("check-design" in s for s in steps)  # check → parou aqui
+    assert not any("check:i18n" in s for s in steps)
+    assert not any("test:int" in s for s in steps)  # test:int não vira setup
