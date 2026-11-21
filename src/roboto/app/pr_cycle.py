@@ -26,6 +26,7 @@ from roboto.agents.review import (
 )
 from roboto.app.approval_gate import make_policy_callback
 from roboto.app.autoformat import autoformat
+from roboto.app.ccr_models import pin_or_fallback, registered_models
 from roboto.app.ci_triage import (
     ACAO_ABRIR_ISSUE,
     ACAO_CORRIGIR,
@@ -282,6 +283,16 @@ async def run_pr_cycle(
     # id no formato "provider,model": o ccr IGNORA o model do cliente e roteia pela config, MENOS
     # quando vem com a sintaxe de override "provider,model" — aí usa esse (validado no PoC).
     modelo_forte = os.environ.get("ROBOTO_STRONG_MODEL", "openrouter,anthropic/claude-sonnet-4.6")
+    # guard (determinismo-primeiro): se o id forte não está registrado no ccr, ele responde
+    # `unrecognized_model` e o run morre em ~3s SEM motivo (run #1039). Validamos ANTES e caímos no
+    # base; gravamos o porquê no feed p/ o operador não ver só "failed". Fail-open se o ccr não lê.
+    modelo_forte, _mf_reason = pin_or_fallback(modelo_forte, registered=registered_models())
+    if _mf_reason:
+        print(f"[tier] {_mf_reason}")
+        if store is not None and now is not None:
+            await store.append_session_event(
+                run.tenant, run.id, "message", now, text="⚠️ " + _mf_reason,
+            )
     # forte-UPFRONT desligado por default (#242): o grosso começa no BASE barato e o DEGRAU só sobe
     # pro forte QUANDO TRAVA — forte vira resgate RARO, não a task toda (exec #88/#93 inteiros no
     # forte = 315k/261k). Ligue ROBOTO_FORTE_UPFRONT=1 p/ começar grande direto no forte.
@@ -1313,6 +1324,13 @@ async def process_correct_tick(
         # `prior` conta os runs de correct deste PR (inclui este).
         _forte_default = "openrouter,anthropic/claude-sonnet-4.6"
         modelo_forte = os.environ.get("ROBOTO_STRONG_MODEL", _forte_default)
+        # mesmo guard do ciclo de impl: id forte ausente do ccr → fallback p/ base (senão a 2ª
+        # correção morreria com unrecognized_model em vez de convergir).
+        modelo_forte, _corr_reason = pin_or_fallback(modelo_forte, registered=registered_models())
+        if _corr_reason:
+            await store.append_session_event(
+                run.tenant, run.id, "message", moment, text="⚠️ " + _corr_reason,
+            )
         model_corr = modelo_forte if (prior >= _CORRECT_ESCALATE_AT and modelo_forte) else ""
         if model_corr:
             await store.append_session_event(
