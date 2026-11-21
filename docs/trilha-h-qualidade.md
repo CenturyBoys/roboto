@@ -362,3 +362,13 @@ compartilhadas (util/lib/service/…) primeiro, dentro de um budget de chars, **
 *"o que JÁ existe — reuse; só leia um arquivo se precisar do detalhe"*. Operacionaliza o degrau
 "reuse" da escada **sem gastar token de busca** (harness injeta, não se conta com o modelo buscar —
 [[code-intel-harness-driven]]). `ROBOTO_CODEBASE_MAP=0` desliga.
+
+### Benchmark com juiz auto-validado (Ponytail agentic)
+
+`app/bench_judge` traz a joia do benchmark do Ponytail: um **LLM-judge só é confiável se passar num
+SELF-TEST antes de gastar API** — tem que dar nota de over-engineering MAIOR p/ uma referência
+deliberadamente over-engineered do que p/ a mínima. `trusted_score` roda o `selftest` ANTES e **recusa
+pontuar** se o juiz não discrimina. Modelo fixo + temp 0 + rubrica + **cada score nomeia o construto**
+desnecessário (sem construto = nota inválida). É o anti-"LLM-judge confiado cego" — base p/ provar
+nossos prompts sem queimar budget ([[diagnostico-modelo-forte-vs-harness]]). O runner de N tarefas ×
+M runs é o próximo incremento.
