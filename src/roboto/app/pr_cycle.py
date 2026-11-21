@@ -63,7 +63,7 @@ from roboto.app.repo_profile import (
 )
 from roboto.app.reuse_metric import reuse_stat
 from roboto.app.secret_scan import SecretLeakError, scan_diff
-from roboto.app.service_provision import provision, teardown
+from roboto.app.service_provision import provision, teardown, wait_ready
 from roboto.app.session_guard import may_resume, session_config_hash
 from roboto.app.session_hub import SessionHub
 from roboto.app.target_env import TargetEnv, read_target_env, read_target_services
@@ -763,7 +763,15 @@ async def run_pr_cycle(
                             text=f"🧪 subi {len(_nomes)} serviço(s) efêmero(s) p/ o teste "
                             f"({', '.join(s.name for s in _svcs)}); derrubo no fim.",
                         )
-                        await asyncio.sleep(3)  # readiness breve; run_ci re-tenta após o setup
+                        # espera as portas ACEITAREM conexão (postgres só binda 5432 após iniciar) —
+                        # melhor que sleep fixo; era por isso que o teste batia antes de pronto.
+                        _pronto = await asyncio.to_thread(wait_ready, _svcs)
+                        if not _pronto and store is not None and now is not None:
+                            await store.append_session_event(
+                                run.tenant, run.id, "message", now,
+                                text="⏳ serviços efêmeros demoraram a aceitar conexão; "
+                                "o setup/test ainda tenta.",
+                            )
                 try:
                     ci = await asyncio.to_thread(_run_ci)
                     ci_tries = 0
