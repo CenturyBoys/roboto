@@ -84,3 +84,10 @@ harness (como o `repo_map`) valida no PoC.
 **Follow-ups (backlog):** cache quente do índice do code-intel (container efêmero re-indexa por run —
 trilha K); **orçamento** de token por tipo de agente (trilhas H/L); busca semântica AST+vetor além do
 code-intel; context engineering (compaction / note-taking — trilha G).
+
+## Métrica de reuso por run (Ponytail band)
+
+`app/reuse_metric.reuse_stat` mede, no código NOVO de cada run de impl (linhas `+` do diff), quantas
+CHAMADAS resolvem para símbolos que JÁ existem no repo (`git grep` no HEAD, exclui genéricos). É o KPI
+**net-new vs reuse** — torna o "reuse-first" da escada **mensurável por run**, não só em benchmark.
+Surfa no feed (`♻️ reuso: N/M (X%)`); `ROBOTO_REUSE_METRIC=0` desliga. Fail-open.

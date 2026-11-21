@@ -54,6 +54,7 @@ from roboto.app.repo_profile import (
     read_agents_conventions,
     sample_test_excerpt,
 )
+from roboto.app.reuse_metric import reuse_stat
 from roboto.app.secret_scan import SecretLeakError, scan_diff
 from roboto.app.session_guard import may_resume, session_config_hash
 from roboto.app.session_hub import SessionHub
@@ -682,8 +683,22 @@ async def run_pr_cycle(
                 text=f"⚠️ secret-scan OVERRIDE humano: push liberado apesar de — {leak}",
             )
         # #144: diff vazio = motor não editou nada → FALHA explícita (não revisa "o nada").
-        if not (await git.diff(base)).strip():
+        diff_atual = await git.diff(base)
+        if not diff_atual.strip():
             raise RuntimeError("motor não editou nada (diff vazio vs base) — nada a revisar")
+        # MÉTRICA DE REUSO (Ponytail): quantas chamadas do código novo reusam símbolos já no repo —
+        # KPI de "reuse-first" por run. Best-effort; ROBOTO_REUSE_METRIC=0 desliga.
+        if (
+            store is not None and now is not None
+            and os.environ.get("ROBOTO_REUSE_METRIC", "1") not in ("0", "false", "no")
+        ):
+            rs = reuse_stat(diff_atual, workdir)
+            if rs.total:
+                await store.append_session_event(
+                    run.tenant, run.id, "message", now,
+                    text=f"♻️ reuso: {rs.reused}/{rs.total} chamadas do código novo reusam símbolos "
+                    f"já existentes ({round(rs.ratio * 100)}%).",
+                )
         # PORTA DE CI LOCAL (determinismo 1º): roda a MESMA porta do CI (lint/typecheck/test) ANTES
         # do push. Vermelho de CÓDIGO volta ao motor (bounded; última no forte) + re-commit;
         # verde → segue. Vermelho de INFRA (DB fora/deps) degrada p/ surfado (não trava, CI é juiz).
