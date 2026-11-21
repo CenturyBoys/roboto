@@ -522,25 +522,38 @@ async def run_pr_cycle(
         if native:
             coder["native"] = native  # fixa p/ a próxima correção resumir o MESMO contexto
             coder["hash"] = config_hash  # e a config dela, p/ o guard de resume (#266)
-        tin = tout = 0
-        async for event in guarded_events(engine.events()):  # deixa o motor editar o repo
-            if store is not None and now is not None:
-                if event.kind is EngineEventKind.MESSAGE and event.text:
-                    await store.append_session_event(
-                        run.tenant, run.id, "message", now, text=event.text
-                    )
-                elif event.kind is EngineEventKind.TOOL_CALL:
-                    await store.append_session_event(
-                        run.tenant, run.id, "tool_call", now, tool=event.tool
-                    )
-            if event.kind is EngineEventKind.FINISHED:
-                tin, tout = event.tokens_in, event.tokens_out
+        # cria a sessão ANTES do loop: se o motor TRAVAR (stall/idle-timeout) no meio, o `async for`
+        # estoura e mesmo assim o `finally` grava o id nativo — p/ "responder depois do timeout"
+        # retomar a MESMA sessão com contexto (start_session resume o native_session_id), não do 0.
+        session = None
         if store is not None and now is not None:
             session = await store.create_session(
                 run.tenant, run.id, engine.engine, now, config_hash=config_hash
             )
-            if native:
-                await store.set_native_session(session.id, native, now)
+        tin = tout = 0
+        try:
+            async for event in guarded_events(engine.events()):  # deixa o motor editar o repo
+                if store is not None and now is not None:
+                    if event.kind is EngineEventKind.MESSAGE and event.text:
+                        await store.append_session_event(
+                            run.tenant, run.id, "message", now, text=event.text
+                        )
+                    elif event.kind is EngineEventKind.TOOL_CALL:
+                        await store.append_session_event(
+                            run.tenant, run.id, "tool_call", now, tool=event.tool
+                        )
+                if event.kind is EngineEventKind.FINISHED:
+                    tin, tout = event.tokens_in, event.tokens_out
+        finally:
+            # o id nativo só é conhecido DURANTE o events() (chega no 1º AssistantMessage); re-lê e
+            # grava — inclusive se o loop estourou por stall — p/ o resume humano achar a sessão.
+            nid = getattr(engine, "session_id", "") or native
+            if nid:
+                coder["native"] = nid
+                coder["hash"] = config_hash
+                if session is not None and store is not None and now is not None:
+                    await store.set_native_session(session.id, nid, now)
+        if store is not None and now is not None:
             await store.record_llm_call(
                 tenant=run.tenant, run_id=run.id, provider="openrouter",
                 model="qwen/qwen3-coder", tier="frontier", tokens_in=tin, tokens_out=tout,
