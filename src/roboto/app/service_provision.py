@@ -57,6 +57,56 @@ def provision(
     return subidos
 
 
+# porta padrão por serviço (p/ esperar ficar pronto) — a porta só abre quando o serviço aceita
+# conexão (ex.: postgres só binda 5432 depois de inicializar o DB). Cobre os comuns.
+_DEFAULT_PORTS = {
+    "postgres": 5432, "postgis": 5432, "mysql": 3306, "mariadb": 3306, "redis": 6379,
+    "valkey": 6379, "mongo": 27017, "mongodb": 27017, "rabbitmq": 5672, "elasticsearch": 9200,
+}
+
+# checker de porta injetável (p/ teste): (port) -> aberta?
+PortCheck = Callable[[int], bool]
+
+
+def _port_open(port: int) -> bool:
+    import socket
+
+    s = socket.socket()
+    s.settimeout(1.0)
+    try:
+        s.connect(("localhost", port))
+        return True
+    except OSError:
+        return False
+    finally:
+        s.close()
+
+
+def _port_for(svc: CiService) -> int | None:
+    hay = f"{svc.name} {svc.image}".lower()
+    return next((p for k, p in _DEFAULT_PORTS.items() if k in hay), None)
+
+
+def wait_ready(
+    services: list[CiService], *, timeout: float = 30.0, check: PortCheck | None = None,
+) -> bool:
+    """Espera as portas dos serviços ACEITAREM conexão (a porta só abre quando o serviço subiu de
+    verdade — melhor que um `sleep` fixo). True se todas abriram dentro do timeout; True também se
+    nenhum serviço tem porta conhecida (nada a esperar)."""
+    import time
+
+    chk = check or _port_open
+    ports = [p for s in services if (p := _port_for(s)) is not None]
+    if not ports:
+        return True
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if all(chk(p) for p in ports):
+            return True
+        time.sleep(0.5)
+    return all(chk(p) for p in ports)
+
+
 def teardown(run_id: int, *, docker: Docker | None = None) -> int:
     """Derruba TODO container do run (por label). Devolve quantos removeu. Sempre no `finally`."""
     run = docker or _docker

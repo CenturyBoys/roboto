@@ -433,3 +433,7 @@ Ordem de autoridade das fontes: **CI `run:`** > docker-compose > Dockerfile > ma
 
 *(Refino: o parse de setup PARA no 1º passo de gate/validação — setup vem antes dos `check:`/test no
 CI; assim não captura `check:*`/`format`/`test:int` como se fossem preparação.)*
+
+*(Readiness: após provisionar, o harness espera as PORTAS aceitarem conexão (`wait_ready` — postgres
+só binda 5432 após iniciar o DB) em vez de um `sleep` fixo; era por isso que o teste batia antes de
+o serviço estar pronto no #1034.)*

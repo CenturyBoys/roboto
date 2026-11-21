@@ -79,3 +79,25 @@ def test_sweep_remove_so_orfaos() -> None:
     assert n == 2
     rm = next(c for c in d.calls if c[:2] == ["rm", "-f"])
     assert set(rm[2:]) == {"idA", "idC"}  # removeu os órfãos, não o ativo (idB)
+
+
+def test_wait_ready_espera_porta_abrir() -> None:
+    from roboto.app.service_provision import wait_ready
+
+    pg = CiService("postgres", "postgres:18", {})
+    estados = iter([False, False, True])  # abre na 3ª checagem
+    assert wait_ready([pg], timeout=5, check=lambda _p: next(estados, True)) is True
+
+
+def test_wait_ready_sem_porta_conhecida_e_true() -> None:
+    from roboto.app.service_provision import wait_ready
+
+    exotico = CiService("meu-servico", "foo/bar:1", {})
+    assert wait_ready([exotico], check=lambda _p: False) is True  # nada a esperar
+
+
+def test_wait_ready_timeout_porta_fechada() -> None:
+    from roboto.app.service_provision import wait_ready
+
+    pg = CiService("postgres", "postgres:18", {})
+    assert wait_ready([pg], timeout=0.1, check=lambda _p: False) is False
