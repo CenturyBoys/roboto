@@ -13,23 +13,9 @@ services:
       timeout: 5s
       retries: 5
 
-  # ambiente de TESTE do repo-ALVO (incremento 2 do prepare_target_env): sobe os serviços que o CI
-  # do alvo exige (postgres/redis) COMPARTILHANDO a rede do `poc` (network_mode) — assim o
-  # `localhost:5432/6379` que o ci.yml do alvo usa funciona DE DENTRO do container, sem reescrever a
-  # DATABASE_URL. Credenciais = as do ci.yml do jo-ken-po (jokenpo/jokenpo/jokenpo_test).
-  target-db:
-    image: postgres:18
-    network_mode: "service:poc"
-    environment:
-      POSTGRES_USER: jokenpo
-      POSTGRES_PASSWORD: jokenpo
-      POSTGRES_DB: jokenpo_test
-    depends_on: [poc]
-
-  target-redis:
-    image: redis:8
-    network_mode: "service:poc"
-    depends_on: [poc]
+  # (os serviços de teste do alvo NÃO são mais hardcoded aqui — o harness provisiona sob demanda,
+  # efêmero por-run, lendo o `services:` do CI do alvo: app/service_provision + ROBOTO_PROVISION_SERVICES.
+  # Sobem só quando a task roda teste e caem no fim; usam o docker socket montado no `poc` abaixo.)
 
   poc:
     build:
@@ -63,6 +49,10 @@ services:
       # nascer vermelho. "0" desliga; ROBOTO_LOCAL_CI_CMDS=lint,typecheck restringe o escopo.
       ROBOTO_LOCAL_CI: ${ROBOTO_LOCAL_CI:-1}
       ROBOTO_LOCAL_CI_CMDS: ${ROBOTO_LOCAL_CI_CMDS:-}
+    # grupo suplementar p/ o pwuser (não-root) acessar o docker.sock do host (GID do grupo `docker`
+    # do host — `stat -c %g /var/run/docker.sock`). Default 117; sobrescreva DOCKER_GID se o seu diferir.
+    group_add:
+      - "${DOCKER_GID:-117}"
     ports:
       - "8090:8080" # servidor ASGI (webhook + console) — 8090 no host (8080 ocupada)
       - "7681:7681" # ttyd — terminal web (tmux no container)
@@ -70,6 +60,9 @@ services:
       # sessões do motor (Claude Code) persistem entre rebuilds → o "Assumir" (resume) sobrevive.
       # NÃO persiste ~/.claude-code-router (regenerado no boot) p/ evitar PID fantasma. (#219)
       - claude_sessions:/home/pwuser/.claude
+      # docker socket do HOST: o provisionamento sob demanda (B) sobe/derruba os serviços de teste
+      # do alvo (postgres/redis) efêmeros. O docker CLI do poc fala com o engine do host por aqui.
+      - /var/run/docker.sock:/var/run/docker.sock
     # /work é efêmero (não-root): o container clona o repo a cada subida em /work/<owner>/<repo>.
     # recursos da máquina: ajuste conforme necessário
     # deploy:

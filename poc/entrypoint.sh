@@ -109,6 +109,13 @@ echo "git identity do fleet setada p/ $TARGET_WORKDIR"
 # passava. Semeia commit-msg no .githooks do alvo. (re-afirmado a cada run pelo runtime.)
 python3 -c "from roboto.app.commit_hygiene import install_repo_hook; print('anti-trailer:', install_repo_hook('$TARGET_WORKDIR'))" 2>/dev/null || true
 
+# sweep de serviços efêmeros órfãos (B): num boot/recreate, nenhum run está provisionando ainda, então
+# todo container `roboto.run=*` que sobrou de um processo anterior é lixo → derruba. Best-effort.
+if command -v docker >/dev/null 2>&1 && docker ps >/dev/null 2>&1; then
+  docker ps -aq --filter "label=roboto.run" | xargs -r docker rm -f >/dev/null 2>&1 \
+    && echo "sweep: serviços efêmeros órfãos removidos" || true
+fi
+
 # 4b) terminal web (ttyd): anexa na tmux POR-RUN passada via ?arg=<sessão> (modo -a/url-arg). Assim
 #     o botão "Terminal" do cockpit mostra a sessão REAL do motor; sem sessão, cai no terminal padrão.
 if command -v ttyd >/dev/null 2>&1; then
