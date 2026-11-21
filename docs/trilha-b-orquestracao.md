@@ -124,6 +124,14 @@ O juiz roda com **`temperature=0`** (`llm/openrouter.py`, tier JUDGE) + **rubric
 (`agents/review.REVIEW_PR_SYSTEM`: BLOQUEADOR vs menor; qualquer bloqueador → reprovado). Sem isto o
 mesmo diff dava vereditos diferentes e o gate era não-confiável.
 
+**Disciplina "sem caso, sem finding" (inspirada no Ponytail).** O prompt estruturado
+(`REVIEW_PR_STRUCT_SYSTEM`) exige, por finding: **ordem de importância** (correto > seguro > carga >
+testado > rápido > enxuto), um **caso concreto** ("entrada X → resultado errado Y") na `evidencia`,
+**re-ler e confirmar** antes de emitir, e **zero** gosto de estilo/"considere"/vago. Um atalho
+marcado `shortcut: <limite>` é **decisão, não finding** (a menos que a carga já cruze o limite). Isso
+mata a **não-convergência** do review (o juiz inventava um bloqueador novo a cada rodada e o
+loop review→correção nunca fechava — churn visto no PR #318).
+
 ### 5.3 Gatilho por comentário `@potter` + check_suite (#166)
 - **`@potter <comando>`** num comentário de issue/PR dispara o run: `@potter implementa|refina|revisa`
   → `impl`/`refine`/`correct`. Polling dos comentários (`app/comment_poll.py`), cursor por repo.
