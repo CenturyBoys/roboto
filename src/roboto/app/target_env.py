@@ -30,6 +30,40 @@ _SETUP_ORDER = {name: i for i, name in enumerate(_SETUP_FAMILY)}
 
 
 @dataclass(frozen=True)
+class CiService:
+    """Um serviço que o CI do alvo sobe (ex.: postgres/redis) — p/ provisionar efêmero por-run."""
+
+    name: str  # nome do serviço no workflow (postgres, redis…)
+    image: str  # imagem docker (postgres:18, redis:8…)
+    env: dict[str, str] = field(default_factory=dict)  # env do serviço (POSTGRES_USER…)
+
+
+def parse_ci_services(text: str) -> list[CiService]:
+    """Extrai os `services:` do workflow com imagem + env (p/ `docker run` por-run). Puro/testável.
+    Ignora serviços sem `image` e valores dinâmicos `${{ … }}`."""
+    try:
+        import yaml  # lazy: sem pyyaml, degrada p/ vazio
+
+        doc: Any = yaml.safe_load(text)
+    except Exception:  # noqa: BLE001 — YAML inválido/sem lib → sem serviços
+        return []
+    if not isinstance(doc, dict):
+        return []
+    out: dict[str, CiService] = {}
+    for job in (doc.get("jobs") or {}).values() if isinstance(doc.get("jobs"), dict) else []:
+        services = job.get("services") if isinstance(job, dict) else None
+        for name, spec in (services or {}).items() if isinstance(services, dict) else []:
+            if not isinstance(spec, dict) or not spec.get("image"):
+                continue
+            senv = {
+                k: str(v) for k, v in (spec.get("env") or {}).items()
+                if isinstance(v, (str, int)) and "${{" not in str(v)
+            }
+            out.setdefault(str(name), CiService(str(name), str(spec["image"]), senv))
+    return list(out.values())
+
+
+@dataclass(frozen=True)
 class TargetEnv:
     """Receita de ambiente de teste extraída do repo-alvo (vazio = nada a preparar; no-op)."""
 
@@ -94,6 +128,20 @@ def discover_setup_commands(workdir: str) -> tuple[tuple[str, str], ...]:
     scripts = pkg.get("scripts", {}) if isinstance(pkg, dict) else {}
     found = sorted((n for n in scripts if n in _SETUP_ORDER), key=lambda n: _SETUP_ORDER[n])
     return tuple((n, f"pnpm -s {n}") for n in found)
+
+
+def read_target_services(workdir: str) -> list[CiService]:
+    """Serviços (postgres/redis…) declarados nos workflows do alvo — p/ provisionar efêmero por-run.
+    Junta de todos os workflows; o 1º a declarar um nome vence. Vazio se não houver."""
+    out: dict[str, CiService] = {}
+    for p in _workflow_paths(workdir):
+        try:
+            text = p.read_text(encoding="utf-8")
+        except Exception:  # noqa: BLE001
+            continue
+        for s in parse_ci_services(text):
+            out.setdefault(s.name, s)
+    return list(out.values())
 
 
 def read_target_env(workdir: str) -> TargetEnv:
