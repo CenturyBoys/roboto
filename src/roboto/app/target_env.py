@@ -49,12 +49,14 @@ _CI_NOISE = re.compile(
     r"|upload-artifact|download-artifact|actions/cache|docker login|gh auth|rm -f )",
     re.I,
 )
-# `run:` que é o GATE (lint/type/build/test) — a gente já roda isso separado (discover_ci_commands).
+# `run:` que é o GATE/VALIDAÇÃO (lint/type/build/test/check/format) — rodado separado, NÃO é setup.
+# O setup vem ANTES da validação no CI; ao bater no 1º gate, o parser PARA (o resto é validação).
 _CI_GATE = re.compile(
-    r"\b(lint|typecheck|type-check|tsc\b|vitest|jest|pytest|go test|rspec|cargo test|mvn test"
-    r"|gradle(w)? +(test|check)|turbo run +(test|build|lint|typecheck)"
-    r"|pnpm +(run +)?(test|build|lint|typecheck)|npm +(run +)?(test|build|lint)"
-    r"|make +(test|build|lint|check))\b",
+    r"(\b(lint|typecheck|type-check|tsc|vitest|jest|pytest|rspec|cargo test|mvn test"
+    r"|gradle(w)? +(test|check)|format|prettier|eslint)\b"
+    r"|go test|turbo run +(test|build|lint|typecheck|check)"
+    r"|\b(pnpm|npm|yarn)\b.*\b(test|build|lint|typecheck|check[:-]|format)"
+    r"|check[:-]\w|:(test|int)\b|test:\w|make +(test|build|lint|check))",
     re.I,
 )
 
@@ -78,8 +80,10 @@ def parse_ci_setup_steps(text: str) -> list[str]:
             if not isinstance(run, str) or not run.strip():
                 continue  # `uses:` (ação) ou vazio → não é comando de setup
             cmd = run.strip()
-            if _CI_GATE.search(cmd) or _CI_NOISE.search(cmd):
-                continue
+            if _CI_NOISE.search(cmd):
+                continue  # ruído (install/checkout/limpeza) → pula; setup pode vir depois
+            if _CI_GATE.search(cmd):
+                break  # 1º gate/validação → o resto NÃO é setup; para de coletar
             out.append(cmd)
     return out
 
