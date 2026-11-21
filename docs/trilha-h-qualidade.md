@@ -344,3 +344,12 @@ Alguns erros de run (ex.: engine/CLI que morre) têm `str(exc)` vazio — a msg 
 `⚠️ execução falhou:` **sem nada**, inútil p/ diagnóstico (visto ao tentar implementar a #319). Agora
 o `process_pr_run_tick` cai no **tipo do erro** (`type(exc).__name__`) quando a mensagem é vazia e
 **loga o traceback** no daemon (antes era engolido no `append_session_event`). Erro nunca mais é mudo.
+
+### Escada de decisão no impl (menor mudança completa — Ponytail)
+
+O prompt do `impl` ganhou a **escada de decisão** do ponytail (`skills/ponytail`): antes de escrever,
+pare no 1º degrau que resolve inteiro — (1) precisa existir? (2) já existe no repo? reuse →
+(3) stdlib/plataforma → (4) dep já instalada (nunca add dep por poucas linhas) → (5) 1 linha →
+(6) mínimo. "Preguiça na solução, nunca na mudança" (termina callers/testes/fixtures). Lista
+**never-cut** (validação/erro/segurança/acessibilidade) + **1 teste** p/ lógica não-trivial +
+convenção `shortcut: <limite>, <quando revisitar>` (que o review trata como decisão, §trilha-b).
