@@ -29,6 +29,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 RUN curl -fsSL https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64 \
       -o /usr/local/bin/ttyd && chmod +x /usr/local/bin/ttyd
+# docker CLI ESTÁTICO (só o cliente, ~50MB): fala com o engine do HOST via /var/run/docker.sock
+# (montado no compose). Usado pelo provisionamento sob demanda (app/service_provision) p/ subir e
+# derrubar os serviços efêmeros do alvo (postgres/redis) por-run. Versão pinada (determinismo).
+ENV DOCKER_CLI_VERSION=27.3.1
+RUN curl -fsSL "https://download.docker.com/linux/static/stable/x86_64/docker-${DOCKER_CLI_VERSION}.tgz" \
+      | tar -xz -C /tmp \
+    && mv /tmp/docker/docker /usr/local/bin/docker \
+    && rm -rf /tmp/docker && docker --version
 # gh (GitHub CLI): o agente que PODE rodar shell (impl/correção) consulta issues/PRs do alvo
 # (`gh issue view #N`) e o operador usa no terminal web. Autentica via GH_TOKEN no entrypoint.
 # Versão PINADA (determinismo): bump = trocar a tag. Binário do release (sem o apt-repo da GitHub).
