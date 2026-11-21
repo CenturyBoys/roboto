@@ -69,6 +69,6 @@ def build_codebase_map(workdir: str, *, budget: int = 2000, lister: Lister | Non
         linhas.append(linha)
         total += len(linha) + 1
     return (
-        "MAPA DO REPO (o que JÁ existe — reuse; só leia um arquivo se precisar do detalhe):\n"
+        "REPO MAP (what ALREADY exists — reuse it; read a file only when you need its detail):\n"
         + "\n".join(linhas)
     )

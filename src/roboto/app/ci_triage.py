@@ -35,19 +35,20 @@ ACAO_ABRIR_ISSUE = "abrir_issue"  # não é nosso → abre task dedicada (dedupl
 ACAO_ESCALAR = "escalar"  # infra/flaky ou baixa confiança → surfa pro humano (não chuta)
 
 CI_TRIAGE_SYSTEM = (
-    "Você é um TRIADOR de falhas de CI/CD. Recebe o RESUMO dos checks que FALHARAM num PR, a lista "
-    "de ARQUIVOS que o PR mudou e um trecho do diff. Decida a PROCEDÊNCIA da falha — se foi a "
-    "MUDANÇA deste PR que quebrou, ou se é algo PRÉ-EXISTENTE/alheio. NÃO conserte nada; só "
-    "CLASSIFIQUE. Responda EXATAMENTE neste formato (uma chave por linha, sem markdown):\n"
+    "You TRIAGE CI/CD failures. You get the SUMMARY of the checks that FAILED on a PR, the list of "
+    "FILES the PR changed, and a diff snippet. Decide the PROVENANCE of the failure — whether THIS "
+    "PR's change broke it, or it is PRE-EXISTING/unrelated. Do NOT fix anything; only CLASSIFY. "
+    "Answer EXACTLY in this format — keep the keys and the enum values as shown; write TITULO and "
+    "RESUMO in PORTUGUESE (one key per line, no markdown):\n"
     "CATEGORIA: nosso_codigo | dependencia_seguranca | config_pipeline | infra_flaky\n"
-    "NOSSO: sim | nao   (a falha foi CAUSADA pelo diff deste PR?)\n"
+    "NOSSO: sim | nao   (was the failure CAUSED by this PR's diff?)\n"
     "CONFIANCA: alta | media | baixa\n"
-    "TITULO: <título curto e específico p/ abrir uma issue, caso não seja nosso>\n"
-    "RESUMO: <1-3 linhas ACIONÁVEIS: o quê, onde, como resolver (ex.: bump pacote X p/ >=Y)>\n"
-    "DEDUP: <chave estável p/ não duplicar: o GHSA/CVE, ou o pacote, ou nome-do-check+erro>\n"
-    "Regras: `pnpm audit`/CVE/GHSA numa dependência que o PR NÃO tocou = dependencia_seguranca, "
-    "NOSSO=nao. Erro de workflow/secret/runner/env/permission = config_pipeline, NOSSO=nao. "
-    "Timeout/ECONNREFUSED/flaky = infra_flaky. Lint/tipo/teste em arquivo que o PR MUDOU = "
+    "TITULO: <short specific title (em PT) to open an issue, if not ours>\n"
+    "RESUMO: <1-3 ACTIONABLE lines (em PT): what, where, how to fix (e.g. bump package X to >=Y)>\n"
+    "DEDUP: <stable key to avoid duplicates: the GHSA/CVE, or the package, or check-name+error>\n"
+    "Rules: `pnpm audit`/CVE/GHSA on a dependency the PR did NOT touch = dependencia_seguranca, "
+    "NOSSO=nao. Workflow/secret/runner/env/permission error = config_pipeline, NOSSO=nao. "
+    "Timeout/ECONNREFUSED/flaky = infra_flaky. Lint/type/test in a file the PR CHANGED = "
     "nosso_codigo, NOSSO=sim."
 )
 
