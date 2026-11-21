@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from roboto.app.repo_ci import CiResult, discover_ci_commands, run_ci
+from roboto.app.repo_ci import CiResult, discover_ci_commands, only_docs_changed, run_ci
 
 
 def _mk_pkg(tmp_path: Path, scripts: dict[str, str]) -> str:
@@ -266,3 +266,11 @@ def test_run_ci_sem_setup_mantem_comportamento_antigo() -> None:
     r = run_ci("/w", [("test", "pnpm -s test")], runner=runner)
     assert r.infra is True
     assert r.prepared is False  # não havia como subir o ambiente → não tentou
+
+
+def test_only_docs_changed() -> None:
+    assert only_docs_changed(["docs/x.md", "README.md"]) is True
+    assert only_docs_changed(["docs/arch/view.md", "CHANGELOG"]) is True
+    assert only_docs_changed(["src/app.ts", "docs/x.md"]) is False  # tem código → precisa testar
+    assert only_docs_changed([".github/workflows/ci.yml"]) is False  # workflow não é doc
+    assert only_docs_changed([]) is False  # vazio: não afirma

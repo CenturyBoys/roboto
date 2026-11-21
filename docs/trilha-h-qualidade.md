@@ -393,3 +393,16 @@ tinha `pre-commit`, então o trailer passava (deslize do PR #323). Fix: `commit_
 instala um `commit-msg` **self-contained** (grep puro, sem importar `roboto` — o motor commita em
 `/work`, onde o pacote não está no path) no hooks path que o repo **vai** usar (`.githooks` se existir,
 senão `.git/hooks`), encadeando um `commit-msg` do repo. Semeado no entrypoint do PoC após o clone.
+
+### Ambiente de teste do alvo: serviços + "só-doc não precisa de teste"
+
+O `test` do alvo precisa de **postgres/redis** (o CI do jo-ken-po declara em `services:`). No PoC eles
+sobem compartilhando a rede do container `poc` (`network_mode: service:poc` em `compose.poc.yml`), então
+o `localhost:5432/6379` que o `ci.yml` do alvo usa **funciona de dentro** — o `prepare_target_env`
+roda `db:migrate` + `test` de verdade, sem reescrever `DATABASE_URL`.
+
+**Só provisiona/roda teste quando a task PRECISA:** `repo_ci.only_docs_changed(diff)` detecta mudança
+**só-doc** (`.md`/`docs/`/README…); nesse caso o gate **pula `test` e `build`** (`📄 mudança só-doc…`)
+— não gasta turbo (CPU) nem serviços num PR de documentação. O CI do GitHub ainda valida tudo.
+*(Próximo incremento: provisionar/derrubar os serviços SOB DEMANDA por-run — efêmero, teardown no
+`finally` — em vez de sempre-ligados no compose; exige o docker socket no container.)*
