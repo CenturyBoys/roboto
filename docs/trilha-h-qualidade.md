@@ -384,3 +384,12 @@ text … in PORTUGUESE"). Os **tokens de formato estruturado** (chaves `severida
 `bloqueador/menor`, `nosso_codigo/…`) ficam em PT porque os parsers determinísticos dependem deles e
 parte é human-facing. O canário `test_prompt_invariants` pina os invariantes nas novas frases EN.
 Validação de ganho (qualidade) fica p/ o A/B PT×EN no benchmark ([[ponytail-adocao]], item 5).
+
+### Anti-trailer no hooks path EFETIVO do alvo (#323)
+
+O hook anti-`Co-Authored-By`/`Generated with` era **global** (`core.hooksPath`), mas o repo-alvo seta
+`core.hooksPath=.githooks` **LOCAL** (via `prepare`/pnpm) e **override** o global — e o `.githooks` só
+tinha `pre-commit`, então o trailer passava (deslize do PR #323). Fix: `commit_hygiene.install_repo_hook`
+instala um `commit-msg` **self-contained** (grep puro, sem importar `roboto` — o motor commita em
+`/work`, onde o pacote não está no path) no hooks path que o repo **vai** usar (`.githooks` se existir,
+senão `.git/hooks`), encadeando um `commit-msg` do repo. Semeado no entrypoint do PoC após o clone.
