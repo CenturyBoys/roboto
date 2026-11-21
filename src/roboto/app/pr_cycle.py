@@ -85,6 +85,25 @@ from roboto.result import Err, Ok, Result
 _log = logging.getLogger(__name__)
 _COST_PER_MTOK = 0.4  # custo aprox. Qwen/OpenRouter ($/milhão de tokens) — medir/afinar (L)
 _MAX_RUN_ATTEMPTS = 3  # teto de re-tentativas em erro transitório (B) antes de FAILED terminal
+_STALL_RETRY_LIMIT = 1  # motor travado (idle-timeout): quantas re-tentativas AUTOMÁTICAS (decisão do dono)  # noqa: E501
+
+
+def classificar_retry(exc: BaseException, detalhe: str, attempt: int) -> tuple[bool, str | None]:
+    """Decide se um run que falhou deve RE-ENFILEIRAR (auto-retry) ou virar FAILED terminal. Puro
+    (sem IO) p/ testar a política sem o daemon. Devolve ``(re_enfileira, categoria)``.
+
+    - STALL do motor (idle-timeout → ``TimeoutError``, cujo ``str()`` é VAZIO): 1 re-tentativa só
+      (``_STALL_RETRY_LIMIT``) — cobre o blip transiente do provedor; se travar de novo → terminal
+      p/ o humano olhar (o dono não quer queimar token re-tentando uma task que trava sempre).
+    - Erro TRANSITÓRIO de provedor (402/429/5xx/overloaded): re-tenta até ``_MAX_RUN_ATTEMPTS``.
+    - Qualquer outro (bug/git/PR): terminal.
+    """
+    nxt = attempt + 1
+    if isinstance(exc, TimeoutError):  # watchdog de inatividade (stream do ccr/OpenRouter mudo)
+        return (nxt <= _STALL_RETRY_LIMIT, "stall")
+    if is_transient(detalhe) and nxt < _MAX_RUN_ATTEMPTS:
+        return (True, "provedor")
+    return (False, None)
 
 
 class GitOps(Protocol):
@@ -1096,17 +1115,22 @@ async def process_pr_run_tick(
         # traceback no daemon (antes era engolido no append_session_event).
         detalhe = str(exc).strip() or type(exc).__name__
         _log.exception("process_pr_run_tick run #%s falhou: %s", run.id, detalhe)
-        # Erro TRANSITÓRIO de provedor (402 sem crédito, 429, 5xx, overloaded) → re-enfileira com
-        # backoff (B): quando a condição passa (ex.: humano recarrega), o daemon retoma SOZINHO. Só
-        # vira FAILED terminal se não-transitório ou se estourar o teto de tentativas.
+        # Re-enfileira (auto-retry) OU vira FAILED terminal conforme a política (classificar_retry):
+        # motor travado (idle-timeout) → 1x; transitório de provedor (402/429/5xx) → até o teto. O
+        # daemon retoma SOZINHO (o humano não re-dispara). `str(TimeoutError())` é vazio, por isso a
+        # política casa no TIPO do erro, não na mensagem (bug do #1042: stall virava retry mudo).
         nxt = run.attempt + 1
-        if is_transient(str(exc)) and nxt < _MAX_RUN_ATTEMPTS:
+        re_enfileira, categoria = classificar_retry(exc, detalhe, run.attempt)
+        if re_enfileira:
             await store.requeue_run_with_backoff(run.id, nxt, backoff_until(nxt, moment), moment)
-            await store.append_session_event(
-                run.tenant, run.id, "message", moment,
-                text=f"⏳ erro transitório (provedor) — re-enfileirado (tentativa {nxt}) com "
-                f"backoff; retoma sozinho quando passar: {detalhe}",
+            txt = (
+                f"⏳ motor travado (stream mudo) — re-enfileirado 1x (tentativa {nxt}); se travar "
+                f"de novo vira terminal. Retoma sozinho, sem ação sua."
+                if categoria == "stall"
+                else f"⏳ erro transitório (provedor) — re-enfileirado (tentativa {nxt}) com "
+                f"backoff; retoma sozinho quando passar: {detalhe}"
             )
+            await store.append_session_event(run.tenant, run.id, "message", moment, text=txt)
             return
         await store.set_state(run.id, RunState.FAILED, moment)
         op = classify_provider_error(str(exc))  # billing/cota do provider → msg clara, não bug
