@@ -13,6 +13,24 @@ services:
       timeout: 5s
       retries: 5
 
+  # ambiente de TESTE do repo-ALVO (incremento 2 do prepare_target_env): sobe os serviços que o CI
+  # do alvo exige (postgres/redis) COMPARTILHANDO a rede do `poc` (network_mode) — assim o
+  # `localhost:5432/6379` que o ci.yml do alvo usa funciona DE DENTRO do container, sem reescrever a
+  # DATABASE_URL. Credenciais = as do ci.yml do jo-ken-po (jokenpo/jokenpo/jokenpo_test).
+  target-db:
+    image: postgres:18
+    network_mode: "service:poc"
+    environment:
+      POSTGRES_USER: jokenpo
+      POSTGRES_PASSWORD: jokenpo
+      POSTGRES_DB: jokenpo_test
+    depends_on: [poc]
+
+  target-redis:
+    image: redis:8
+    network_mode: "service:poc"
+    depends_on: [poc]
+
   poc:
     build:
       context: ..

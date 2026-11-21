@@ -48,7 +48,13 @@ from roboto.app.memory import recall_block
 from roboto.app.policy import Policy
 from roboto.app.provider_errors import classify_provider_error
 from roboto.app.related_issues import related_issues_block
-from roboto.app.repo_ci import CiResult, Runner, discover_ci_commands, run_ci
+from roboto.app.repo_ci import (
+    CiResult,
+    Runner,
+    discover_ci_commands,
+    only_docs_changed,
+    run_ci,
+)
 from roboto.app.repo_profile import (
     build_repo_profile,
     read_agents_conventions,
@@ -707,6 +713,17 @@ async def run_pr_cycle(
             ci_cmds = discover_ci_commands(
                 workdir, override=os.environ.get("ROBOTO_LOCAL_CI_CMDS", "")
             )
+            # mudança SÓ-DOC não precisa de build/test (nem de subir serviços): poupa o turbo (CPU)
+            # e o provisionamento. O CI do GitHub ainda roda tudo; aqui é só o gate local.
+            if ci_cmds and only_docs_changed(changed_files_from_diff(diff_atual)):
+                pulados = [n for n, _ in ci_cmds if n in ("test", "build")]
+                ci_cmds = [(n, c) for n, c in ci_cmds if n not in ("test", "build")]
+                if pulados and store is not None and now is not None:
+                    await store.append_session_event(
+                        run.tenant, run.id, "message", now,
+                        text=f"📄 mudança só-doc: pulo {'/'.join(pulados)} (sem subir serviços; o "
+                        "CI do GitHub valida).",
+                    )
             if ci_cmds:
                 # RESILIÊNCIA: lê o CI do alvo (env/services/setup) p/ SUBIR o ambiente de teste e
                 # rodar o `test` de verdade (não chutar "infra"). ROBOTO_PREPARE_ENV=0 desliga.

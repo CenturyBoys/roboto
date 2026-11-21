@@ -61,6 +61,20 @@ class CiResult:
         return not self.passed and not self.infra
 
 
+# arquivos que são DOCUMENTAÇÃO: não exigem build/test de serviço (nem subir postgres/redis).
+_DOC_FILE = re.compile(
+    r"(^|/)(docs?/)|(^|/)(readme|changelog|contributing)|\.(mdx?|rst|txt|adoc)$", re.I
+)
+
+
+def only_docs_changed(files: list[str]) -> bool:
+    """True se TODO arquivo mudado é documentação → o run NÃO precisa de build/test (nem de subir
+    os serviços do CI). Vazio → False (não dá pra afirmar). Base p/ provisionar recurso só quando
+    a task REALMENTE roda teste (não gastar postgres/redis num PR só-doc)."""
+    real = [f for f in files if f and f != "/dev/null"]
+    return bool(real) and all(_DOC_FILE.search(f) for f in real)
+
+
 def discover_ci_commands(workdir: str, *, override: str = "") -> list[tuple[str, str]]:
     """Scripts de check do repo (`package.json` da raiz), na ordem lint→typecheck→test, como
     `pnpm -s <script>` (= o que o CI roda via turbo). `override` (env `ROBOTO_LOCAL_CI_CMDS`,
