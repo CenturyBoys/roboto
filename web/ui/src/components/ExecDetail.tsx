@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   allowSecret,
+  ApiError,
   applyProposal,
   cancelExecution,
   dispatchImplement,
@@ -130,8 +131,10 @@ export function ExecDetail({
       const r = await dispatchImplement(Number(issueId))
       setApplyMsg(`execução #${r.run_id} criada — implementando…`)
       onOpenRun(r.run_id)
-    } catch {
-      setApplyMsg('não deu p/ implementar — a issue está pronta (DoR)? já há impl ativo?')
+    } catch (e) {
+      // mostra o motivo REAL do backend (DoR faltando / impl já ativo / etc.), não um chute.
+      const detail = e instanceof ApiError && e.detail ? e.detail : ''
+      setApplyMsg(detail ? `não deu p/ implementar — ${detail}` : 'não deu p/ implementar')
     }
   }
 

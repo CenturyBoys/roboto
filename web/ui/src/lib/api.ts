@@ -30,8 +30,13 @@ export function setToken(token: string): void {
 }
 
 export class ApiError extends Error {
-  constructor(public readonly status: number) {
-    super(`HTTP ${status}`)
+  // `detail` = a mensagem `{"error": "..."}` do backend (ex.: "issue não está pronta (DoR)…" ou
+  // "já há impl ativo…"), p/ a UI mostrar o motivo REAL em vez de um chute genérico.
+  constructor(
+    public readonly status: number,
+    public readonly detail = '',
+  ) {
+    super(detail || `HTTP ${status}`)
   }
 }
 
@@ -40,7 +45,14 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: { ...init?.headers, Authorization: `Bearer ${getToken()}` },
   })
-  if (!res.ok) throw new ApiError(res.status)
+  if (!res.ok) {
+    const detail = await res
+      .clone()
+      .json()
+      .then((b) => (b && typeof b.error === 'string' ? b.error : ''))
+      .catch(() => '')
+    throw new ApiError(res.status, detail)
+  }
   return (await res.json()) as T
 }
 
