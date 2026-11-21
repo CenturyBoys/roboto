@@ -104,6 +104,11 @@ git -C "$TARGET_WORKDIR" config user.name "${ROBOTO_GIT_NAME:-roboto fleet}" 2>/
 git -C "$TARGET_WORKDIR" config user.email "${ROBOTO_GIT_EMAIL:-fleet@roboto.local}" 2>/dev/null || true
 echo "git identity do fleet setada p/ $TARGET_WORKDIR"
 
+# anti-trailer no hooks path EFETIVO do alvo (#323): o repo seta core.hooksPath=.githooks LOCAL (via
+# prepare/pnpm), que OVERRIDE nosso hook global → o stripper não rodava e o "Co-Authored-By: Claude"
+# passava. Semeia commit-msg no .githooks do alvo. (re-afirmado a cada run pelo runtime.)
+python3 -c "from roboto.app.commit_hygiene import install_repo_hook; print('anti-trailer:', install_repo_hook('$TARGET_WORKDIR'))" 2>/dev/null || true
+
 # 4b) terminal web (ttyd): anexa na tmux POR-RUN passada via ?arg=<sessão> (modo -a/url-arg). Assim
 #     o botão "Terminal" do cockpit mostra a sessão REAL do motor; sem sessão, cai no terminal padrão.
 if command -v ttyd >/dev/null 2>&1; then
