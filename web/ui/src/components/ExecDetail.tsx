@@ -16,6 +16,7 @@ import type { ExecutionDetail, PrDiff, Risk, Terminal, ToolUsage } from '@/types
 import { Button } from './ui/button'
 import { Card, CardLabel, CardTitle } from './ui/card'
 import { Chat } from './Chat'
+import { MarkdownView } from './MarkdownView'
 import { Timeline } from './Timeline'
 import { StatePill } from './ui/state-pill'
 import { Td, TableWrap, Th } from './ui/table'
@@ -35,6 +36,7 @@ export function ExecDetail({
   const [error, setError] = useState<string | null>(null)
   const [chatOpen, setChatOpen] = useState(false)
   const [applyBody, setApplyBody] = useState<string | null>(null) // null = overlay fechado
+  const [applyPreview, setApplyPreview] = useState(true) // true = mostra render markdown; false = edita
   const [applyMsg, setApplyMsg] = useState<string | null>(null)
   const [applying, setApplying] = useState(false)
 
@@ -347,6 +349,9 @@ export function ExecDetail({
               <div className="flex-1 text-sm font-bold">
                 Aplicar na issue <span className="text-muted">· revise antes de salvar no GitHub</span>
               </div>
+              <Button variant="ghost" onClick={() => setApplyPreview((p) => !p)}>
+                {applyPreview ? '✏️ editar' : '👁 visualizar'}
+              </Button>
               <Button variant="default" disabled={applying} onClick={() => void doApply()}>
                 {applying ? 'aplicando…' : 'confirmar e atualizar'}
               </Button>
@@ -354,11 +359,17 @@ export function ExecDetail({
                 cancelar
               </Button>
             </div>
-            <textarea
-              value={applyBody}
-              onChange={(e) => setApplyBody(e.target.value)}
-              className="flex-1 w-full resize-none rounded-lg border border-border bg-surface p-3 font-mono text-xs outline-none focus:border-accent"
-            />
+            {applyPreview ? (
+              <div className="markdown-body flex-1 w-full overflow-auto rounded-lg border border-border bg-surface p-3 text-sm">
+                <MarkdownView>{applyBody || '(sem corpo)'}</MarkdownView>
+              </div>
+            ) : (
+              <textarea
+                value={applyBody}
+                onChange={(e) => setApplyBody(e.target.value)}
+                className="flex-1 w-full resize-none rounded-lg border border-border bg-surface p-3 font-mono text-xs outline-none focus:border-accent"
+              />
+            )}
           </div>
         </div>
       )}
