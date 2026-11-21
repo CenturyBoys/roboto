@@ -430,3 +430,6 @@ linguagem** (Node/Python/Go/Java/Ruby igual): roda **o que o GitHub realmente ro
 `parse_compose_services` lê serviços de um `docker-compose.yml` do alvo (complementa o `services:`).
 Ordem de autoridade das fontes: **CI `run:`** > docker-compose > Dockerfile > manifesto do ecossistema.
 *(O que o parse genérico não cobrir, o agente investiga e codifica — ferramentificação.)*
+
+*(Refino: o parse de setup PARA no 1º passo de gate/validação — setup vem antes dos `check:`/test no
+CI; assim não captura `check:*`/`format`/`test:int` como se fossem preparação.)*
