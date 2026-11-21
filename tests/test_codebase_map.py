@@ -27,7 +27,7 @@ def test_mapa_agrupa_por_dir_e_extrai_simbolos(tmp_path: Path) -> None:
     assert "lib: Thing, helper" in m  # ordenado (ASCII: maiúsculas antes)
     assert "app: X, run" in m
     assert "README" not in m  # não-código ignorado
-    assert m.startswith("MAPA DO REPO")
+    assert m.startswith("REPO MAP")
 
 
 def test_pastas_compartilhadas_vem_primeiro(tmp_path: Path) -> None:

@@ -372,3 +372,15 @@ pontuar** se o juiz não discrimina. Modelo fixo + temp 0 + rubrica + **cada sco
 desnecessário (sem construto = nota inválida). É o anti-"LLM-judge confiado cego" — base p/ provar
 nossos prompts sem queimar budget ([[diagnostico-modelo-forte-vs-harness]]). O runner de N tarefas ×
 M runs é o próximo incremento.
+
+### Prompts de instrução em INGLÊS, saída humana em PORTUGUÊS
+
+Os prompts de **instrução** ao modelo (persona de papel, impl `base_prompt`, `REVIEW_PR_STRUCT_SYSTEM`,
+`CI_TRIAGE_SYSTEM`, header do mapa do repo) foram migrados p/ **inglês** — melhor instruction-following
+(sobretudo nos modelos fracos, treinados majoritariamente em inglês) e **~15-20% menos tokens** (nosso
+objetivo #1). A **saída pra humano** (corpo do PR, comentário de review, mensagem de commit, feed)
+segue em **português**, por instrução explícita (ex.: persona termina com "Write every human-facing
+text … in PORTUGUESE"). Os **tokens de formato estruturado** (chaves `severidade/arquivo/…`, valores
+`bloqueador/menor`, `nosso_codigo/…`) ficam em PT porque os parsers determinísticos dependem deles e
+parte é human-facing. O canário `test_prompt_invariants` pina os invariantes nas novas frases EN.
+Validação de ganho (qualidade) fica p/ o A/B PT×EN no benchmark ([[ponytail-adocao]], item 5).

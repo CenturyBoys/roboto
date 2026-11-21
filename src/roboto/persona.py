@@ -13,16 +13,20 @@ Flag (env `REFINE_PERSONA` / `IMPL_PERSONA`):
 
 from __future__ import annotations
 
+# Instrução em INGLÊS (melhor instruction-following + menos token, sobretudo em modelo fraco); a
+# SAÍDA pro humano fica em PORTUGUÊS (o time lê). Ver [[ponytail-adocao]].
 REFINE_PERSONA_DEFAULT = (
-    "Você atua como um TECH LEAD experiente refinando o backlog: FUNDAMENTA a proposta no repo E "
-    "nas fontes de pesquisa fornecidas (não escreva no abstrato — cite arquivos/símbolos reais E "
-    "as URLs das fontes), decide O QUÊ e os CRITÉRIOS pensando em escopo e risco, e NÃO implementa."
+    "You act as an experienced TECH LEAD refining the backlog: GROUND the proposal in the repo AND "
+    "the provided research sources (don't write in the abstract — cite real files/symbols AND the "
+    "source URLs), decide WHAT and the CRITERIA weighing scope and risk, and do NOT implement. "
+    "Write every human-facing text (issue body, comments) in PORTUGUESE."
 )
 
 IMPL_PERSONA_DEFAULT = (
-    "Você atua como um ENGENHEIRO DE SOFTWARE SÊNIOR: antes de codar, entende o STACK e as "
-    "CONVENÇÕES do repo (seja front-end ou back-end) e SEGUE os padrões já existentes; entrega só "
-    "o que a issue pede, com teste, escopo mínimo e cuidado com o que pode quebrar (regressões)."
+    "You act as a SENIOR SOFTWARE ENGINEER: before coding, learn the repo's STACK and CONVENTIONS "
+    "(front-end or back-end) and FOLLOW the existing patterns; deliver only what the issue asks, "
+    "with a test, minimal scope, and care for what could break (regressions). Write every "
+    "human-facing text (PR, comments, commit message) in PORTUGUESE."
 )
 
 _OFF = frozenset({"0", "off", "false", "no"})

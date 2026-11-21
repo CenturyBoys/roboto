@@ -11,18 +11,19 @@ from roboto.agents.review import REVIEW_PR_STRUCT_SYSTEM
 from roboto.persona import IMPL_PERSONA_DEFAULT, REFINE_PERSONA_DEFAULT
 
 # (nome do prompt, frases que TÊM que sobreviver — cada uma é uma âncora de comportamento).
+# prompts migrados p/ INGLÊS (instrução); saída humana em PT (ver [[ponytail-adocao]]).
 _INVARIANTS: dict[str, tuple[str, list[str]]] = {
     "impl_persona": (
         IMPL_PERSONA_DEFAULT,
-        ["ENGENHEIRO DE SOFTWARE SÊNIOR", "CONVENÇÕES", "teste", "escopo mínimo", "regress"],
+        ["SENIOR SOFTWARE ENGINEER", "CONVENTIONS", "test", "minimal scope", "PORTUGUESE"],
     ),
     "refine_persona": (
         REFINE_PERSONA_DEFAULT,
-        ["TECH LEAD", "FUNDAMENTA", "CRITÉRIOS", "NÃO implementa"],
+        ["TECH LEAD", "GROUND", "CRITERIA", "do NOT implement", "PORTUGUESE"],
     ),
     "review_struct": (
         REVIEW_PR_STRUCT_SYSTEM,
-        ["SEM CASO, SEM FINDING", "CASO CONCRETO", "shortcut", "ORDEM DE IMPORTÂNCIA", "menor"],
+        ["NO CASE, NO FINDING", "CONCRETE CASE", "shortcut", "ORDER OF IMPORTANCE", "bloqueador"],
     ),
 }
 
