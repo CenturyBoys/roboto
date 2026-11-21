@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { dispatchEngineRefine, dispatchImplement, getIssue, refineIssue } from '@/lib/api'
 import type { IssueDetail } from '@/types'
 import { BreakdownPanel } from './BreakdownPanel'
+import { MarkdownView } from './MarkdownView'
 import { Button } from './ui/button'
 import { Card, CardLabel, CardTitle } from './ui/card'
 import { useToast } from './ui/toast'
@@ -103,9 +104,9 @@ export function IssueRefine({
             >
               DoR: {detail.dor.ready ? 'pronta ✓' : `falta ${detail.dor.missing.join(', ')}`}
             </span>
-            <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap text-xs text-muted">
-              {detail.body || '(sem corpo)'}
-            </pre>
+            <div className="markdown-body mt-2 max-h-96 overflow-auto rounded border border-border bg-surface/40 p-3 text-sm">
+              <MarkdownView>{detail.body || '(sem corpo)'}</MarkdownView>
+            </div>
           </>
         )}
         <div className="mt-3 flex flex-wrap gap-2">
