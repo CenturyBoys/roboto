@@ -16,6 +16,7 @@ Tudo PURO/injetável (parser testável em tier-1; a execução dos comandos fica
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -36,6 +37,77 @@ class CiService:
     name: str  # nome do serviço no workflow (postgres, redis…)
     image: str  # imagem docker (postgres:18, redis:8…)
     env: dict[str, str] = field(default_factory=dict)  # env do serviço (POSTGRES_USER…)
+
+
+# `run:` do CI que é RUÍDO (não setup de ambiente): checkout/toolchain, deps já instaladas, cache,
+# limpeza, login, artefato. Agnóstico de linguagem (install de qualquer ecossistema).
+_CI_NOISE = re.compile(
+    r"\b(docker system prune|df -h|free -h|apt-get|apt install|brew install"
+    r"|pnpm install|npm ci|npm install|yarn install|corepack"
+    r"|pip install|poetry install|pipenv install|uv (pip )?install|bundle install"
+    r"|go mod download|mvn .*(install|package)|gradle(w)? (assemble|build)?"
+    r"|upload-artifact|download-artifact|actions/cache|docker login|gh auth|rm -f )",
+    re.I,
+)
+# `run:` que é o GATE (lint/type/build/test) — a gente já roda isso separado (discover_ci_commands).
+_CI_GATE = re.compile(
+    r"\b(lint|typecheck|type-check|tsc\b|vitest|jest|pytest|go test|rspec|cargo test|mvn test"
+    r"|gradle(w)? +(test|check)|turbo run +(test|build|lint|typecheck)"
+    r"|pnpm +(run +)?(test|build|lint|typecheck)|npm +(run +)?(test|build|lint)"
+    r"|make +(test|build|lint|check))\b",
+    re.I,
+)
+
+
+def parse_ci_setup_steps(text: str) -> list[str]:
+    """Os `run:` de SETUP do workflow (migrate, generate, criar role, seed…), em ordem. Puro.
+    Pula `uses:` (ações), o GATE (lint/type/build/test) e o RUÍDO (install/checkout/cache/limpeza).
+    É agnóstico de linguagem (shell) — captura QUALQUER asset que o CI prepara, não só o do Node."""
+    try:
+        import yaml  # lazy
+
+        doc: Any = yaml.safe_load(text)
+    except Exception:  # noqa: BLE001
+        return []
+    if not isinstance(doc, dict):
+        return []
+    out: list[str] = []
+    for job in (doc.get("jobs") or {}).values() if isinstance(doc.get("jobs"), dict) else []:
+        for step in (job.get("steps") or []) if isinstance(job, dict) else []:
+            run = step.get("run") if isinstance(step, dict) else None
+            if not isinstance(run, str) or not run.strip():
+                continue  # `uses:` (ação) ou vazio → não é comando de setup
+            cmd = run.strip()
+            if _CI_GATE.search(cmd) or _CI_NOISE.search(cmd):
+                continue
+            out.append(cmd)
+    return out
+
+
+def parse_compose_services(text: str) -> list[CiService]:
+    """DICA de serviços via `docker-compose.yml` do alvo (complementa o `services:` do CI). Puro."""
+    try:
+        import yaml  # lazy
+
+        doc: Any = yaml.safe_load(text)
+    except Exception:  # noqa: BLE001
+        return []
+    services = doc.get("services") if isinstance(doc, dict) else None
+    out: list[CiService] = []
+    for name, spec in services.items() if isinstance(services, dict) else []:
+        if not isinstance(spec, dict) or not spec.get("image"):
+            continue
+        raw_env = spec.get("environment")
+        senv: dict[str, str] = {}
+        if isinstance(raw_env, dict):
+            senv = {k: str(v) for k, v in raw_env.items() if "${" not in str(v)}
+        elif isinstance(raw_env, list):  # formato ["K=v", …]
+            for item in raw_env:
+                if isinstance(item, str) and "=" in item and "${" not in item:
+                    k, _, v = item.partition("=")
+                    senv[k.strip()] = v.strip()
+        out.append(CiService(str(name), str(spec["image"]), senv))
+    return out
 
 
 def parse_ci_services(text: str) -> list[CiService]:
@@ -151,6 +223,7 @@ def read_target_env(workdir: str) -> TargetEnv:
     pega os `services:` do 1º workflow que os declara."""
     env: dict[str, str] = {}
     services: tuple[str, ...] = ()
+    ci_steps: list[str] = []
     for p in _workflow_paths(workdir):
         try:
             text = p.read_text(encoding="utf-8")
@@ -161,4 +234,13 @@ def read_target_env(workdir: str) -> TargetEnv:
             env.setdefault(k, v)
         if s and not services:
             services = s
-    return TargetEnv(env=env, services=services, setup=discover_setup_commands(workdir))
+        if not ci_steps:
+            ci_steps = parse_ci_setup_steps(text)
+    # SETUP: prefere os `run:` de setup do CI (ricos, AGNÓSTICOS de linguagem — migrate, criar role,
+    # seed, generate…), que é o que o GitHub REALMENTE roda; só cai nos scripts do package.json
+    # (TS/Node) se o CI não declarar passos. Resolve a lacuna de assets além do `services:`.
+    if ci_steps:
+        setup = tuple((f"ci-step-{i}", c) for i, c in enumerate(ci_steps, 1))
+    else:
+        setup = discover_setup_commands(workdir)
+    return TargetEnv(env=env, services=services, setup=setup)
