@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import socket
 from collections.abc import Callable
 from datetime import datetime
 from typing import Protocol
@@ -62,9 +63,10 @@ from roboto.app.repo_profile import (
 )
 from roboto.app.reuse_metric import reuse_stat
 from roboto.app.secret_scan import SecretLeakError, scan_diff
+from roboto.app.service_provision import provision, teardown
 from roboto.app.session_guard import may_resume, session_config_hash
 from roboto.app.session_hub import SessionHub
-from roboto.app.target_env import TargetEnv, read_target_env
+from roboto.app.target_env import TargetEnv, read_target_env, read_target_services
 from roboto.app.task_class import TaskType, classificar_task
 from roboto.app.tiering import precisa_forte
 from roboto.app.transient import is_transient
@@ -739,83 +741,115 @@ async def run_pr_cycle(
                         services=tenv.services, runner=ci_runner,
                     )
 
-                ci = await asyncio.to_thread(_run_ci)
-                ci_tries = 0
-                while ci.fixable and ci_tries < _LOCAL_CI_FIX_ATTEMPTS:
-                    ci_tries += 1
-                    model_ci = (
-                        modelo_forte
-                        if (modelo_forte and ci_tries >= _LOCAL_CI_FIX_ATTEMPTS)
-                        else modelo_fin
+                # PROVISIONA os serviços do CI do alvo (postgres/redis…) EFÊMEROS, só se a task
+                # roda teste. Sobem na REDE do fleet (localhost compartilhado) e CAEM no finally.
+                # ROBOTO_PROVISION_SERVICES=0 desliga (usa o que já estiver no ambiente).
+                _svcs = (
+                    read_target_services(workdir)
+                    if os.environ.get("ROBOTO_PROVISION_SERVICES", "1")
+                    not in ("0", "off", "false", "no")
+                    and any(n == "test" for n, _ in ci_cmds)
+                    else []
+                )
+                _provisionado = False
+                if _svcs:
+                    _nomes = await asyncio.to_thread(
+                        provision, _svcs, run_id=run.id, self_container=socket.gethostname(),
                     )
-                    if store is not None and now is not None:
+                    _provisionado = bool(_nomes)
+                    if _provisionado and store is not None and now is not None:
                         await store.append_session_event(
                             run.tenant, run.id, "message", now,
-                            text=f"🔴 CI local `{ci.which}` reprovou → motor corrige ({ci_tries}).",
+                            text=f"🧪 subi {len(_nomes)} serviço(s) efêmero(s) p/ o teste "
+                            f"({', '.join(s.name for s in _svcs)}); derrubo no fim.",
                         )
-                    await _engine_turn(
-                        _ci_fix_prompt(ci.which, ci.red), coder.get("native"), model=model_ci
-                    )
-                    await autoformat(workdir)
-                    try:
-                        await git.commit_all(f"{title} (fix CI {ci.which})")
-                    except GitError:
-                        pass  # hooks já passaram no 1º commit; re-commit dos fixes é best-effort
+                        await asyncio.sleep(3)  # readiness breve; run_ci re-tenta após o setup
+                try:
                     ci = await asyncio.to_thread(_run_ci)
-                if ci.infra:
-                    if store is not None and now is not None:
-                        # mensagem HONESTA: diz se TENTAMOS subir o ambiente e qual serviço faltou,
-                        # em vez do antigo "infra, não a sua mudança" cego.
-                        if ci.prepared:
-                            svc = (
-                                f" (faltou subir: {', '.join(ci.services)})"
-                                if ci.services else ""
+                    ci_tries = 0
+                    while ci.fixable and ci_tries < _LOCAL_CI_FIX_ATTEMPTS:
+                        ci_tries += 1
+                        model_ci = (
+                            modelo_forte
+                            if (modelo_forte and ci_tries >= _LOCAL_CI_FIX_ATTEMPTS)
+                            else modelo_fin
+                        )
+                        if store is not None and now is not None:
+                            await store.append_session_event(
+                                run.tenant, run.id, "message", now,
+                                text=f"🔴 CI local `{ci.which}` reprovou → corrige ({ci_tries}).",
                             )
-                            detalhe = (
-                                f"tentei subir o ambiente de teste (setup do repo) e `{ci.which}` "
-                                f"seguiu indisponível por infra{svc}"
+                        await _engine_turn(
+                            _ci_fix_prompt(ci.which, ci.red), coder.get("native"), model=model_ci
+                        )
+                        await autoformat(workdir)
+                        try:
+                            await git.commit_all(f"{title} (fix CI {ci.which})")
+                        except GitError:
+                            pass  # hooks já passaram no 1º commit; re-commit é best-effort
+                        ci = await asyncio.to_thread(_run_ci)
+                    if ci.infra:
+                        if store is not None and now is not None:
+                            # HONESTA: diz se TENTAMOS subir o ambiente e qual serviço faltou,
+                            # em vez do antigo "infra, não a sua mudança" cego.
+                            if ci.prepared:
+                                svc = (
+                                    f" (faltou subir: {', '.join(ci.services)})"
+                                    if ci.services else ""
+                                )
+                                detalhe = (
+                                    f"tentei subir o ambiente (setup do repo) e `{ci.which}` "
+                                    f"seguiu indisponível por infra{svc}"
+                                )
+                            else:
+                                detalhe = (
+                                    f"`{ci.which}` indisponível localmente e sem setup no repo p/ "
+                                    "subir o ambiente de teste"
+                                )
+                            await store.append_session_event(
+                                run.tenant, run.id, "message", now,
+                                text=f"⚠️ CI local: {detalhe} — o CI do GitHub é OBRIGATÓRIO antes "
+                                     "do merge.",
                             )
-                        else:
-                            detalhe = (
-                                f"`{ci.which}` indisponível localmente e sem setup no repo p/ "
-                                "subir o ambiente de teste"
+                    elif not ci.passed:
+                        if store is not None and now is not None:
+                            await store.append_session_event(
+                                run.tenant, run.id, "message", now,
+                                text=f"🚩 CI local `{ci.which}` segue vermelho após "
+                                     f"{_LOCAL_CI_FIX_ATTEMPTS} tentativas — humano (PR não sai).",
                             )
+                            if run.origin_chat_id:
+                                await store.enqueue_effect(
+                                    run.tenant, run.id, "telegram_notify",
+                                    {"chat_id": run.origin_chat_id,
+                                     "text": f"🚩 #{run.issue_id}: CI local ({ci.which}) vermelho "
+                                             "após 3 tentativas — precisa de humano."},
+                                    f"localci:{run.id}", now,
+                                )
+                        raise RuntimeError(
+                            f"CI local ({ci.which}) segue vermelho após {_LOCAL_CI_FIX_ATTEMPTS} "
+                            "tentativas — escala p/ humano (não abre PR vermelho)"
+                        )
+                    elif ci.prepared and store is not None and now is not None:
+                        # resiliência: subimos o ambiente e o teste passou DE VERDADE (não pulado)
                         await store.append_session_event(
                             run.tenant, run.id, "message", now,
-                            text=f"⚠️ CI local: {detalhe} — o CI do GitHub é OBRIGATÓRIO antes "
-                                 "do merge.",
+                            text="🔧 subi o ambiente (setup do repo) e o `test` passou ✅ — "
+                                 "validado de verdade, não pulado.",
                         )
-                elif not ci.passed:
-                    if store is not None and now is not None:
+                    elif ci_tries and store is not None and now is not None:
                         await store.append_session_event(
                             run.tenant, run.id, "message", now,
-                            text=f"🚩 CI local `{ci.which}` segue vermelho após "
-                                 f"{_LOCAL_CI_FIX_ATTEMPTS} tentativas — humano (PR não sai).",
+                            text=f"✅ CI local verde após {ci_tries} correção(ões) — PR verde.",
                         )
-                        if run.origin_chat_id:
-                            await store.enqueue_effect(
-                                run.tenant, run.id, "telegram_notify",
-                                {"chat_id": run.origin_chat_id,
-                                 "text": f"🚩 #{run.issue_id}: CI local ({ci.which}) vermelho "
-                                         "após 3 tentativas — precisa de humano."},
-                                f"localci:{run.id}", now,
+                finally:
+                    if _provisionado:
+                        _n = await asyncio.to_thread(teardown, run.id)
+                        if _n and store is not None and now is not None:
+                            await store.append_session_event(
+                                run.tenant, run.id, "message", now,
+                                text=f"🧹 derrubei {_n} serviço(s) efêmero(s) do teste.",
                             )
-                    raise RuntimeError(
-                        f"CI local ({ci.which}) segue vermelho após {_LOCAL_CI_FIX_ATTEMPTS} "
-                        "tentativas — escala p/ humano (não abre PR vermelho)"
-                    )
-                elif ci.prepared and store is not None and now is not None:
-                    # resiliência: subimos o ambiente e o teste passou DE VERDADE (não pulado)
-                    await store.append_session_event(
-                        run.tenant, run.id, "message", now,
-                        text="🔧 subi o ambiente de teste (setup do repo) e o `test` passou ✅ — "
-                             "validado de verdade, não pulado.",
-                    )
-                elif ci_tries and store is not None and now is not None:
-                    await store.append_session_event(
-                        run.tenant, run.id, "message", now,
-                        text=f"✅ CI local verde após {ci_tries} correção(ões) — PR nasce verde.",
-                    )
         # #281: o PUSH tem de incluir TUDO que o CI local validou (o worktree). Motor deixou arquivo
         # fora do commit (ex.: import órfão do #310) → CI local verde, GitHub vermelho.
         # commit_all faz `git add -A` e é no-op se a árvore está limpa.

@@ -406,3 +406,14 @@ roda `db:migrate` + `test` de verdade, sem reescrever `DATABASE_URL`.
 — não gasta turbo (CPU) nem serviços num PR de documentação. O CI do GitHub ainda valida tudo.
 *(Próximo incremento: provisionar/derrubar os serviços SOB DEMANDA por-run — efêmero, teardown no
 `finally` — em vez de sempre-ligados no compose; exige o docker socket no container.)*
+
+### Provisionamento sob demanda dos serviços (B — efêmero, sobe-e-desce)
+
+`app/service_provision` sobe os serviços que o CI do alvo declara (`target_env.parse_ci_services` lê o
+`services:`) **efêmeros por-run** e os **derruba no `finally`** (`pr_cycle`): `provision` → `docker run`
+na rede do fleet (`--network container:<self>` p/ o `localhost` bater) com label `roboto.run=<id>`;
+`teardown` remove por label; `sweep_orphans` limpa containers de runs mortos. **Só provisiona se a
+task roda teste** (não só-doc). **Dados efêmeros por default** (sobe limpo, migra, roda, derruba —
+reprodutível/isolado como o CI do GitHub); persistência seria opt-in por performance, não o padrão.
+`ROBOTO_PROVISION_SERVICES` (default on no código; **0 no PoC**, que usa os serviços hardcoded do
+compose). Ativação total exige **docker socket + CLI** no container (follow-up de infra).
