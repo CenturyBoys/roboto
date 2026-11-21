@@ -417,3 +417,16 @@ task roda teste** (não só-doc). **Dados efêmeros por default** (sobe limpo, m
 reprodutível/isolado como o CI do GitHub); persistência seria opt-in por performance, não o padrão.
 `ROBOTO_PROVISION_SERVICES` (default on no código; **0 no PoC**, que usa os serviços hardcoded do
 compose). Ativação total exige **docker socket + CLI** no container (follow-up de infra).
+
+### Como o harness descobre TODO o setup (não só `services:`) — agnóstico de linguagem
+
+A lacuna: o CI do alvo faz passos de setup **além** do `services:` (ex.: criar role `jokenpo_app` via
+`psql < scripts/db-app-role.sql`) — assets que o parse de `services:`/scripts do `package.json` não
+pegava. Fonte da verdade = **o próprio workflow**. `target_env.parse_ci_setup_steps` lê os **`run:`
+de setup** do workflow, EM ORDEM, pulando `uses:` (ações), o **ruído** (checkout/install/cache/
+limpeza/login) e o **gate** (lint/type/build/test — rodado separado). É **shell → agnóstico de
+linguagem** (Node/Python/Go/Java/Ruby igual): roda **o que o GitHub realmente roda**. `read_target_env`
+**prefere** esses passos; só cai nos scripts do `package.json` se o CI não declarar. Dica extra:
+`parse_compose_services` lê serviços de um `docker-compose.yml` do alvo (complementa o `services:`).
+Ordem de autoridade das fontes: **CI `run:`** > docker-compose > Dockerfile > manifesto do ecossistema.
+*(O que o parse genérico não cobrir, o agente investiga e codifica — ferramentificação.)*

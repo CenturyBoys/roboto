@@ -76,10 +76,76 @@ def test_read_target_env_junta_ci_e_package(tmp_path: Path) -> None:
     tenv = read_target_env(str(tmp_path))
     assert "DATABASE_URL" in tenv.env
     assert tenv.services == ("postgres", "redis")
-    assert tenv.setup == (("db:migrate", "pnpm -s db:migrate"),)
+    assert tenv.setup == (("ci-step-1", "pnpm --filter @jo-ken-po/db db:migrate"),)
 
 
 def test_read_target_env_sem_github_e_vazio(tmp_path: Path) -> None:
     # repo sem .github/workflows e sem package.json → TargetEnv vazio (no-op, degrada normal).
     tenv = read_target_env(str(tmp_path))
     assert tenv.env == {} and tenv.services == () and tenv.setup == ()
+
+
+_WF_STEPS = """
+jobs:
+  verify:
+    steps:
+      - uses: actions/checkout@v7
+      - name: Liberar espaço
+        run: docker system prune -f
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Prisma generate
+        run: pnpm --filter @jo-ken-po/db db:generate
+      - name: DB migrate
+        run: pnpm --filter @jo-ken-po/db db:migrate
+      - name: Criar role de app
+        run: |
+          docker run -i --rm --network host -e PGPASSWORD=jokenpo postgres:16 \\
+            psql -h 127.0.0.1 -U jokenpo -d jokenpo_test -f - < scripts/db-app-role.sql
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Test
+        run: pnpm test
+"""
+
+
+def test_parse_ci_setup_steps_pega_so_setup() -> None:
+    from roboto.app.target_env import parse_ci_setup_steps
+
+    steps = parse_ci_setup_steps(_WF_STEPS)
+    # mantém db:generate, db:migrate e o criar-role (psql); pula checkout(uses)/prune/install/gate
+    assert any("db:generate" in s for s in steps)
+    assert any("db:migrate" in s for s in steps)
+    assert any("db-app-role.sql" in s for s in steps)  # O ASSET A MAIS (role) foi capturado
+    assert not any("pnpm install" in s for s in steps)  # deps = ruído
+    assert not any("prune" in s for s in steps)  # limpeza = ruído
+    assert not any(s.strip() in ("pnpm test", "pnpm typecheck") for s in steps)  # gate = separado
+
+
+def test_parse_ci_setup_steps_ordem_preservada() -> None:
+    from roboto.app.target_env import parse_ci_setup_steps
+
+    steps = parse_ci_setup_steps(_WF_STEPS)
+    assert steps.index(next(s for s in steps if "db:generate" in s)) < steps.index(
+        next(s for s in steps if "db:migrate" in s)
+    )  # generate antes de migrate (ordem do workflow)
+
+
+def test_parse_compose_services() -> None:
+    from roboto.app.target_env import parse_compose_services
+
+    yml = """
+services:
+  db:
+    image: postgres:16
+    environment: {POSTGRES_USER: app, SECRET: "${PASS}"}
+  cache:
+    image: redis:7
+    environment: ["REDIS_PASS=x"]
+  nada: {build: .}
+"""
+    svcs = {s.name: s for s in parse_compose_services(yml)}
+    assert svcs["db"].image == "postgres:16"
+    assert svcs["db"].env == {"POSTGRES_USER": "app"}  # ${} fora
+    assert svcs["cache"].env == {"REDIS_PASS": "x"}  # formato lista
+    assert "nada" not in svcs  # sem image → ignorado
