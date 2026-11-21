@@ -179,6 +179,14 @@ class PostgresStore:
 
     async def insert_run_if_absent(self, ev: GithubEvent, now: datetime) -> tuple[Run, bool]:
         async with self._pool.acquire() as conn:
+            # SELECT-first: na DUPLICATA (caso quente do poll, que re-tenta a mesma chave a cada
+            # 60s) evita o INSERT — que, mesmo com ON CONFLICT DO NOTHING, QUEIMA um valor do
+            # sequence (`nextval` é consumido antes do conflito). Era o que inflava o id do run
+            # (#1025 com só 45 runs reais). O ON CONFLICT segue como guarda da corrida (2 inserts).
+            sel = f"SELECT {_RUN_COLS} FROM run WHERE tenant = $1 AND idempotency_key = $2"
+            existing = await conn.fetchrow(sel, ev.tenant, ev.idempotency_key)
+            if existing is not None:
+                return _row_to_run(existing), False
             row = await conn.fetchrow(
                 f"""
                 INSERT INTO run (tenant, repo, issue_id, agent, state, attempt,
@@ -192,10 +200,8 @@ class PostgresStore:
             )
             if row is not None:
                 return _row_to_run(row), True
-            existing = await conn.fetchrow(
-                f"SELECT {_RUN_COLS} FROM run WHERE tenant = $1 AND idempotency_key = $2",
-                ev.tenant, ev.idempotency_key,
-            )
+            # corrida: outro processo inseriu entre o SELECT e o INSERT → lê o vigente.
+            existing = await conn.fetchrow(sel, ev.tenant, ev.idempotency_key)
             return _row_to_run(existing), False
 
     async def claim_next_queued(
