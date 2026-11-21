@@ -159,3 +159,11 @@ flowchart LR
 - **Identidade do bot** via @-mention/comando já cobre o MVP; conta de bot dedicada fica opcional.
 - **Ambiente alvo:** **daemon na VPS** (a espinha dorsal agnóstica), não GitHub Actions.
 - Alimentar os **logs do CI** ao motor na correção de `check_suite` (hoje dispara o `correct` genérico).
+
+### Id do run não infla (SELECT-first no insert_run_if_absent)
+
+O id do run virava gigante (#1025 com só 45 runs reais) porque `insert_run_if_absent` fazia
+`INSERT … ON CONFLICT DO NOTHING` e o Postgres **consome `nextval` a cada tentativa**, inclusive nas
+que batem no conflito. O poll re-tenta a mesma chave (`poll-correct-ci:…:<sha>`) a cada 60s por PR
+aberto → queimava 1 id/tick/PR. Agora é **SELECT-first**: na duplicata (caso quente) não tenta o
+INSERT, então não queima o sequence; o `ON CONFLICT` fica só como guarda de corrida.
