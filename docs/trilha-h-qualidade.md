@@ -353,3 +353,12 @@ pare no 1º degrau que resolve inteiro — (1) precisa existir? (2) já existe n
 (6) mínimo. "Preguiça na solução, nunca na mudança" (termina callers/testes/fixtures). Lista
 **never-cut** (validação/erro/segurança/acessibilidade) + **1 teste** p/ lógica não-trivial +
 convenção `shortcut: <limite>, <quando revisitar>` (que o review trata como decisão, §trilha-b).
+
+### Mapa do repo injetado no impl (reuse-first determinístico — Ponytail)
+
+`app/codebase_map.build_codebase_map` scaneia o repo-alvo (`git ls-files` + regex por linguagem) e
+injeta, no início do run de impl, **1 linha por diretório** com os símbolos top-level — pastas
+compartilhadas (util/lib/service/…) primeiro, dentro de um budget de chars, **fail-open**. Cabeçalho:
+*"o que JÁ existe — reuse; só leia um arquivo se precisar do detalhe"*. Operacionaliza o degrau
+"reuse" da escada **sem gastar token de busca** (harness injeta, não se conta com o modelo buscar —
+[[code-intel-harness-driven]]). `ROBOTO_CODEBASE_MAP=0` desliga.

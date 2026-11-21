@@ -36,6 +36,7 @@ from roboto.app.ci_triage import (
 from roboto.app.code_intel_brief import code_intel_brief
 from roboto.app.code_intel_diag import code_intel_diagnostics
 from roboto.app.code_intel_refs import extract_symbols, symbols_directive
+from roboto.app.codebase_map import build_codebase_map
 from roboto.app.comment_poll import BOT_MARKER
 from roboto.app.correction import CycleResult, correction_cycle
 from roboto.app.deps import blocked_by
@@ -371,6 +372,12 @@ async def run_pr_cycle(
     if os.environ.get("ROBOTO_CODE_INTEL", "1") not in ("0", "false", "no"):
         _directive = symbols_directive(extract_symbols(contexto))
         symbols_block = f"\n{_directive}\n" if _directive else ""
+    # MAPA DO REPO (Ponytail, determinismo 1º): injeta o que JÁ existe (1 linha/dir) p/ o degrau
+    # "reuse" da escada agir SEM gastar token de busca. Fail-open; ROBOTO_CODEBASE_MAP=0 desliga.
+    map_block = ""
+    if os.environ.get("ROBOTO_CODEBASE_MAP", "1") not in ("0", "false", "no"):
+        _mapa = build_codebase_map(workdir)
+        map_block = f"\n{_mapa}\n" if _mapa else ""
     # convenções do repo-alvo (E, determinismo primeiro): o harness LÊ o AGENTS.md e injeta — não
     # manda o motor "ler sozinho" (gasta token F e pode ignorar). Capado pelo orçamento de token.
     conventions = read_agents_conventions(workdir)
@@ -403,7 +410,7 @@ async def run_pr_cycle(
     base_prompt = (
         f"{anchor_line(persona)}"
         f"Implemente a issue {run.issue_id} no repo {run.repo} (cwd {workdir}).{contexto}"
-        f"{profile_block}{test_block}{ci_block}{symbols_block}"
+        f"{profile_block}{test_block}{ci_block}{symbols_block}{map_block}"
         f"{conventions_block}{memory_block}{aprendizado_block}\n"
         "ESCOPO MÍNIMO: entregue APENAS o que os Critérios de aceite da issue pedem — nada além. "
         "NÃO crie documentos/arquivos extras (ex.: breakdown ou 'update' de épico), NÃO edite o "
