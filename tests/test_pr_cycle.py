@@ -667,6 +667,35 @@ async def test_permanent_error_goes_failed() -> None:
     assert store._runs[run.id].state is RunState.FAILED  # type: ignore[attr-defined]
 
 
+class _StallingEngine(StubEngine):
+    """Motor que emite 1 evento e então TRAVA (idle-timeout → TimeoutError) no meio do turno."""
+
+    async def events(self):  # type: ignore[no-untyped-def]
+        yield EngineEvent(EngineEventKind.TOOL_CALL, tool="Edit")
+        raise TimeoutError  # watchdog de inatividade (stream do ccr/OpenRouter mudo)
+
+
+async def test_stall_requeues_once_and_persists_native_session() -> None:
+    # Motor travado (idle-timeout): re-enfileira 1x (auto-retry) E grava o id nativo — p/ o humano
+    # "responder depois do timeout" e retomar a MESMA sessão com contexto (não do zero).
+    from roboto.orchestrator.model import RunState
+
+    store = InMemoryStore()
+    run = await _run(store)  # type: ignore[assignment]
+    engine = _StallingEngine([])
+    await process_pr_run_tick(
+        engine, _SeqGateway([""]), _FakeGithub(), store,  # type: ignore[arg-type]
+        tenant="acme", workdir_root="/work", reviewer="review",
+        git_factory=lambda ws: _FakeGit(), now=lambda: _T0,
+    )
+    r = store._runs[run.id]  # type: ignore[attr-defined]
+    assert r.state is RunState.QUEUED  # stall → re-enfileirado (não FAILED terminal)
+    assert r.attempt == 1  # auto-retry 1x
+    # id nativo persistido MESMO com o stall → o resume humano acha a sessão
+    sessions = await store.sessions_for_execution(run.id)
+    assert sessions and sessions[0].native_session_id == "stub-session"
+
+
 async def test_blocked_issue_waits_not_implemented() -> None:
     # J: issue "bloqueada por #79" com a #79 ABERTA → WAITING, não implementa
     from roboto.orchestrator.model import RunState

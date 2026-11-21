@@ -152,6 +152,14 @@ class ClaudeCodeEngine:
                     yield EngineEvent(EngineEventKind.FAILED, text="interrompido pelo humano")
                     return
                 name = type(message).__name__
+                # captura o session_id nativo CEDO: o AssistantMessage já o carrega (chega durante o
+                # trabalho) e o SystemMessage(init) traz no `data`. Antes só líamos no ResultMessage
+                # (fim) — um stall precoce não deixava id p/ o humano retomar a sessão (#1042).
+                sid = str(getattr(message, "session_id", "") or "")
+                if not sid and name == "SystemMessage":
+                    sid = str((getattr(message, "data", {}) or {}).get("session_id", "") or "")
+                if sid:
+                    self._session_id = sid
                 if name == "AssistantMessage":
                     for block in getattr(message, "content", []) or []:
                         if hasattr(block, "text"):
