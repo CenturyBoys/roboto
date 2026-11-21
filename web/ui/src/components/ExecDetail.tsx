@@ -344,8 +344,8 @@ export function ExecDetail({
 
       {applyBody !== null && (
         <div className="fixed inset-0 z-20 flex flex-col bg-background p-4">
-          <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-2">
-            <div className="flex items-center gap-2">
+          <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col gap-2">
+            <div className="flex shrink-0 items-center gap-2">
               <div className="flex-1 text-sm font-bold">
                 Aplicar na issue <span className="text-muted">· revise antes de salvar no GitHub</span>
               </div>
@@ -360,14 +360,14 @@ export function ExecDetail({
               </Button>
             </div>
             {applyPreview ? (
-              <div className="markdown-body flex-1 w-full overflow-auto rounded-lg border border-border bg-surface p-3 text-sm">
+              <div className="markdown-body min-h-0 flex-1 w-full overflow-auto rounded-lg border border-border bg-surface p-3 text-sm">
                 <MarkdownView>{applyBody || '(sem corpo)'}</MarkdownView>
               </div>
             ) : (
               <textarea
                 value={applyBody}
                 onChange={(e) => setApplyBody(e.target.value)}
-                className="flex-1 w-full resize-none rounded-lg border border-border bg-surface p-3 font-mono text-xs outline-none focus:border-accent"
+                className="min-h-0 flex-1 w-full resize-none rounded-lg border border-border bg-surface p-3 font-mono text-xs outline-none focus:border-accent"
               />
             )}
           </div>
