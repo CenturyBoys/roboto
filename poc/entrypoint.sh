@@ -145,5 +145,7 @@ fi
 # resgata o estado travado ANTES de escalar pro humano. Vazio = escada off. Default Sonnet (provado
 # na T1 #330). Override por env/.env.poc. É o resgate RARO; o worker barato faz o grosso.
 export ROBOTO_MANAGER_MODEL="${ROBOTO_MANAGER_MODEL:-openrouter,anthropic/claude-sonnet-4.6}"
+# SELF-HEAL (fatia 2, #322): dep NOMEADA sem issue → abre o esqueleto sozinho (destrava a cadeia).
+export ROBOTO_SELF_HEAL_DEPS="${ROBOTO_SELF_HEAL_DEPS:-1}"
 python3 poc/migrate.py
 exec python3 -m roboto
