@@ -141,5 +141,9 @@ SH
 fi
 
 # 4c) daemon completo: aplica migrações e sobe servidor ASGI + laços (motor conforme ROBOTO_ENGINE)
+# ESCADA worker→gerente→humano (fatia 1, épico #322): liga o GERENTE (modelo FORTE, agêntico) que
+# resgata o estado travado ANTES de escalar pro humano. Vazio = escada off. Default Sonnet (provado
+# na T1 #330). Override por env/.env.poc. É o resgate RARO; o worker barato faz o grosso.
+export ROBOTO_MANAGER_MODEL="${ROBOTO_MANAGER_MODEL:-openrouter,anthropic/claude-sonnet-4.6}"
 python3 poc/migrate.py
 exec python3 -m roboto
