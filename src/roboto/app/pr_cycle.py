@@ -66,6 +66,7 @@ from roboto.app.repo_profile import (
 )
 from roboto.app.reuse_metric import reuse_stat
 from roboto.app.secret_scan import SecretLeakError, scan_diff
+from roboto.app.self_heal import heal_missing_deps, named_deps
 from roboto.app.service_provision import provision, teardown, wait_ready
 from roboto.app.session_guard import may_resume, session_config_hash
 from roboto.app.session_hub import SessionHub
@@ -151,6 +152,14 @@ class GithubPrOps(Protocol):
 
     # labels da issue — gate de prontidão: não codar `status:blocked` (run #1046)
     async def get_issue_labels(self, repo: str, number: int) -> Result[list[str], Error]: ...
+
+    # self-heal (fatia 2, #322): abre a issue de uma dependência NOMEADA que faltava
+    async def create_issue(self, repo: str, title: str, body: str) -> Result[IssueRef, Error]: ...
+
+    # self-heal: lista issues abertas (nº, título, labels) p/ dedup antes de criar
+    async def list_open_issues_rich(
+        self, repo: str, *, limit: int = 20
+    ) -> Result[list[tuple[int, str, list[str]]], Error]: ...
 
     # fleet "levanta a mão": self-assign ao pegar a task (#150) — best-effort
     async def add_assignee(
@@ -1111,6 +1120,34 @@ async def process_pr_run_tick(
         issue = await github.get_issue(run.repo, int(run.issue_id))
         if isinstance(issue, Ok):
             title, body = issue.value
+            # SELF-HEAL (fatia 2, #322): dependências NOMEADAS (não-`#N`) que não viraram issue →
+            # abre esqueleto rastreado + comenta no pai, destravando a cadeia (ex.: a #286 dependia
+            # de "T1/T2" que o parser de `#N` não via). ROBOTO_SELF_HEAL_DEPS liga (impacta: cria
+            # issue). Esqueleto nasce sem DoR → o próprio gate abaixo não deixa codar sem refino.
+            if (
+                os.environ.get("ROBOTO_SELF_HEAL_DEPS", "").lower() in ("1", "true", "yes", "on")
+                and named_deps(body)
+            ):
+                _lst = await github.list_open_issues_rich(run.repo, limit=60)
+                _titles = [t for _, t, _ in _lst.value] if isinstance(_lst, Ok) else []
+
+                async def _create(repo: str, ttl: str, bdy: str) -> int | None:
+                    r = await github.create_issue(repo, ttl, bdy)
+                    return r.value.number if isinstance(r, Ok) else None
+
+                async def _comment(repo: str, n: int, txt: str) -> None:
+                    await github.comment_pr(repo, n, txt)
+
+                _criados = await heal_missing_deps(
+                    repo=run.repo, parent=int(run.issue_id), body=body, existing_titles=_titles,
+                    create_issue=_create, comment=_comment,
+                )
+                if _criados:
+                    await store.append_session_event(
+                        run.tenant, run.id, "message", moment,
+                        text=f"⚙️ self-heal: abri {len(_criados)} dependência(s) faltante(s) "
+                             f"({', '.join(f'#{n}' for n in _criados)}) — refino pendente.",
+                    )
             # gate de PRONTIDÃO por LABEL (#1046): `status:blocked` é o veredito humano/refino de
             # que a issue NÃO está pronta — captura bloqueio que o parser de `#N` não vê (ex.: a
             # #286 dependia de T1/T2 que nem eram issue). Não coda; espera destravar (label sai).

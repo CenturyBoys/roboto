@@ -115,6 +115,7 @@ class _FakeGithub:
         self.issue_states: list[tuple[int, str]] = []  # revert (H): (issue_number, state)
         self.blocker_state = "open"  # gate de dependência (J): estado da issue bloqueadora
         self.labels: list[str] = []  # gate de prontidão por label (#1046): status:blocked etc.
+        self.created_issues: list[tuple[str, str]] = []  # self-heal (#322): deps auto-abertas
         self.reviews: list[str] = []  # corpos de submit_review (review estruturado, Trilha D)
         self.ci_errs = ""  # #233: saída de CI vermelha (default = CI verde); testes setam
         self._existing = existing_pr
@@ -129,6 +130,16 @@ class _FakeGithub:
 
     async def get_issue_labels(self, repo: str, number: int) -> Result[list[str], Error]:
         return Ok(list(self.labels))
+
+    async def create_issue(self, repo: str, title: str, body: str) -> Result[IssueRef, Error]:
+        self.created_issues.append((title, body))
+        n = 900 + len(self.created_issues)
+        return Ok(IssueRef(repo=repo, number=n, url=f"https://github.com/{repo}/issues/{n}"))
+
+    async def list_open_issues_rich(
+        self, repo: str, *, limit: int = 20
+    ) -> Result[list[tuple[int, str, list[str]]], Error]:
+        return Ok([])  # nada rastreado → self-heal cria
 
     async def find_open_pr(self, repo: str, head_branch: str) -> Result[int | None, Error]:
         return Ok(self._existing)
@@ -750,6 +761,28 @@ async def test_blocked_label_issue_waits_not_implemented() -> None:
     assert store._runs[run.id].state is RunState.WAITING  # type: ignore[attr-defined]
     assert len(engine.started) == 0  # não chegou a rodar o motor
     assert any("não-pronta" in c for c in github.comments)  # motivo comentado na issue
+
+
+async def test_self_heal_abre_deps_nomeadas_faltantes(monkeypatch) -> None:  # type: ignore[no-untyped-def]  # noqa: E501
+    # SELF-HEAL (fatia 2, #322): issue bloqueada que depende de "T1/T2" (nomeadas, sem issue) →
+    # o harness ABRE a issue de cada dep e comenta no pai. Toggle ROBOTO_SELF_HEAL_DEPS.
+    monkeypatch.setenv("ROBOTO_SELF_HEAL_DEPS", "1")
+    store = InMemoryStore()
+    run = await _run(store)
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    github = _FakeGithub(
+        custom_body="**Depende de:** **T1** (`bracket.ts` puro) e **T2** (migration). Resto.",
+    )
+    github.labels = ["status:blocked"]  # fica bloqueada (dep faltante); o self-heal abre as deps
+    await process_pr_run_tick(
+        engine, _SeqGateway([""]), github, store,  # type: ignore[arg-type]
+        tenant="acme", workdir_root="/work", reviewer="review",
+        git_factory=lambda ws: _FakeGit(), now=lambda: _T0,
+    )
+    assert len(github.created_issues) == 2  # T1 e T2 abertas
+    assert any("bracket.ts" in t for t, _ in github.created_issues)
+    events = await store.session_events(run.id, 0, 60)
+    assert any("self-heal" in e.text for e in events)
 
 
 class _StallingEngine(StubEngine):
