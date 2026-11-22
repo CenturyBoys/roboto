@@ -34,6 +34,7 @@ from roboto.agents.review import (
 from roboto.app.breakdown_apply import materialize_breakdown
 from roboto.app.budget import assess as assess_budget
 from roboto.app.comment_poll import BOT_MARKER
+from roboto.app.deps import blocking_labels
 from roboto.app.issue_graph import IssueGraph, RawIssue, build_graph
 from roboto.app.jev_guard import assess as assess_risk
 from roboto.app.jev_guard import files_from_diff
@@ -116,6 +117,8 @@ class IssueSource(Protocol):
     ) -> Result[list[tuple[int, int, str]], Error]: ...
 
     async def get_issue(self, repo: str, number: int) -> Result[tuple[str, str], Error]: ...
+
+    async def get_issue_labels(self, repo: str, number: int) -> Result[list[str], Error]: ...
 
     async def create_issue(
         self, repo: str, title: str, body: str
@@ -928,6 +931,15 @@ def console_routes(
         if not verdict.ready:
             return JSONResponse(
                 {"error": "issue não está pronta (DoR)", "missing": verdict.missing},
+                status_code=409,
+            )
+        # gate de PRONTIDÃO por LABEL (#1046): `status:blocked` = veredito humano/refino de "não
+        # pronta" que o DoR estrutural e o parser de `#N` não veem (a #286 dependia de T1/T2 que nem
+        # eram issue). Barra no botão, com feedback na hora (o tick é o backstop autoritativo).
+        labs = await issues.get_issue_labels(repo, number)
+        if isinstance(labs, Ok) and (bl := blocking_labels(labs.value)):
+            return JSONResponse(
+                {"error": f"issue não está pronta (bloqueada: {', '.join(bl)})", "labels": bl},
                 status_code=409,
             )
         # right-sizing NÃO bloqueia o implementar (revertido): contar critério é proxy ruim de épico

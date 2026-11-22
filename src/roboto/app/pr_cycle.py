@@ -41,7 +41,7 @@ from roboto.app.code_intel_refs import extract_symbols, symbols_directive
 from roboto.app.codebase_map import build_codebase_map
 from roboto.app.comment_poll import BOT_MARKER
 from roboto.app.correction import CycleResult, correction_cycle
-from roboto.app.deps import blocked_by
+from roboto.app.deps import blocked_by, blocking_labels
 from roboto.app.engine_loop import guarded_events
 from roboto.app.git_ops import GitError
 from roboto.app.i18n_assist import apply_i18n_stubs
@@ -146,6 +146,9 @@ class GithubPrOps(Protocol):
 
     # estado de uma issue ("open"/"closed") — gate de dependência (J): não codar bloqueada
     async def get_issue_state(self, repo: str, number: int) -> Result[str, Error]: ...
+
+    # labels da issue — gate de prontidão: não codar `status:blocked` (run #1046)
+    async def get_issue_labels(self, repo: str, number: int) -> Result[list[str], Error]: ...
 
     # fleet "levanta a mão": self-assign ao pegar a task (#150) — best-effort
     async def add_assignee(
@@ -1050,6 +1053,17 @@ async def process_pr_run_tick(
         issue = await github.get_issue(run.repo, int(run.issue_id))
         if isinstance(issue, Ok):
             title, body = issue.value
+            # gate de PRONTIDÃO por LABEL (#1046): `status:blocked` é o veredito humano/refino de
+            # que a issue NÃO está pronta — captura bloqueio que o parser de `#N` não vê (ex.: a
+            # #286 dependia de T1/T2 que nem eram issue). Não coda; espera destravar (label sai).
+            labs = await github.get_issue_labels(run.repo, int(run.issue_id))
+            if isinstance(labs, Ok) and (bl := blocking_labels(labs.value)):
+                await github.comment_pr(
+                    run.repo, int(run.issue_id),
+                    f"Issue marcada não-pronta ({', '.join(bl)}) — não implemento até destravar.",
+                )
+                await store.set_state(run.id, RunState.WAITING, moment)
+                return
             # gate de DEPENDÊNCIA (J): "blocked by #N" e a #N ainda ABERTA → não coda, espera.
             # Serializa o que colide (ex.: #220 depende do #79) e evita codar sobre o inexistente.
             for bloq in blocked_by(f"{title}\n{body}"):
