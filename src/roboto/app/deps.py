@@ -27,3 +27,18 @@ def blocked_by(text: str) -> list[int]:
             if int(n) not in nums:
                 nums.append(int(n))
     return nums
+
+
+# labels que marcam "NÃO-pronta" — o sinal HUMANO/refino que o parser de `#N` não enxerga (ex.: a
+# issue depende de uma fundação que nem virou issue, como T1/T2 do breakdown). Tunável por env.
+DEFAULT_BLOCKED_LABELS = frozenset({"status:blocked", "blocked"})
+
+
+def blocking_labels(
+    labels: list[str], blocked: frozenset[str] = DEFAULT_BLOCKED_LABELS,
+) -> list[str]:
+    """Labels de BLOQUEIO presentes na issue (match case-insensitive). Vazio = nenhum bloqueio por
+    label. Determinístico: o label é o veredito do humano/refino de que a issue não está pronta —
+    captura o que o gate de dependência por `#N` não vê (run #1046: a #286 `status:blocked`)."""
+    low = {s.strip().lower() for s in blocked}
+    return [lab for lab in labels if lab.strip().lower() in low]

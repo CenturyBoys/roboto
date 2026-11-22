@@ -114,6 +114,7 @@ class _FakeGithub:
         self.comments: list[str] = []
         self.issue_states: list[tuple[int, str]] = []  # revert (H): (issue_number, state)
         self.blocker_state = "open"  # gate de dependência (J): estado da issue bloqueadora
+        self.labels: list[str] = []  # gate de prontidão por label (#1046): status:blocked etc.
         self.reviews: list[str] = []  # corpos de submit_review (review estruturado, Trilha D)
         self.ci_errs = ""  # #233: saída de CI vermelha (default = CI verde); testes setam
         self._existing = existing_pr
@@ -125,6 +126,9 @@ class _FakeGithub:
             return Ok(("título", self._custom_body))
         body = _READY_BODY if self._ready else "só um esqueleto"
         return Ok(("título", body))
+
+    async def get_issue_labels(self, repo: str, number: int) -> Result[list[str], Error]:
+        return Ok(list(self.labels))
 
     async def find_open_pr(self, repo: str, head_branch: str) -> Result[int | None, Error]:
         return Ok(self._existing)
@@ -665,6 +669,26 @@ async def test_permanent_error_goes_failed() -> None:
         git_factory=lambda ws: _FakeGit(), now=lambda: _T0,
     )
     assert store._runs[run.id].state is RunState.FAILED  # type: ignore[attr-defined]
+
+
+async def test_blocked_label_issue_waits_not_implemented() -> None:
+    # Gate de prontidão por LABEL (#1046): issue `status:blocked` NÃO é implementada (espera), mesmo
+    # com DoR estrutural ok — o label é o veredito humano que o parser de `#N` não vê.
+    from roboto.orchestrator.model import RunState
+
+    store = InMemoryStore()
+    run = await _run(store)  # type: ignore[assignment]
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    github = _FakeGithub()
+    github.labels = ["status:blocked"]
+    await process_pr_run_tick(
+        engine, _SeqGateway([""]), github, store,  # type: ignore[arg-type]
+        tenant="acme", workdir_root="/work", reviewer="review",
+        git_factory=lambda ws: _FakeGit(), now=lambda: _T0,
+    )
+    assert store._runs[run.id].state is RunState.WAITING  # type: ignore[attr-defined]
+    assert len(engine.started) == 0  # não chegou a rodar o motor
+    assert any("não-pronta" in c for c in github.comments)  # motivo comentado na issue
 
 
 class _StallingEngine(StubEngine):
