@@ -63,6 +63,61 @@ async def test_drive_epic_despacha_so_as_prontas() -> None:
     assert disparados == [10]
 
 
+async def test_drive_epic_teto_de_budget_trava() -> None:
+    # TETO DE BUDGET: se o gasto das filhas já passou do teto, NÃO despacha mais (freio autônomo).
+    opens = [_issue(10, "Parte do épico #7.")]
+
+    async def list_full(repo: str) -> list:
+        return opens
+
+    async def is_active(n: int) -> bool:
+        return False
+
+    async def dispatch(n: int) -> bool:
+        raise AssertionError("não deveria despachar — budget estourado")
+
+    async def spend_for(nums: list[int]) -> float:
+        return 12.50  # já gastou US$12.50
+
+    res = await drive_epic(
+        repo="acme/app", epic=7, list_full=list_full, is_active=is_active, dispatch=dispatch,
+        budget_usd=10.0, spend_for=spend_for,
+    )
+    assert res.budget_blocked is True
+    assert res.dispatched == []
+    assert res.spent_usd == 12.50 and res.budget_usd == 10.0
+
+
+async def test_drive_epic_subdivide_filha_epico() -> None:
+    # SUBDIVISÃO AUTOMÁTICA: filha que é ÉPICO não se implementa → subdivide (sub-issues esqueleto).
+    opens = [
+        (20, "Épico: fatia grande demais", "Parte do épico #7.", [], "open"),  # filha-épico
+        _issue(21, "Parte do épico #7."),  # filha normal pronta
+    ]
+    subdivididas: list[int] = []
+
+    async def list_full(repo: str) -> list:
+        return opens
+
+    async def is_active(n: int) -> bool:
+        return False
+
+    async def dispatch(n: int) -> bool:
+        return True
+
+    async def subdivide(n: int) -> list[int]:
+        subdivididas.append(n)
+        return [301, 302]  # criou 2 sub-issues
+
+    res = await drive_epic(
+        repo="acme/app", epic=7, list_full=list_full, is_active=is_active, dispatch=dispatch,
+        subdivide=subdivide,
+    )
+    assert res.plan.to_subdivide == [20]  # a #20 (épico) vai pra subdivisão, não pra impl
+    assert res.subdivided == [20] and subdivididas == [20]
+    assert res.dispatched == [21]  # a #21 (normal) é despachada
+
+
 async def test_drive_epic_nao_duplica_run_ativo() -> None:
     opens = [_issue(10, "Parte do épico #7.")]
 

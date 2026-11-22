@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { getIssueTree } from '@/lib/api'
+import { driveEpic, getIssueTree, type DriveResult } from '@/lib/api'
 import type { IssueGraph } from '@/types'
 import { Card } from './ui/card'
+import { Button } from './ui/button'
 
 // Mapa de issues (árvore/DAG): cruza as NOSSAS deps (épico→filha, depende-de) com as NATIVAS do
 // GitHub (sub-issues/tracked/xref). Renderiza a HIERARQUIA indentada (épico → filha → folha) e, em
@@ -21,6 +22,21 @@ function stateDot(isEpic: boolean, blocked: boolean, state: string | null): stri
 export function IssueTree({ onSelect }: { onSelect: (n: number) => void }) {
   const [graph, setGraph] = useState<IssueGraph | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // driver de épico: por épico, 'loading' enquanto roda, ou o resultado (prontas/despachadas/etc).
+  const [drive, setDrive] = useState<Record<number, 'loading' | DriveResult>>({})
+
+  async function doDrive(epic: number) {
+    setDrive((d) => ({ ...d, [epic]: 'loading' }))
+    try {
+      const r = await driveEpic(epic)
+      setDrive((d) => ({ ...d, [epic]: r }))
+    } catch {
+      setDrive((d) => {
+        const { [epic]: _drop, ...rest } = d
+        return rest
+      })
+    }
+  }
 
   useEffect(() => {
     getIssueTree()
@@ -99,6 +115,17 @@ export function IssueTree({ onSelect }: { onSelect: (n: number) => void }) {
               📦 épico
             </span>
           )}
+          {node.is_epic && (
+            <Button
+              variant="outline"
+              className="h-6 px-2 py-0 text-[11px]"
+              disabled={drive[num] === 'loading'}
+              onClick={() => void doDrive(num)}
+              title="Driver: despacha as filhas prontas (ordem das deps), subdivide filha-épico, respeita o teto de budget"
+            >
+              {drive[num] === 'loading' ? '▶ rodando…' : '▶ driver'}
+            </Button>
+          )}
           <span className="min-w-0 text-sm">{node.title}</span>
           {node.labels.map((l) => (
             <span
@@ -127,6 +154,41 @@ export function IssueTree({ onSelect }: { onSelect: (n: number) => void }) {
             ↗
           </a>
         </div>
+        {(() => {
+          const r = drive[num]
+          if (!r || r === 'loading') return null
+          return (
+            <div className="mb-1 ml-4 rounded border border-border bg-surface/40 px-2 py-1 text-[11px] text-muted">
+              {r.budget_blocked ? (
+                <span className="text-orange-400">
+                  ⛔ teto de budget estourado — gasto ${r.spent_usd.toFixed(2)} ≥ $
+                  {r.budget_usd.toFixed(2)}. Não despachei (decisão humana).
+                </span>
+              ) : (
+                <span>
+                  {r.dispatched.length > 0 ? (
+                    <span className="text-green-400">
+                      ▶ despachei {r.dispatched.map((n) => `#${n}`).join(', ')}
+                    </span>
+                  ) : (
+                    <span>nada pronto p/ despachar</span>
+                  )}
+                  {r.subdivided.length > 0 && (
+                    <span className="text-accent">
+                      {' · '}✂️ subdividi {r.subdivided.map((n) => `#${n}`).join(', ')}
+                    </span>
+                  )}
+                  {r.waiting.length > 0 && <span>{' · '}⏳ esperando {r.waiting.length}</span>}
+                  {r.budget_usd > 0 && (
+                    <span>
+                      {' · '}💲${r.spent_usd.toFixed(2)}/${r.budget_usd.toFixed(2)}
+                    </span>
+                  )}
+                </span>
+              )}
+            </div>
+          )
+        })()}
         {kids.map((k) => renderNode(k, depth + 1, nextPath))}
       </div>
     )

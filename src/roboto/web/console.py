@@ -973,8 +973,9 @@ def console_routes(
 
     async def drive_epic_action(request: Request) -> JSONResponse:
         # DRIVER DE ÉPICO (fatia 3, #322): pega o épico, lê as filhas abertas e DESPACHA as PRONTAS
-        # (não-bloqueadas, deps fechadas) que não têm impl ativo. Não mergeia nem subdivide;
-        # re-rodar pega o que destravou. Cada despacho passa pela escada worker→gerente→humano.
+        # (não-bloqueadas, deps fechadas) sem impl ativo. SUBDIVIDE filha-épico em esqueletos;
+        # para de despachar se o GASTO das filhas passou do teto (ROBOTO_EPIC_BUDGET_USD). Não
+        # mergeia. Re-rodar pega o resto. Cada despacho passa pela escada worker→gerente→humano.
         if _unauthorized(request):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         repo = request.query_params.get("repo") or default_repo
@@ -984,6 +985,7 @@ def console_routes(
         when = datetime.now(UTC)
         active_states = {RunState.QUEUED, RunState.RUNNING, RunState.VERIFYING}
         runs = await store.list_runs(tenant, 300)
+        budget_usd = float(os.environ.get("ROBOTO_EPIC_BUDGET_USD", "0") or "0")
 
         async def _list_full(r: str) -> list[tuple[int, str, str, list[str], str]]:
             res = await issues.list_open_issues_full(r, limit=100)
@@ -1004,13 +1006,43 @@ def console_routes(
             await store.insert_run_if_absent(ev, when)
             return True
 
+        async def _spend_for(nums: list[int]) -> float:
+            # gasto do épico = soma do custo dos runs das filhas (US$)
+            alvo = {str(n) for n in nums}
+            total = 0.0
+            for x in runs:
+                if x.issue_id in alvo:
+                    _tok, cost = await store.cost_for_execution(x.id)
+                    total += cost
+            return total
+
+        async def _subdivide(n: int) -> list[int]:
+            # filha-épico → breakdown (agêntico) materializa sub-issues esqueleto (precisam refino)
+            if gateway is None:
+                return []
+            got = await issues.get_issue(repo, n)
+            if not isinstance(got, Ok):
+                return []
+            ititle, ibody = got.value
+            step = await breakdown_converse(
+                [("user", f"Épico a destrinchar:\nTítulo: {ititle}\n\n{ibody}")], gateway,
+            )
+            if not isinstance(step, Ok) or step.value.breakdown is None:
+                return []
+            applied = await materialize_breakdown(issues, repo, n, step.value.breakdown)
+            return [c.number for c in applied.value] if isinstance(applied, Ok) else []
+
         res = await drive_epic(
             repo=repo, epic=epic, list_full=_list_full, is_active=_is_active,
-            dispatch=_dispatch, wip_limit=wip_limit,
+            dispatch=_dispatch, wip_limit=wip_limit, budget_usd=budget_usd,
+            spend_for=_spend_for, subdivide=_subdivide,
         )
         return JSONResponse({
             "epic": epic, "total": res.plan.total, "ready": res.plan.ready,
-            "waiting": res.plan.waiting, "dispatched": res.dispatched,
+            "waiting": res.plan.waiting, "to_subdivide": res.plan.to_subdivide,
+            "dispatched": res.dispatched, "subdivided": res.subdivided,
+            "spent_usd": round(res.spent_usd, 4), "budget_usd": res.budget_usd,
+            "budget_blocked": res.budget_blocked,
         })
 
     async def correct_pr_action(request: Request) -> JSONResponse:

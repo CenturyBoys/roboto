@@ -77,6 +77,22 @@ export const dispatchEngineRefine = (n: number) =>
 // issue não está pronta (DoR). Local, este é o gatilho (a label é webhook/URL pública, não dispara).
 export const dispatchImplement = (n: number) =>
   api<{ run_id: number }>(`/issues/${n}/implement`, { method: 'POST' })
+// Driver de épico (fatia 3, #322): despacha as filhas prontas na ordem das deps, subdivide filha-
+// épico, respeita o teto de budget. Não mergeia. Re-rodar pega o que destravou.
+export type DriveResult = {
+  epic: number
+  total: number
+  ready: number[]
+  waiting: number[]
+  to_subdivide: number[]
+  dispatched: number[]
+  subdivided: number[]
+  spent_usd: number
+  budget_usd: number
+  budget_blocked: boolean
+}
+export const driveEpic = (n: number) =>
+  api<DriveResult>(`/epics/${n}/drive`, { method: 'POST' })
 // Breakdown de épico (#203): PROPÕE sub-issues esqueleto — não cria nada. 409 se não parece épico.
 export const proposeBreakdown = (n: number, transcript: [string, string][]) =>
   api<BreakdownStep>(`/issues/${n}/breakdown`, {
