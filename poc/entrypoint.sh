@@ -147,5 +147,8 @@ fi
 export ROBOTO_MANAGER_MODEL="${ROBOTO_MANAGER_MODEL:-openrouter,anthropic/claude-sonnet-4.6}"
 # SELF-HEAL (fatia 2, #322): dep NOMEADA sem issue → abre o esqueleto sozinho (destrava a cadeia).
 export ROBOTO_SELF_HEAL_DEPS="${ROBOTO_SELF_HEAL_DEPS:-1}"
+# TETO DE GASTO por épico (US$): o driver autônomo para de despachar se o gasto das filhas passar
+# disto (humano decide). 0 = sem teto. Default conservador — ajuste conforme o budget do fleet.
+export ROBOTO_EPIC_BUDGET_USD="${ROBOTO_EPIC_BUDGET_USD:-10}"
 python3 poc/migrate.py
 exec python3 -m roboto
