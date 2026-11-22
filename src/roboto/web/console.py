@@ -35,6 +35,7 @@ from roboto.app.breakdown_apply import materialize_breakdown
 from roboto.app.budget import assess as assess_budget
 from roboto.app.comment_poll import BOT_MARKER
 from roboto.app.deps import blocking_labels
+from roboto.app.epic_driver import drive_epic
 from roboto.app.issue_graph import IssueGraph, RawIssue, build_graph
 from roboto.app.jev_guard import assess as assess_risk
 from roboto.app.jev_guard import files_from_diff
@@ -970,6 +971,48 @@ def console_routes(
         run, _ = await store.insert_run_if_absent(ev, when)
         return JSONResponse({"run_id": run.id})
 
+    async def drive_epic_action(request: Request) -> JSONResponse:
+        # DRIVER DE ÉPICO (fatia 3, #322): pega o épico, lê as filhas abertas e DESPACHA as PRONTAS
+        # (não-bloqueadas, deps fechadas) que não têm impl ativo. Não mergeia nem subdivide;
+        # re-rodar pega o que destravou. Cada despacho passa pela escada worker→gerente→humano.
+        if _unauthorized(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        repo = request.query_params.get("repo") or default_repo
+        epic = int(request.path_params["number"])
+        if not repo or issues is None:
+            return JSONResponse({"error": "repo/GitHub não configurado"}, status_code=409)
+        when = datetime.now(UTC)
+        active_states = {RunState.QUEUED, RunState.RUNNING, RunState.VERIFYING}
+        runs = await store.list_runs(tenant, 300)
+
+        async def _list_full(r: str) -> list[tuple[int, str, str, list[str], str]]:
+            res = await issues.list_open_issues_full(r, limit=100)
+            return list(res.value) if isinstance(res, Ok) else []
+
+        async def _is_active(n: int) -> bool:
+            return any(
+                x.agent == "impl" and x.repo == repo and x.issue_id == str(n)
+                and x.state in active_states
+                for x in runs
+            )
+
+        async def _dispatch(n: int) -> bool:
+            ev = GithubEvent(
+                tenant=tenant, repo=repo, issue_id=str(n), agent="impl",
+                idempotency_key=f"impl:{repo}:{n}:{when.isoformat()}",
+            )
+            await store.insert_run_if_absent(ev, when)
+            return True
+
+        res = await drive_epic(
+            repo=repo, epic=epic, list_full=_list_full, is_active=_is_active,
+            dispatch=_dispatch, wip_limit=wip_limit,
+        )
+        return JSONResponse({
+            "epic": epic, "total": res.plan.total, "ready": res.plan.ready,
+            "waiting": res.plan.waiting, "dispatched": res.dispatched,
+        })
+
     async def correct_pr_action(request: Request) -> JSONResponse:
         # B: corrigir um PR JÁ ABERTO conforme o review. Enfileira um run `agent='correct'` que o
         # `process_correct_tick` pega (checkout da branch do PR → review → corrige → force-push →
@@ -1104,6 +1147,7 @@ def console_routes(
         Route("/issues/{number:int}/refine", issue_refine, methods=["POST"]),
         Route("/issues/{number:int}/refine-engine", refine_with_engine, methods=["POST"]),
         Route("/issues/{number:int}/implement", implement_with_engine, methods=["POST"]),
+        Route("/epics/{number:int}/drive", drive_epic_action, methods=["POST"]),
         Route("/issues/{number:int}/breakdown", issue_breakdown_propose, methods=["POST"]),
         Route("/issues/{number:int}/breakdown/apply", issue_breakdown_apply, methods=["POST"]),
         Route(
