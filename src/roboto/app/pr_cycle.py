@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import socket
 from collections.abc import Callable
 from datetime import datetime
@@ -221,12 +222,37 @@ _FMT_FIX_ATTEMPTS = 3
 _LOCAL_CI_FIX_ATTEMPTS = 3
 
 
+# TS `noUncheckedIndexedAccess`: acessar índice de array/record vira `T | undefined`. Modelos de
+# código menores escrevem o swap do algoritmo e erram ISSO (A/B T1: qwen E glm travaram no MESMO
+# ponto). Assinatura do erro: TS2322 "Type 'X | undefined' is not assignable to type 'X'".
+_TS_INDEX_UNDEF = re.compile(
+    r"TS2322.*?Type '([^']+?) \| undefined' is not assignable to type '\1'", re.DOTALL,
+)
+
+
+def ts_index_safety_hint(red: str) -> str:
+    """Dica DETERMINÍSTICA p/ o erro de índice sob `noUncheckedIndexedAccess` (vazio se não casa).
+    O harness injeta o conhecimento que o modelo pequeno não tem — determinismo-primeiro."""
+    if not _TS_INDEX_UNDEF.search(red or ""):
+        return ""
+    return (
+        "\n\nDICA (o tsconfig tem `noUncheckedIndexedAccess: true`): acessar um índice de "
+        "array/record — `arr[i]` — tem tipo `T | undefined`, NÃO `T`. É a causa do erro. Ao trocar/"
+        "atribuir elementos, capture em const e trate o `undefined`. Ex. de swap seguro:\n"
+        "    const a = arr[i]; const b = arr[j];\n"
+        "    if (a === undefined || b === undefined) throw new Error('índice fora do range');\n"
+        "    arr[i] = b; arr[j] = a;\n"
+        "NÃO deixe `arr[i]` cru onde se espera `T`, e não ponha `!` só em um lado do swap."
+    )
+
+
 def _ci_fix_prompt(which: str, red: str) -> str:
     return (
         f"A verificação LOCAL `{which}` (A MESMA que o CI do repo aplica) REPROVOU — se eu abrir o "
         "PR assim, o CI fica vermelho. Corrija EXATAMENTE estes erros (não reescreva o que já "
         f"passa):\n\n{red}\n\n"
         "Edite os arquivos e pare (não faça commit nem push)."
+        + ts_index_safety_hint(red)
     )
 
 
