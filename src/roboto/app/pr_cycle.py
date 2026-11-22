@@ -47,6 +47,7 @@ from roboto.app.engine_loop import guarded_events
 from roboto.app.git_ops import GitError
 from roboto.app.i18n_assist import apply_i18n_stubs
 from roboto.app.jev_guard import assess as assess_risk
+from roboto.app.manager import MakeManager, manager_prompt, run_manager
 from roboto.app.memory import recall_block
 from roboto.app.policy import Policy
 from roboto.app.provider_errors import classify_provider_error
@@ -299,6 +300,7 @@ async def run_pr_cycle(
     persona: str = "",  # âncora de papel opcional (A/B atrás de flag) — ver roboto/persona.py
     decider: Decider | None = None,  # Jev degrau-2 do tier (#242): promove o que o keyword perdeu
     ci_runner: Runner | None = None,  # executor da porta de CI local (teste); None = subprocess
+    make_manager: MakeManager | None = None,  # escada worker→gerente→humano (fatia 1, #322)
 ) -> CycleResult:
     branch = f"roboto/run-{run.id}"
     # título/corpo do PR seguem a ISSUE (não "run 1: 107"): título = título da issue; corpo linka
@@ -892,24 +894,53 @@ async def run_pr_cycle(
                                      "do merge.",
                             )
                     elif not ci.passed:
-                        if store is not None and now is not None:
-                            await store.append_session_event(
-                                run.tenant, run.id, "message", now,
-                                text=f"🚩 CI local `{ci.which}` segue vermelho após "
-                                     f"{_LOCAL_CI_FIX_ATTEMPTS} tentativas — humano (PR não sai).",
-                            )
-                            if run.origin_chat_id:
-                                await store.enqueue_effect(
-                                    run.tenant, run.id, "telegram_notify",
-                                    {"chat_id": run.origin_chat_id,
-                                     "text": f"🚩 #{run.issue_id}: CI local ({ci.which}) vermelho "
-                                             "após 3 tentativas — precisa de humano."},
-                                    f"localci:{run.id}", now,
+                        # ESCADA worker→gerente→humano (fatia 1, épico #322): o worker esgotou as
+                        # tentativas; ANTES do humano, um GERENTE (motor FORTE, agêntico) pega o
+                        # estado travado e tenta. Re-verifica o gate; só escala pro humano se ele
+                        # também falhar. Determinístico: o harness decide QUANDO; o gerente resolve.
+                        if make_manager is not None and ci.fixable:
+                            if store is not None and now is not None:
+                                await store.append_session_event(
+                                    run.tenant, run.id, "message", now,
+                                    text=f"🧑‍💼 worker empacou no `{ci.which}` — gerente (forte) "
+                                         "assumindo…",
                                 )
-                        raise RuntimeError(
-                            f"CI local ({ci.which}) segue vermelho após {_LOCAL_CI_FIX_ATTEMPTS} "
-                            "tentativas — escala p/ humano (não abre PR vermelho)"
-                        )
+                            await run_manager(
+                                make_manager, tenant=run.tenant, repo=run.repo, workdir=workdir,
+                                prompt=manager_prompt(ci.which, ci.red, pr_title, contexto),
+                            )
+                            await autoformat(workdir)
+                            try:
+                                await git.commit_all(f"{title} (gerente)")
+                            except GitError:
+                                pass
+                            ci = await asyncio.to_thread(_run_ci)  # re-verifica após o gerente
+                            if ci.passed and store is not None and now is not None:
+                                await store.append_session_event(
+                                    run.tenant, run.id, "message", now,
+                                    text=f"✅ gerente resolveu o `{ci.which}` — CI local verde, "
+                                         "sem humano (escada worker→gerente).",
+                                )
+                        if not ci.passed:  # worker E gerente falharam → agora sim, humano
+                            if store is not None and now is not None:
+                                await store.append_session_event(
+                                    run.tenant, run.id, "message", now,
+                                    text=f"🚩 CI local `{ci.which}` segue vermelho (worker + "
+                                         "gerente) — humano (PR não sai).",
+                                )
+                                if run.origin_chat_id:
+                                    await store.enqueue_effect(
+                                        run.tenant, run.id, "telegram_notify",
+                                        {"chat_id": run.origin_chat_id,
+                                         "text": f"🚩 #{run.issue_id}: CI local ({ci.which}) "
+                                                 "vermelho após worker + gerente — precisa de "
+                                                 "humano."},
+                                        f"localci:{run.id}", now,
+                                    )
+                            raise RuntimeError(
+                                f"CI local ({ci.which}) segue vermelho após worker + gerente — "
+                                "escala p/ humano (não abre PR vermelho)"
+                            )
                     elif ci.prepared and store is not None and now is not None:
                         # resiliência: subimos o ambiente e o teste passou DE VERDADE (não pulado)
                         await store.append_session_event(
@@ -1057,6 +1088,7 @@ async def process_pr_run_tick(
     decider: Decider | None = None,  # Jev degrau-2 do tier (#242); None = só determinístico
     hub: SessionHub | None = None,  # gate por ação (#271): sessão viva p/ o callback aguardar
     approval_policy: Policy | None = None,  # policy de 2 eixos; None = sem gate (fluxo autônomo)
+    make_manager: MakeManager | None = None,  # escada worker→gerente→humano (fatia 1, #322)
 ) -> None:
     """Pega o próximo run da fila e roda o ciclo. Aprovado -> VERIFYING; desistiu -> FAILED.
 
@@ -1161,6 +1193,7 @@ async def process_pr_run_tick(
             allow_secret=secret_ok,
             persona=persona,
             decider=decider,
+            make_manager=make_manager,
         )
     except Exception as exc:  # noqa: BLE001 — motor travado (watchdog) / git / PR: tira de RUNNING
         # OBSERVABILIDADE: alguns erros (ex.: engine/CLI) têm str() vazio → a msg virava "execução
