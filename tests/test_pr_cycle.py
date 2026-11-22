@@ -304,6 +304,67 @@ async def test_porta_ci_local_vermelho_persistente_escala_humano(tmp_path) -> No
     assert any("segue vermelho" in e.text and "humano" in e.text for e in events)
 
 
+async def test_escada_gerente_resolve_antes_do_humano(tmp_path) -> None:  # type: ignore[no-untyped-def]  # noqa: E501
+    # ESCADA (fatia 1, #322): worker esgota o CI vermelho → GERENTE assume e resolve → PR nasce
+    # (sem escalar pro humano). O gerente fake marca `ran`; o runner então fica verde.
+    import json as _json
+
+    (tmp_path / "package.json").write_text(_json.dumps({"scripts": {"lint": "eslint"}}))
+    store = InMemoryStore()
+    run = await _run(store)
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    git, github = _FakeGit(), _FakeGithub()
+    state = {"ran": False}
+
+    def runner(cmd: str, cwd: str, timeout: float) -> tuple[int, str]:
+        return (0, "ok") if state["ran"] else (1, "erro que o worker não resolve")
+
+    class _MgrEngine(StubEngine):
+        async def events(self):  # type: ignore[no-untyped-def]
+            state["ran"] = True  # o gerente "resolveu" o estado travado
+            for ev in self._script:
+                yield ev
+
+    result = await run_pr_cycle(
+        engine=engine, gateway=_SeqGateway([""]), github=github, git=git, run=run,
+        workdir=str(tmp_path), reviewer="review", store=store, now=_T0, ci_runner=runner,
+        make_manager=lambda: _MgrEngine([EngineEvent(EngineEventKind.FINISHED)]),
+    )
+    assert result.approved is True  # gerente resolveu → PR nasceu verde
+    assert git.pushes
+    events = await store.session_events(run.id, 0, 120)
+    assert any("gerente (forte) assumindo" in e.text for e in events)
+    assert any("gerente resolveu" in e.text for e in events)
+
+
+async def test_escada_gerente_falha_escala_humano(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    # ESCADA: se NEM o gerente resolve (runner sempre vermelho), aí sim escala pro humano.
+    import json as _json
+
+    (tmp_path / "package.json").write_text(_json.dumps({"scripts": {"lint": "eslint"}}))
+    store = InMemoryStore()
+    run = await _run(store)
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    git, github = _FakeGit(), _FakeGithub()
+
+    def runner(cmd: str, cwd: str, timeout: float) -> tuple[int, str]:
+        return 1, "erro que nem o gerente resolve"
+
+    raised = False
+    try:
+        await run_pr_cycle(
+            engine=engine, gateway=_SeqGateway([""]), github=github, git=git, run=run,
+            workdir=str(tmp_path), reviewer="review", store=store, now=_T0, ci_runner=runner,
+            make_manager=lambda: StubEngine([EngineEvent(EngineEventKind.FINISHED)]),
+        )
+    except RuntimeError:
+        raised = True
+    assert raised
+    assert git.pushes == [] and github.opened == 0  # PR não nasce vermelho
+    events = await store.session_events(run.id, 0, 120)
+    assert any("worker + gerente" in e.text and "humano" in e.text for e in events)
+
+
 async def test_porta_ci_local_infra_nao_trava(tmp_path) -> None:  # type: ignore[no-untyped-def]
     # vermelho de INFRA (DB fora) não é culpa do modelo → NÃO realimenta, surfa e SEGUE (push ok).
     import json as _json

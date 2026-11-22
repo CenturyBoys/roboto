@@ -210,6 +210,18 @@ async def _run_daemon(config: Config, store: Store) -> None:
             # cap de flailing (#96): corta o run que loopa (172 tools, 3.4M) mid-stream. 0=sem cap.
             max_tools=int(os.environ.get("ROBOTO_MAX_TOOLS", "80") or "80"),
         )
+        # ESCADA worker→gerente→humano (fatia 1, épico #322): fábrica do motor-GERENTE (modelo
+        # FORTE, agêntico) que o pr_cycle chama ANTES de escalar pro humano quando o worker empaca.
+        # Mais turnos/tools que o worker — é o resgate. Só liga se ROBOTO_MANAGER_MODEL setado.
+        _manager_model = os.environ.get("ROBOTO_MANAGER_MODEL", "")
+
+        def _make_manager() -> ClaudeCodeEngine:
+            return ClaudeCodeEngine(
+                model=_manager_model, permission_mode="bypassPermissions", mcp_servers=mcp,
+                max_turns=120, max_tools=120, max_buffer_size=10 * 1024 * 1024,
+            )
+
+        make_manager = _make_manager if _manager_model else None
         # motor dedicado ao refino (read-only por prompt): evita corrida com o ciclo de PR.
         # max_turns=60: refino é LER+PROPOR; o PROMPT força parar em ~10 consultas, mas issues de
         # "discovery" puxam o modelo a explorar — teto um pouco maior como rede, e o prompt obriga
@@ -293,6 +305,7 @@ async def _run_daemon(config: Config, store: Store) -> None:
                 decider=refine_decider,  # Jev degrau-2 do tier (#242); None = só determinístico
                 hub=hub if _approval_on else None,  # gate por ação (#271)
                 approval_policy=_approval_policy,
+                make_manager=make_manager,  # escada worker→gerente→humano (fatia 1, #322)
             )
 
         async def _run_scope() -> None:
