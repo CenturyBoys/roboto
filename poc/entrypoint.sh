@@ -150,5 +150,8 @@ export ROBOTO_SELF_HEAL_DEPS="${ROBOTO_SELF_HEAL_DEPS:-1}"
 # TETO DE GASTO por épico (US$): o driver autônomo para de despachar se o gasto das filhas passar
 # disto (humano decide). 0 = sem teto. Default conservador — ajuste conforme o budget do fleet.
 export ROBOTO_EPIC_BUDGET_USD="${ROBOTO_EPIC_BUDGET_USD:-10}"
+# REVIEW EXAUSTIVO (P1b): 'multi' roda lentes em paralelo + varredura de invariante (acha tudo numa
+# passada, sem whack-a-mole). O revisor roda num modelo mais forte que o escritor (P1a, no routing).
+export ROBOTO_REVIEW_STRATEGY="${ROBOTO_REVIEW_STRATEGY:-multi}"
 python3 poc/migrate.py
 exec python3 -m roboto
