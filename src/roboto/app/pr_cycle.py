@@ -44,7 +44,7 @@ from roboto.app.codebase_map import build_codebase_map
 from roboto.app.comment_poll import BOT_MARKER
 from roboto.app.correction import CycleResult, correction_cycle
 from roboto.app.deps import blocked_by, blocking_labels
-from roboto.app.engine_loop import guarded_events
+from roboto.app.engine_loop import guarded_events, has_pending_approval
 from roboto.app.git_ops import GitError
 from roboto.app.i18n_assist import apply_i18n_stubs
 from roboto.app.jev_guard import assess as assess_risk
@@ -595,7 +595,12 @@ async def run_pr_cycle(
             )
         tin = tout = 0
         try:
-            async for event in guarded_events(engine.events()):  # deixa o motor editar o repo
+            async for event in guarded_events(  # deixa o motor editar o repo
+                engine.events(),
+                awaiting_human=(
+                    (lambda: has_pending_approval(store, run.id)) if store is not None else None
+                ),
+            ):
                 if store is not None and now is not None:
                     if event.kind is EngineEventKind.MESSAGE and event.text:
                         await store.append_session_event(
@@ -1553,7 +1558,9 @@ async def process_correct_tick(
             )
         )
         tin = tout = 0
-        async for event in guarded_events(engine.events()):  # feed ao vivo no cockpit
+        async for event in guarded_events(  # feed ao vivo no cockpit
+            engine.events(), awaiting_human=lambda: has_pending_approval(store, run.id)
+        ):
             if event.kind is EngineEventKind.MESSAGE and event.text:
                 await store.append_session_event(
                     run.tenant, run.id, "message", moment, text=event.text
