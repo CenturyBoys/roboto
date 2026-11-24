@@ -344,6 +344,20 @@ def aprovado_por_findings(findings: list[Finding]) -> bool:
     return not any(f.severidade == "bloqueador" for f in findings)
 
 
+def ci_blocker_finding(ci_err: str) -> Finding | None:
+    """P1c: CI vermelha vira um BLOQUEADOR de review → o review NUNCA aprova sobre CI vermelha
+    (run-1047 chegou a 'aprovado ✅' com o `test` sem rodar). `ci_err` vazio = sem bloqueio (verde
+    ou ainda sem checks); não-vazio = erro REAL da CI (tsc/lint/teste). Determinístico, não LLM."""
+    if not (ci_err or "").strip():
+        return None
+    return Finding(
+        titulo="CI vermelha — não aprovo até o CI ficar verde",
+        severidade="bloqueador", arquivo="-", linha=0, confianca="alta",
+        evidencia=ci_err.strip()[:200],
+        recomendacao="Corrija o erro de CI acima (não é opinião — o pipeline está vermelho).",
+    )
+
+
 async def review_pr_findings(
     pr: PullRequest, gateway: ModelGateway, *, reviewer: str,
     verify_findings: list[str] | None = None, contexto_previo: list[str] | None = None,

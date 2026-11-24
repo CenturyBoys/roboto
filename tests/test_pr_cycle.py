@@ -1500,3 +1500,26 @@ async def test_close_minors_surfa_no_feed(monkeypatch) -> None:  # type: ignore[
     )
     evs = await store.session_events(run.id, 0, 100)
     assert any("🧹" in (e.text or "") for e in evs)  # surfou "Fechando N menor(es)"
+
+
+async def test_tick_ci_vermelha_nao_aprova_mesmo_sem_finding_do_juiz() -> None:
+    # P1c: juiz "aprovaria" (sem finding), mas o CI está vermelho → review NÃO aprova (bloqueador de
+    # CI determinístico) → run FAILED, PR fica draft + needs-human (não vira mergeável).
+    from roboto.orchestrator.model import RunState
+
+    store = InMemoryStore()
+    run = await _run(store)  # type: ignore[assignment]
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    github = _FakeGithub()
+    github.ci_errs = "tsc: error TS2345 — Type 'null' is not assignable"  # CI vermelho
+    await process_pr_run_tick(
+        # juiz aprovaria (sem finding) em toda tentativa; o CI vermelho é que reprova e re-tenta
+        engine, _SeqGateway(["", "", "", ""]), github, store,  # type: ignore[arg-type]
+        tenant="acme", workdir_root="/work", reviewer="review",
+        git_factory=lambda ws: _FakeGit(), now=lambda: _T0,
+    )
+    assert store._runs[run.id].state is RunState.FAILED  # type: ignore[attr-defined]
+    assert github.readied == []  # não promovido (CI vermelho)
+    assert (42, "needs-human") in github.pr_labels
+    events = await store.session_events(run.id, 0, 50)
+    assert any("CI vermelha" in e.text for e in events)

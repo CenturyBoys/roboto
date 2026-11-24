@@ -410,3 +410,16 @@ async def test_review_multi_bloqueia_autoreview() -> None:
     r = await review_pr_multi(_pr(author="alice"), _LensGateway(), reviewer="alice")
     assert isinstance(r, Ok)
     assert not aprovado_por_findings(r.value)  # reviewer==autor → bloqueado
+
+
+# --- P1c: review não aprova sobre CI vermelha ---
+
+
+def test_ci_blocker_finding_so_quando_vermelho() -> None:
+    from roboto.agents.review import ci_blocker_finding
+
+    assert ci_blocker_finding("") is None  # verde/sem checks → não bloqueia
+    assert ci_blocker_finding("   ") is None
+    b = ci_blocker_finding("tsc: error TS2345 em x.ts")
+    assert b is not None and b.severidade == "bloqueador"
+    assert "tsc" in b.evidencia

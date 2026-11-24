@@ -22,6 +22,7 @@ from roboto.agents.review import (
     PullRequest,
     ReviewVerdict,
     check_issue_readiness,
+    ci_blocker_finding,
     montar_review,
     revisar_pr,
 )
@@ -1041,6 +1042,11 @@ async def run_pr_cycle(
             pr, review_gw, reviewer=reviewer, verify_findings=achados, strategy=strategy
         )
         findings = res.value if isinstance(res, Ok) else []
+        # P1c: o review NÃO aprova sobre CI vermelha — se os checks do PR estão vermelhos, injeta um
+        # bloqueador determinístico (run-1047 chegou a "aprovado ✅" com o `test` sem rodar).
+        ci_now = await github.check_failures(run.repo, pr.number)
+        if isinstance(ci_now, Ok) and (bloq_ci := ci_blocker_finding(ci_now.value)) is not None:
+            findings = [bloq_ci, *findings]
         inline, body, aprovado = montar_review(findings)
         if isinstance(await github.submit_review(run.repo, pr.number, body, inline), Err):
             await github.comment_pr(run.repo, pr.number, body)  # linhas fora do diff → só o resumo
