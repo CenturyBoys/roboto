@@ -1138,15 +1138,25 @@ async def process_pr_run_tick(
                 async def _comment(repo: str, n: int, txt: str) -> None:
                     await github.comment_pr(repo, n, txt)
 
+                async def _add_label(repo: str, n: int, label: str) -> None:
+                    await github.set_issue_state_label(repo, n, label)
+
+                async def _update_body(repo: str, n: int, new_body: str) -> None:
+                    cur = await github.get_issue(repo, n)  # relê o título (update_issue o exige)
+                    if isinstance(cur, Ok):
+                        await github.update_issue(repo, n, title=cur.value[0], body=new_body)
+
                 _criados = await heal_missing_deps(
                     repo=run.repo, parent=int(run.issue_id), body=body, existing_titles=_titles,
                     create_issue=_create, comment=_comment,
+                    add_label=_add_label, update_body=_update_body,
                 )
                 if _criados:
                     await store.append_session_event(
                         run.tenant, run.id, "message", moment,
                         text=f"⚙️ self-heal: abri {len(_criados)} dependência(s) faltante(s) "
-                             f"({', '.join(f'#{n}' for n in _criados)}) — refino pendente.",
+                             f"({', '.join(f'#{n}' for n in _criados)}) — gravei a aresta "
+                             "`Depende de #N` no corpo e re-bloqueei (status:blocked) até refino.",
                     )
             # gate de PRONTIDÃO por LABEL (#1046): `status:blocked` é o veredito humano/refino de
             # que a issue NÃO está pronta — captura bloqueio que o parser de `#N` não vê (ex.: a
