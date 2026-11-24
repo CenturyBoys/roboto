@@ -172,6 +172,33 @@ def dependency_cycles(issues: list[IssueNode]) -> list[GraphFinding]:
     ]
 
 
+@dataclass(frozen=True)
+class HealAction:
+    issue: int
+    kind: str  # a classe do finding
+    action: str  # reopen | close_done | needs_refine | needs_human
+    auto: bool  # pode o harness aplicar SOZINHO (sem humano)?
+    detail: str
+
+
+def plan_heal(findings: list[GraphFinding]) -> list[HealAction]:
+    """Classifica cada finding numa ação de cura e decide o que é AUTO-seguro. Conservador (zero
+    tolerância a cura errada): só **reabrir** é auto — é protetor, nunca perde trabalho. Fechar
+    redundante, repontar e quebrar ciclo exigem JULGAMENTO (gerente propõe, humano confirma)."""
+    mapa = {
+        "reopen": ("reopen", True),
+        "close_done": ("close_done", False),  # fechar é reversível, mas pode ser falso-positivo
+        "wire_or_refine": ("needs_refine", False),
+        "refine": ("needs_refine", False),
+        "break_cycle": ("needs_human", False),
+    }
+    out: list[HealAction] = []
+    for f in findings:
+        action, auto = mapa.get(f.heal, ("needs_human", False))
+        out.append(HealAction(f.issue, f.kind, action, auto, f.detail))
+    return out
+
+
 def audit_graph(
     issues: list[IssueNode], prs: list[PrNode] | None = None,
 ) -> list[GraphFinding]:

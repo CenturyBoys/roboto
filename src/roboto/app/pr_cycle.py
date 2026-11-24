@@ -15,7 +15,7 @@ import re
 import socket
 from collections.abc import Callable
 from datetime import datetime
-from typing import Protocol
+from typing import Any, Protocol
 
 from roboto.agents.refiner import IssueDraft
 from roboto.agents.review import (
@@ -178,6 +178,11 @@ class GithubPrOps(Protocol):
     async def list_open_issues_rich(
         self, repo: str, *, limit: int = 20
     ) -> Result[list[tuple[int, str, list[str]]], Error]: ...
+
+    # graph doctor / checa-antes-de-criar: PRs (todos os estados) crus p/ achar fundação já mergeada
+    async def list_prs_audit(
+        self, repo: str, *, limit: int = 100
+    ) -> Result[list[dict[str, Any]], Error]: ...
 
     # fleet "levanta a mão": self-assign ao pegar a task (#150) — best-effort
     async def add_assignee(
@@ -1157,6 +1162,13 @@ async def process_pr_run_tick(
             ):
                 _lst = await github.list_open_issues_rich(run.repo, limit=60)
                 _titles = [t for _, t, _ in _lst.value] if isinstance(_lst, Ok) else []
+                # checa-antes-de-criar (graph doctor): títulos de PRs MERGEADOS já satisfazem a
+                # fundação → não abre esqueleto redundante (teria evitado o #397 'T1' vs PR #331).
+                _prs = await github.list_prs_audit(run.repo)
+                _sat = (
+                    [str(p.get("title", "")) for p in _prs.value if p.get("merged_at")]
+                    if isinstance(_prs, Ok) else []
+                )
 
                 async def _create(repo: str, ttl: str, bdy: str) -> int | None:
                     r = await github.create_issue(repo, ttl, bdy)
@@ -1176,7 +1188,7 @@ async def process_pr_run_tick(
                 _criados = await heal_missing_deps(
                     repo=run.repo, parent=int(run.issue_id), body=body, existing_titles=_titles,
                     create_issue=_create, comment=_comment,
-                    add_label=_add_label, update_body=_update_body,
+                    add_label=_add_label, update_body=_update_body, satisfied_titles=_sat,
                 )
                 if _criados:
                     await store.append_session_event(

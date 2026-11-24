@@ -146,6 +146,11 @@ class _FakeGithub:
     ) -> Result[list[tuple[int, str, list[str]]], Error]:
         return Ok([])  # nada rastreado → self-heal cria
 
+    async def list_prs_audit(
+        self, repo: str, *, limit: int = 100
+    ) -> Result[list[dict[str, object]], Error]:
+        return Ok([])  # sem PR mergeado → nada "já satisfeito"
+
     async def find_open_pr(self, repo: str, head_branch: str) -> Result[int | None, Error]:
         return Ok(self._existing)
 
