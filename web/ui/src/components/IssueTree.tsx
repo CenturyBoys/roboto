@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { driveEpic, getIssueTree, type DriveResult } from '@/lib/api'
+import { driveEpic, getIssueTree, graphAudit, type DoctorResult, type DriveResult } from '@/lib/api'
 import type { IssueGraph } from '@/types'
 import { Card } from './ui/card'
 import { Button } from './ui/button'
@@ -24,6 +24,19 @@ export function IssueTree({ onSelect }: { onSelect: (n: number) => void }) {
   const [error, setError] = useState<string | null>(null)
   // driver de épico: por épico, 'loading' enquanto roda, ou o resultado (prontas/despachadas/etc).
   const [drive, setDrive] = useState<Record<number, 'loading' | DriveResult>>({})
+  // graph doctor (repo todo): 'loading', o relatório, ou null (não rodado).
+  const [doctor, setDoctor] = useState<'loading' | DoctorResult | null>(null)
+
+  async function doDoctor() {
+    setDoctor('loading')
+    try {
+      const r = await graphAudit()
+      setDoctor(r)
+      getIssueTree().then(setGraph).catch(() => {}) // recarrega: o doctor pode ter reaberto issues
+    } catch {
+      setDoctor(null)
+    }
+  }
 
   async function doDrive(epic: number) {
     setDrive((d) => ({ ...d, [epic]: 'loading' }))
@@ -209,7 +222,45 @@ export function IssueTree({ onSelect }: { onSelect: (n: number) => void }) {
         <span className="flex items-center gap-1">
           <span className="inline-block h-2 w-2 rounded-full bg-green-400" /> livre
         </span>
+        <Button
+          variant="outline"
+          className="ml-auto h-6 px-2 py-0 text-[11px]"
+          disabled={doctor === 'loading'}
+          onClick={() => void doDoctor()}
+          title="Graph doctor: audita o grafo (deps, done confiável, redundância, órfãos, ciclos), reabre sozinho o que é seguro e lista o resto p/ você"
+        >
+          {doctor === 'loading' ? '🩺 auditando…' : '🩺 doctor'}
+        </Button>
       </div>
+      {doctor && doctor !== 'loading' && (
+        <Card className="flex flex-col gap-2 text-xs">
+          <span className="text-sm">
+            🩺 Graph doctor — {doctor.findings.length} achado(s) ·{' '}
+            <span className="text-green-400">{doctor.applied.length} curado(s)</span> ·{' '}
+            <span className="text-orange-300">{doctor.pending.length} pendente(s)</span>
+          </span>
+          {doctor.applied.length > 0 && (
+            <div className="text-green-400">
+              ✅ reabri sozinho (protetor):{' '}
+              {doctor.applied.map((a) => `#${a.issue}`).join(', ')}
+            </div>
+          )}
+          {doctor.pending.length > 0 && (
+            <div className="flex flex-col gap-1">
+              <span className="text-orange-300">⚠️ precisa de você / do gerente:</span>
+              {doctor.pending.map((a) => (
+                <div key={`${a.kind}:${a.issue}`} className="ml-3 text-muted">
+                  <span className="font-mono text-accent">#{a.issue}</span>{' '}
+                  <span className="text-orange-300">[{a.action}]</span> {a.detail}
+                </div>
+              ))}
+            </div>
+          )}
+          {doctor.findings.length === 0 && (
+            <span className="text-green-400">grafo saudável — nenhuma inconsistência 🎉</span>
+          )}
+        </Card>
+      )}
       {graph.has_cycle && (
         <p className="rounded-lg border border-orange-400/40 bg-orange-400/10 px-3 py-2 text-xs text-orange-300">
           ⚠️ há um ciclo de dependências — o mapa é best-effort e pode repetir um ramo.

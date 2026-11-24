@@ -93,6 +93,24 @@ export type DriveResult = {
 }
 export const driveEpic = (n: number) =>
   api<DriveResult>(`/epics/${n}/drive`, { method: 'POST' })
+
+// Graph doctor (épico #73): audita o grafo de issues/deps do repo, REABRE sozinho o que é auto-
+// seguro (protetor) e devolve as demais propostas PENDENTES p/ o gerente/humano.
+export type GraphFinding = { kind: string; issue: number; detail: string; severity: string }
+export type HealAction = {
+  issue: number
+  kind: string
+  action: string
+  auto: boolean
+  detail: string
+}
+export type DoctorResult = {
+  repo: string
+  findings: GraphFinding[]
+  applied: HealAction[]
+  pending: HealAction[]
+}
+export const graphAudit = () => api<DoctorResult>('/graph-audit', { method: 'POST' })
 // Breakdown de épico (#203): PROPÕE sub-issues esqueleto — não cria nada. 409 se não parece épico.
 export const proposeBreakdown = (n: number, transcript: [string, string][]) =>
   api<BreakdownStep>(`/issues/${n}/breakdown`, {
