@@ -12,9 +12,13 @@ from __future__ import annotations
 
 import re
 
-# frase de bloqueio seguida de uma ou mais refs #N (ex.: "bloqueada por #79", "depends on #80, #81")
+# frase de bloqueio seguida de uma ou mais refs #N (ex.: "bloqueada por #79", "depends on #80").
+# Entre a frase e o 1º #N toleramos RUÍDO DE MARKDOWN na MESMA linha (`**`, crase, `>`, `:`, espaço)
+# — bug real: "**Depende de:** #281" perdia o #281 porque `\s*:?\s*` não comia o `**`, dropando uma
+# dependência REAL em silêncio. Limite curto (≤8 chars, sem `#`/quebra de linha) p/ não inventar
+# dependência a partir de prosa ("depende de fazer X antes de mexer no #9" NÃO é bloqueio por #9).
 _BLOCK = re.compile(
-    r"(?:blocked by|bloquead[ao]s? por|depends on|depende d[ea])\s*:?\s*((?:#\d+[\s,/e]*)+)",
+    r"\b(?:blocked by|bloquead[ao]s? por|depends on|depende d[ea])[^#\n]{0,8}?((?:#\d+[\s,/e]*)+)",
     re.IGNORECASE,
 )
 
