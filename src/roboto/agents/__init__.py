@@ -4,6 +4,7 @@ from roboto.agents.breakdown import (
     Breakdown,
     SubIssueSkeleton,
     is_epic,
+    is_explicit_epic,
     parse_breakdown,
     skeleton_body,
 )
@@ -37,6 +38,7 @@ __all__ = [
     "check_issue_readiness",
     "handle_inbound",
     "is_epic",
+    "is_explicit_epic",
     "parse_breakdown",
     "refine",
     "review_issue_semantics",

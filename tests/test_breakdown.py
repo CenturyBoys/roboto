@@ -7,6 +7,7 @@ from roboto.agents.breakdown import (
     SubIssueSkeleton,
     is_architectural,
     is_epic,
+    is_explicit_epic,
     needs_ux,
     parse_breakdown,
     review_breakdown,
@@ -41,6 +42,31 @@ def test_one_signal_not_enough() -> None:
 def test_epicentro_nao_dispara() -> None:
     # "épico" é palavra; "epicentro" não deve casar
     assert is_epic("fix: corrigir epicentro do bug", "nada aqui") is False
+
+
+def test_filha_que_referencia_o_pai_nao_e_epico() -> None:
+    # REGRESSÃO #322: toda filha bem-formada cita "Parte do épico #N" + o breakdown do pai; isso
+    # NÃO pode contá-la como épico (era o falso-positivo que virava épico-dentro-de-épico).
+    body = (
+        "> **Epico:** #73 — fatia T3 do breakdown aprovado em docs/arch/matchmaking.md.\n"
+        "> **Depende de:** #281.\n\nParte do épico #73.\n\n## Contexto\nImplementar o scheduler."
+    )
+    assert is_epic("Implementar o quórum 80% e redução de chave", body) is False
+
+
+def test_epico_real_no_corpo_ainda_dispara() -> None:
+    # a despoluição tira só a REFERÊNCIA ao pai (com #N); "este épico cobre..." continua sinal.
+    body = "Este épico cobre várias frentes.\n" + "\n".join(f"- [ ] item {i}" for i in range(9))
+    assert is_epic("feat: proteção transversal", body) is True
+
+
+def test_is_explicit_epic_titulo_ou_label() -> None:
+    assert is_explicit_epic("Épico: motor vivo", []) is True
+    assert is_explicit_epic("[EPIC] gamificação", []) is True
+    assert is_explicit_epic("feat: quórum 80%", ["type:epic"]) is True
+    assert is_explicit_epic("feat: quórum 80%", ["épico"]) is True
+    # título/label normais + corpo cheio de sinais → NÃO é épico explícito (driver não subdivide)
+    assert is_explicit_epic("Implementar o quórum 80%", ["enhancement"]) is False
 
 
 # --- parse do breakdown ---
