@@ -81,9 +81,11 @@ export function IssueTree({ onSelect }: { onSelect: (n: number) => void }) {
       }
     }
     // transitividade (derivada, não materializada): bloqueador-raiz aberto + quantas destrava.
-    const isClosed = (n: number) => byNumber.get(n)?.state === 'closed'
-    const rootBlockers = rootOpenBlockers(blockers, isClosed)
-    const unblocks = unblockCounts(blockers, isClosed)
+    // "resolvido" = fechado OU ausente do grafo (o mapa só traz issues ABERTAS como nós; um
+    // bloqueador que não é nó — ex.: o #281 fechado — já está resolvido e não trava a cadeia).
+    const isResolved = (n: number) => byNumber.get(n)?.state !== 'open'
+    const rootBlockers = rootOpenBlockers(blockers, isResolved)
+    const unblocks = unblockCounts(blockers, isResolved)
     return { byNumber, children, hasParent, blockers, xref, rootBlockers, unblocks }
   }, [graph])
 
@@ -113,9 +115,10 @@ export function IssueTree({ onSelect }: { onSelect: (n: number) => void }) {
     const xrefs = idx.xref.get(num) ?? 0
     const roots = idx.rootBlockers.get(num) ?? []
     const unblocks = idx.unblocks.get(num) ?? 0
-    // mostra a RAIZ só quando ela adiciona info (≠ do bloqueador direto já no badge ⛔)
-    const directOpen = blockers.filter((b) => idx.byNumber.get(b)?.state !== 'closed')
-    const showRoot = roots.length > 0 && roots.join(',') !== [...directOpen].sort((a, z) => a - z).join(',')
+    // mostra a RAIZ só quando ela adiciona info (≠ do bloqueador direto ABERTO já no badge ⛔)
+    const directOpen = blockers.filter((b) => idx.byNumber.get(b)?.state === 'open')
+    const showRoot =
+      roots.length > 0 && roots.join(',') !== [...directOpen].sort((a, z) => a - z).join(',')
     return (
       <div
         key={`${depth}:${num}`}
