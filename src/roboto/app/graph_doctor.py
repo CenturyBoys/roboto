@@ -69,28 +69,36 @@ def closed_depending_on_open(issues: list[IssueNode]) -> list[GraphFinding]:
 
 def closed_but_reverted(issues: list[IssueNode], prs: list[PrNode]) -> list[GraphFinding]:
     """Issue fechada como COMPLETED pelo merge de um PR REVERTIDO (ou cujo PR não está mergeado) →
-    o trabalho não existe mais; 'done' é mentira (a #286 via #399 revertido). Reabrir."""
-    por_issue: dict[int, PrNode] = {}
+    o trabalho não existe mais; 'done' é mentira (a #286 via #399 revertido). Reabrir.
+
+    Considera TODOS os PRs que fecham a issue: só flaga se NENHUM está mergeado-e-não-revertido
+    (senão há falso-positivo quando um PR concorrente foi fechado sem merge mas OUTRO, mergeado, de
+    fato entregou — ex.: #263 fechada pelo #270 mergeado, com o #266 fechado sem merge ao lado)."""
+    por_issue: dict[int, list[PrNode]] = {}
     for p in prs:
         for n in p.closes:
-            por_issue[n] = p
+            por_issue.setdefault(n, []).append(p)
     out: list[GraphFinding] = []
     for i in issues:
         if i.state != "closed" or i.state_reason == "not_planned":
             continue
-        pr = por_issue.get(i.number)
-        if pr is None:
+        closers = por_issue.get(i.number)
+        if not closers:
             continue
-        if pr.reverted_by is not None:
+        if any(p.state == "merged" and p.reverted_by is None for p in closers):
+            continue  # pelo menos um closer mergeado e não-revertido → realmente pronto
+        revertido = next((p for p in closers if p.reverted_by is not None), None)
+        if revertido is not None:
             out.append(GraphFinding(
                 "closed_but_reverted", i.number,
-                f"fechada pelo PR #{pr.number}, revertido pelo PR #{pr.reverted_by}", "reopen",
-            ))
-        elif pr.state != "merged":
-            out.append(GraphFinding(
-                "closed_but_reverted", i.number,
-                f"fechada mas o PR #{pr.number} que a fecharia está {pr.state} (não mergeado)",
+                f"fechada pelo PR #{revertido.number}, revertido pelo PR #{revertido.reverted_by}",
                 "reopen",
+            ))
+        else:
+            nums = ", ".join(f"#{p.number}({p.state})" for p in closers)
+            out.append(GraphFinding(
+                "closed_but_reverted", i.number,
+                f"fechada mas nenhum PR que a fecharia foi mergeado: {nums}", "reopen",
             ))
     return out
 

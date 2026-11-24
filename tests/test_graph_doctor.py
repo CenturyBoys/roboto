@@ -58,6 +58,24 @@ def test_closed_but_pr_nao_mergeado_reabre() -> None:
     assert len(fs) == 1 and fs[0].heal == "reopen"
 
 
+def test_closed_but_reverted_ignora_se_outro_closer_mergeou() -> None:
+    # REGRESSÃO (falso-positivo real do #263): a issue tem 2 closers — #266 fechado-sem-merge e #270
+    # MERGEADO. Está pronta de verdade → NÃO flagar.
+    issues = [IssueNode(263, "feature", "closed", state_reason="completed")]
+    prs = [
+        PrNode(266, "closed", closes=[263]),  # concorrente, fechado sem merge
+        PrNode(270, "merged", closes=[263]),  # o que de fato entregou
+    ]
+    assert closed_but_reverted(issues, prs) == []
+
+
+def test_closed_sem_nenhum_closer_mergeado_flaga() -> None:
+    issues = [IssueNode(9, "x", "closed", state_reason="completed")]
+    prs = [PrNode(10, "closed", closes=[9]), PrNode(11, "closed", closes=[9])]
+    fs = closed_but_reverted(issues, prs)
+    assert len(fs) == 1 and fs[0].heal == "reopen"
+
+
 def test_redundant_skeleton_casa_pr_mergeado() -> None:
     # #397 'T1: bracket.ts puro' vs. PR #331 'bracket de torneio puro' mergeado → redundante.
     issues = [IssueNode(397, "T1: bracket.ts puro em packages core", "open", is_auto=True)]
