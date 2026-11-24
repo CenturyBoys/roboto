@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { driveEpic, getIssueTree, graphAudit, type DoctorResult, type DriveResult } from '@/lib/api'
+import { rootOpenBlockers, unblockCounts } from '@/lib/graph'
 import type { IssueGraph } from '@/types'
 import { Card } from './ui/card'
 import { Button } from './ui/button'
@@ -79,7 +80,11 @@ export function IssueTree({ onSelect }: { onSelect: (n: number) => void }) {
         xref.set(e.to, (xref.get(e.to) ?? 0) + 1)
       }
     }
-    return { byNumber, children, hasParent, blockers, xref }
+    // transitividade (derivada, não materializada): bloqueador-raiz aberto + quantas destrava.
+    const isClosed = (n: number) => byNumber.get(n)?.state === 'closed'
+    const rootBlockers = rootOpenBlockers(blockers, isClosed)
+    const unblocks = unblockCounts(blockers, isClosed)
+    return { byNumber, children, hasParent, blockers, xref, rootBlockers, unblocks }
   }, [graph])
 
   if (error) return <p className="text-muted">{error}</p>
@@ -106,6 +111,11 @@ export function IssueTree({ onSelect }: { onSelect: (n: number) => void }) {
       .sort((a, b) => a - b)
     const blockers = idx.blockers.get(num) ?? []
     const xrefs = idx.xref.get(num) ?? 0
+    const roots = idx.rootBlockers.get(num) ?? []
+    const unblocks = idx.unblocks.get(num) ?? 0
+    // mostra a RAIZ só quando ela adiciona info (≠ do bloqueador direto já no badge ⛔)
+    const directOpen = blockers.filter((b) => idx.byNumber.get(b)?.state !== 'closed')
+    const showRoot = roots.length > 0 && roots.join(',') !== [...directOpen].sort((a, z) => a - z).join(',')
     return (
       <div
         key={`${depth}:${num}`}
@@ -151,6 +161,24 @@ export function IssueTree({ onSelect }: { onSelect: (n: number) => void }) {
           {blockers.length > 0 && (
             <span className="text-[11px] text-orange-400" data-testid={`tree-blocked-${num}`}>
               ⛔ depende de {blockers.map((b) => `#${b}`).join(', ')}
+            </span>
+          )}
+          {showRoot && (
+            <span
+              className="text-[11px] text-red-400"
+              data-testid={`tree-root-${num}`}
+              title="bloqueador-raiz: a issue ABERTA no fundo da cadeia que de fato trava esta (transitivo)"
+            >
+              🔒 raiz: {roots.map((b) => `#${b}`).join(', ')}
+            </span>
+          )}
+          {unblocks > 0 && (
+            <span
+              className="text-[11px] text-green-400"
+              data-testid={`tree-unblocks-${num}`}
+              title="quantas issues abertas esta destrava em cascata quando fechar (transitivo)"
+            >
+              🔓 destrava {unblocks}
             </span>
           )}
           {xrefs > 0 && (
