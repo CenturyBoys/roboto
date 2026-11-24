@@ -115,7 +115,8 @@ class GithubAppClient:
                 await client.aclose()
 
     async def open_pr(
-        self, repo: str, *, title: str, body: str, head: str, base: str = "main"
+        self, repo: str, *, title: str, body: str, head: str, base: str = "main",
+        draft: bool = False,
     ) -> Result[IssueRef, Error]:
         owns = self._client is None
         client = (
@@ -129,7 +130,7 @@ class GithubAppClient:
                     "Authorization": f"Bearer {token}",
                     "Accept": "application/vnd.github+json",
                 },
-                json={"title": title, "body": body, "head": head, "base": base},
+                json={"title": title, "body": body, "head": head, "base": base, "draft": draft},
             )
             resp.raise_for_status()
             data = resp.json()
@@ -141,6 +142,68 @@ class GithubAppClient:
             return Err(Error("github", f"open_pr {repo}: {exc.response.status_code} {detalhe}"))
         except httpx.HTTPError as exc:
             return Err(Error("github", f"open_pr {repo}: {exc}"))
+        finally:
+            if owns:
+                await client.aclose()
+
+    async def add_pr_label(self, repo: str, number: int, label: str) -> Result[None, Error]:
+        """Adiciona um label a um PR/issue (APPEND — não clobbera os existentes). Usado p/ marcar
+        `needs-human` quando o review escala (P0b): deixa o PR filtrável e sinaliza bloqueio."""
+        owns = self._client is None
+        client = (
+            self._client if self._client is not None else httpx.AsyncClient(timeout=self._timeout)
+        )
+        try:
+            token = await self._installation_token(client)
+            resp = await client.post(
+                f"{self._api}/repos/{repo}/issues/{number}/labels",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                },
+                json={"labels": [label]},
+            )
+            resp.raise_for_status()
+            return Ok(None)
+        except httpx.HTTPError as exc:
+            return Err(Error("github", f"add_pr_label {repo}#{number}: {exc}"))
+        finally:
+            if owns:
+                await client.aclose()
+
+    async def mark_pr_ready(self, repo: str, number: int) -> Result[None, Error]:
+        """Promove um PR de DRAFT p/ ready-for-review (GraphQL `markPullRequestReadyForReview`).
+
+        O fleet abre o PR SEMPRE como draft (não-mergeável) e só promove quando o review APROVA —
+        assim um run escalado/não-aprovado nunca deixa um PR mergeável num clique (furo do
+        run-1047/#399). Best-effort: se o GraphQL recusar, o PR fica draft (lado SEGURO)."""
+        owns = self._client is None
+        client = (
+            self._client if self._client is not None else httpx.AsyncClient(timeout=self._timeout)
+        )
+        try:
+            token = await self._installation_token(client)
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json",
+            }
+            got = await client.get(f"{self._api}/repos/{repo}/pulls/{number}", headers=headers)
+            got.raise_for_status()
+            node_id = str(got.json()["node_id"])
+            mut = (
+                "mutation($id:ID!){markPullRequestReadyForReview(input:{pullRequestId:$id})"
+                "{clientMutationId}}"
+            )
+            resp = await client.post(
+                f"{self._api}/graphql", headers=headers,
+                json={"query": mut, "variables": {"id": node_id}},
+            )
+            resp.raise_for_status()
+            if errs := resp.json().get("errors"):
+                return Err(Error("github", f"mark_pr_ready {repo}#{number}: {errs}"))
+            return Ok(None)
+        except httpx.HTTPError as exc:
+            return Err(Error("github", f"mark_pr_ready {repo}#{number}: {exc}"))
         finally:
             if owns:
                 await client.aclose()

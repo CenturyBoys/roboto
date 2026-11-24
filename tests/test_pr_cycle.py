@@ -116,8 +116,13 @@ class _FakeGithub:
         self.blocker_state = "open"  # gate de dependência (J): estado da issue bloqueadora
         self.labels: list[str] = []  # gate de prontidão por label (#1046): status:blocked etc.
         self.created_issues: list[tuple[str, str]] = []  # self-heal (#322): deps auto-abertas
+        self.issue_bodies: list[tuple[int, str]] = []  # self-heal wire (#322): corpo reescrito
         self.reviews: list[str] = []  # corpos de submit_review (review estruturado, Trilha D)
         self.ci_errs = ""  # #233: saída de CI vermelha (default = CI verde); testes setam
+        self.opened_draft: list[bool] = []  # P0b: draft= de cada open_pr
+        self.pr_labels: list[tuple[int, str]] = []  # P0b: add_pr_label (needs-human na escalada)
+        self.readied: list[int] = []  # P0b: PRs promovidos de draft→ready (só na aprovação)
+        self.ready_fails = False  # P0b: simula GraphQL recusando a promoção
         self._existing = existing_pr
         self._ready = ready_issue
         self._custom_body = custom_body
@@ -145,12 +150,24 @@ class _FakeGithub:
         return Ok(self._existing)
 
     async def open_pr(
-        self, repo: str, *, title: str, body: str, head: str, base: str = "main"
+        self, repo: str, *, title: str, body: str, head: str, base: str = "main",
+        draft: bool = False,
     ) -> Result[IssueRef, Error]:
         if self.open_fails:
             return Err(Error("github", "403 Pull requests: write ausente"))
         self.opened += 1
+        self.opened_draft.append(draft)
         return Ok(IssueRef(repo=repo, number=42, url="https://github.com/acme/app/pull/42"))
+
+    async def add_pr_label(self, repo: str, number: int, label: str) -> Result[None, Error]:
+        self.pr_labels.append((number, label))
+        return Ok(None)
+
+    async def mark_pr_ready(self, repo: str, number: int) -> Result[None, Error]:
+        if self.ready_fails:
+            return Err(Error("github", "graphql recusou"))
+        self.readied.append(number)
+        return Ok(None)
 
     async def add_assignee(self, repo: str, number: int, login: str) -> Result[None, Error]:
         self.assignees.append((number, login))
@@ -171,6 +188,18 @@ class _FakeGithub:
 
     async def set_issue_state(self, repo: str, number: int, state: str) -> Result[None, Error]:
         self.issue_states.append((number, state))
+        return Ok(None)
+
+    async def set_issue_state_label(
+        self, repo: str, number: int, label: str
+    ) -> Result[None, Error]:
+        self.labels.append(label)  # self-heal (#322): to-do/auto nos filhos, blocked no pai
+        return Ok(None)
+
+    async def update_issue(
+        self, repo: str, number: int, *, title: str, body: str
+    ) -> Result[None, Error]:
+        self.issue_bodies.append((number, body))  # self-heal wire (#322): aresta Depende de #N
         return Ok(None)
 
     async def get_issue_state(self, repo: str, number: int) -> Result[str, Error]:
@@ -671,8 +700,9 @@ async def test_tick_sem_aprovacao_registra_motivo_no_feed() -> None:
     run = await _run(store)  # type: ignore[assignment]
     engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
     gw = _SeqGateway([_FIND_REPROVA, _FIND_REPROVA, _FIND_REPROVA])  # reprova as 3 tentativas
+    github = _FakeGithub()
     await process_pr_run_tick(
-        engine, gw, _FakeGithub(), store,  # type: ignore[arg-type]
+        engine, gw, github, store,  # type: ignore[arg-type]
         tenant="acme", workdir_root="/work", reviewer="review",
         git_factory=lambda ws: _FakeGit(), now=lambda: _T0,
     )
@@ -682,6 +712,51 @@ async def test_tick_sem_aprovacao_registra_motivo_no_feed() -> None:
     assert any("falta teste" in e.text for e in events)  # pendências do review surfadas no feed
     # #3: cada review reprovado deixa o veredito no feed (não só o agregado final do encerramento)
     assert any("Review: reprovou" in e.text for e in events)
+    # P0b: PR nasceu DRAFT, NÃO foi promovido (review não aprovou) e ganhou label needs-human →
+    # GitHub não deixa mergear (furo do run-1047/#399 fechado).
+    assert github.opened_draft == [True]
+    assert github.readied == []
+    assert (42, "needs-human") in github.pr_labels
+
+
+async def test_tick_aprovado_promove_pr_a_ready() -> None:
+    # P0b: review aprova → o PR (nascido draft) é PROMOVIDO a ready-for-review (humano mergeia).
+    from roboto.orchestrator.model import RunState
+
+    store = InMemoryStore()
+    run = await _run(store)  # type: ignore[assignment]
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    github = _FakeGithub()
+    await process_pr_run_tick(
+        engine, _SeqGateway([""]), github, store,  # type: ignore[arg-type]  # "" = aprovado
+        tenant="acme", workdir_root="/work", reviewer="review",
+        git_factory=lambda ws: _FakeGit(), now=lambda: _T0,
+    )
+    assert store._runs[run.id].state is RunState.VERIFYING  # type: ignore[attr-defined]
+    assert github.opened_draft == [True]  # nasceu draft
+    assert github.readied == [42]  # promovido na aprovação
+    assert all(lab != "needs-human" for _, lab in github.pr_labels)
+
+
+async def test_tick_aprovado_mas_promocao_falha_avisa_e_fica_draft() -> None:
+    # P0b lado seguro: se o GraphQL recusar a promoção, o PR FICA draft e o feed avisa (não mergeia
+    # por acidente nem quebra o run).
+    from roboto.orchestrator.model import RunState
+
+    store = InMemoryStore()
+    run = await _run(store)  # type: ignore[assignment]
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    github = _FakeGithub()
+    github.ready_fails = True
+    await process_pr_run_tick(
+        engine, _SeqGateway([""]), github, store,  # type: ignore[arg-type]
+        tenant="acme", workdir_root="/work", reviewer="review",
+        git_factory=lambda ws: _FakeGit(), now=lambda: _T0,
+    )
+    assert store._runs[run.id].state is RunState.VERIFYING  # type: ignore[attr-defined]
+    assert github.readied == []  # não promoveu
+    events = await store.session_events(run.id, 0, 50)
+    assert any("não consegui tirar do draft" in e.text for e in events)
 
 
 class _RaisingEngine:
