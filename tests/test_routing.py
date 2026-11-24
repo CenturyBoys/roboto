@@ -26,6 +26,27 @@ def test_override_equal_to_default_does_not_duplicate() -> None:
     assert r[Tier.FRONTIER] == (DEFAULT_MODELS[Tier.FRONTIER],)
 
 
+def test_review_nunca_e_o_mesmo_modelo_do_escritor() -> None:
+    # P1a: por default JUDGE == CHEAP (ambos qwen-2.5-72b) → o guard promove o review p/ FRONTIER,
+    # pra o revisor NUNCA ser tão fraco quanto o escritor (bug do run-1047).
+    r = build_routing()
+    assert r[Tier.JUDGE][0] != r[Tier.CHEAP][0]
+    assert r[Tier.JUDGE] == r[Tier.FRONTIER]  # promovido pro tier forte
+
+
+def test_judge_explicito_distinto_vence_o_guard() -> None:
+    # operador aponta o review p/ um modelo forte específico (ex.: Sonnet) → respeita, não promove.
+    r = build_routing(judge="anthropic/claude-sonnet-4.6")
+    assert r[Tier.JUDGE] == ("anthropic/claude-sonnet-4.6", DEFAULT_MODELS[Tier.JUDGE])
+
+
+def test_guard_dispara_quando_cheap_e_judge_sao_iguais_por_override() -> None:
+    # se alguém setar judge == cheap explicitamente, ainda assim promove (revisor ≠ escritor).
+    r = build_routing(cheap="x/model", judge="x/model", frontier="y/forte")
+    assert r[Tier.JUDGE] == r[Tier.FRONTIER]  # promovido pro tier forte (com seu fallback)
+    assert r[Tier.JUDGE][0] == "y/forte" and r[Tier.JUDGE][0] != r[Tier.CHEAP][0]
+
+
 def _gateway(
     transport: httpx.MockTransport, routing: dict[Tier, tuple[str, ...]]
 ) -> OpenRouterGateway:

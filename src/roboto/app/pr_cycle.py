@@ -22,6 +22,7 @@ from roboto.agents.review import (
     PullRequest,
     ReviewVerdict,
     check_issue_readiness,
+    ci_blocker_finding,
     montar_review,
     revisar_pr,
 )
@@ -132,12 +133,29 @@ class GithubPrOps(Protocol):
     async def find_open_pr(self, repo: str, head_branch: str) -> Result[int | None, Error]: ...
 
     async def open_pr(
-        self, repo: str, *, title: str, body: str, head: str, base: str = "main"
+        self, repo: str, *, title: str, body: str, head: str, base: str = "main",
+        draft: bool = False,
     ) -> Result[IssueRef, Error]: ...
+
+    # P0b: PR nasce draft; promove a ready-for-review só quando o review aprova
+    async def mark_pr_ready(self, repo: str, number: int) -> Result[None, Error]: ...
+
+    # P0b: label `needs-human` no PR escalado (filtrável + sinal de bloqueio)
+    async def add_pr_label(self, repo: str, number: int, label: str) -> Result[None, Error]: ...
 
     async def get_pr_diff(self, repo: str, number: int) -> Result[str, Error]: ...
 
     async def comment_pr(self, repo: str, number: int, body: str) -> Result[None, Error]: ...
+
+    # self-heal wire (#322): reescreve o corpo da issue com a aresta `Depende de #N`
+    async def update_issue(
+        self, repo: str, number: int, *, title: str, body: str
+    ) -> Result[None, Error]: ...
+
+    # self-heal (#322): troca o label status:* (to-do/auto nos filhos, blocked no pai)
+    async def set_issue_state_label(
+        self, repo: str, number: int, label: str
+    ) -> Result[None, Error]: ...
 
     # resumo dos checks que FALHARAM no head do PR (erro REAL da CI p/ alimentar a correção, #233)
     async def check_failures(self, repo: str, number: int) -> Result[str, Error]: ...
@@ -984,8 +1002,12 @@ async def run_pr_cycle(
             if isinstance(existing, Ok) and existing.value is not None:
                 state["pr"] = existing.value
             else:
+                # P0b: PR NASCE DRAFT (não-mergeável). Só vira ready-for-review quando o review
+                # APROVA (process_pr_run_tick). Um run escalado/não-aprovado nunca deixa um PR que o
+                # humano mergeia num clique sem ver o 🚩 (furo do run-1047/#399).
                 opened = await github.open_pr(
-                    run.repo, title=title, body=await build_pr_body(), head=branch, base=base
+                    run.repo, title=title, body=await build_pr_body(), head=branch, base=base,
+                    draft=True,
                 )
                 # #144: open_pr falho NÃO vira PR nº 0 silencioso — propaga e FALHA o run (senão o
                 # review rodava sobre diff vazio). A msg do adapter traz o motivo real (422).
@@ -1020,6 +1042,11 @@ async def run_pr_cycle(
             pr, review_gw, reviewer=reviewer, verify_findings=achados, strategy=strategy
         )
         findings = res.value if isinstance(res, Ok) else []
+        # P1c: o review NÃO aprova sobre CI vermelha — se os checks do PR estão vermelhos, injeta um
+        # bloqueador determinístico (run-1047 chegou a "aprovado ✅" com o `test` sem rodar).
+        ci_now = await github.check_failures(run.repo, pr.number)
+        if isinstance(ci_now, Ok) and (bloq_ci := ci_blocker_finding(ci_now.value)) is not None:
+            findings = [bloq_ci, *findings]
         inline, body, aprovado = montar_review(findings)
         if isinstance(await github.submit_review(run.repo, pr.number, body, inline), Err):
             await github.comment_pr(run.repo, pr.number, body)  # linhas fora do diff → só o resumo
@@ -1138,15 +1165,25 @@ async def process_pr_run_tick(
                 async def _comment(repo: str, n: int, txt: str) -> None:
                     await github.comment_pr(repo, n, txt)
 
+                async def _add_label(repo: str, n: int, label: str) -> None:
+                    await github.set_issue_state_label(repo, n, label)
+
+                async def _update_body(repo: str, n: int, new_body: str) -> None:
+                    cur = await github.get_issue(repo, n)  # relê o título (update_issue o exige)
+                    if isinstance(cur, Ok):
+                        await github.update_issue(repo, n, title=cur.value[0], body=new_body)
+
                 _criados = await heal_missing_deps(
                     repo=run.repo, parent=int(run.issue_id), body=body, existing_titles=_titles,
                     create_issue=_create, comment=_comment,
+                    add_label=_add_label, update_body=_update_body,
                 )
                 if _criados:
                     await store.append_session_event(
                         run.tenant, run.id, "message", moment,
                         text=f"⚙️ self-heal: abri {len(_criados)} dependência(s) faltante(s) "
-                             f"({', '.join(f'#{n}' for n in _criados)}) — refino pendente.",
+                             f"({', '.join(f'#{n}' for n in _criados)}) — gravei a aresta "
+                             "`Depende de #N` no corpo e re-bloqueei (status:blocked) até refino.",
                     )
             # gate de PRONTIDÃO por LABEL (#1046): `status:blocked` é o veredito humano/refino de
             # que a issue NÃO está pronta — captura bloqueio que o parser de `#N` não vê (ex.: a
@@ -1269,6 +1306,20 @@ async def process_pr_run_tick(
     await store.set_state(
         run.id, RunState.VERIFYING if result.approved else RunState.FAILED, moment
     )
+    # P0b: o PR nasce DRAFT — aqui decidimos se vira mergeável. APROVADO → promove a ready (humano
+    # mergeia). ESCALADO → fica draft + label `needs-human` (GitHub não deixa mergear PR draft).
+    _pr = result.pr
+    if _pr is not None and _pr.number:
+        if result.approved:
+            _r = await github.mark_pr_ready(run.repo, _pr.number)
+            if isinstance(_r, Err):
+                await store.append_session_event(
+                    run.tenant, run.id, "message", moment,
+                    text=f"⚠️ PR #{_pr.number} aprovado mas não consegui tirar do draft "
+                         f"({_r.error}) — fica draft; marque 'Ready for review' no GitHub.",
+                )
+        else:
+            await github.add_pr_label(run.repo, _pr.number, "needs-human")
     if not result.approved:
         # terminal VISÍVEL no console: sem isto, o feed termina na última msg do implement (ex.: o
         # aviso benigno de CI local INFRA) e o run vira `failed` SEM explicação — parece que o CI

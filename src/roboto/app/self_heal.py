@@ -14,6 +14,8 @@ import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
+from roboto.app.deps import blocked_by
+
 # a cláusula "Depende de …" até o próximo cabeçalho em negrito (**Bloqueia:**) ou fim de linha.
 _DEP_CLAUSE = re.compile(
     r"depende d[ea]s?\s*:?(.+?)(?:\*\*\s*\w+\s*:|[\r\n]|$)", re.IGNORECASE | re.DOTALL,
@@ -85,20 +87,43 @@ def skeleton_body(parent: int, dep: NamedDep) -> str:
     )
 
 
+def wire_deps(body: str, created: list[int]) -> str:
+    """Grava no corpo do dependente uma aresta LEGÍVEL (`Depende de #N`) p/ as deps recém-criadas.
+
+    Sem isto, a dep nasce ÓRFÃ: o self-heal cria o esqueleto mas o corpo do pai continua citando só
+    a prosa ("T1/T2"), que o gate/driver não enxerga (bug do #286 → #397/#398). Idempotente: não
+    repete o que o parser já vê. Linha NOVA (não mexe na prosa existente, frágil) e no formato que o
+    ``app/deps.py:blocked_by`` lê (ruído de markdown curto antes do `#N`)."""
+    ja = set(blocked_by(body or ""))
+    faltando = [n for n in created if n not in ja]
+    if not faltando:
+        return body or ""
+    linha = (
+        "> **Depende de:** " + ", ".join(f"#{n}" for n in faltando)
+        + "  _(aresta gravada pelo self-heal — dep antes era só nomeada)_"
+    )
+    return (body or "").rstrip() + "\n\n" + linha + "\n"
+
+
 # callables injetáveis (teste passa fakes; o harness liga no github real)
 CreateIssue = Callable[[str, str, str], Awaitable[int | None]]  # (repo,title,body) -> número|None
 Comment = Callable[[str, int, str], Awaitable[None]]  # (repo, pai, texto)
 AddLabel = Callable[[str, int, str], Awaitable[None]]  # (repo, número, label)
+UpdateBody = Callable[[str, int, str], Awaitable[None]]  # (repo, número, novo_corpo)
 
 
 async def heal_missing_deps(
     *, repo: str, parent: int, body: str, existing_titles: list[str],
     create_issue: CreateIssue, comment: Comment, add_label: AddLabel | None = None,
-    max_create: int = 6,
+    update_body: UpdateBody | None = None, max_create: int = 6,
 ) -> list[int]:
     """Cria um esqueleto p/ cada dependência NOMEADA (não-`#N`) que ainda não é issue, marca
-    `status:to-do`+`auto`, e comenta no PAI linkando. Devolve os criados ([] = nada a curar).
-    Idempotente via `existing_titles` (não duplica). Teto `max_create` contra surto."""
+    `status:to-do`+`auto`, comenta no PAI linkando, **grava a aresta `Depende de #N` no corpo do
+    pai** (``update_body``) e **re-bloqueia o pai** (``add_label`` → `status:blocked`). Devolve os
+    criados ([] = nada a curar). Idempotente via `existing_titles`. Teto `max_create` contra surto.
+
+    WIRE + RE-BLOQUEIO são o conserto do #322: antes, a dep nascia órfã (só comentário) e o pai
+    seguia "pronto" aos olhos do gate/driver — rodava impl sobre fundação inexistente (run-1047)."""
     faltantes = [d for d in named_deps(body) if not already_tracked(d, existing_titles)]
     criados: list[int] = []
     for dep in faltantes[:max_create]:
@@ -116,4 +141,10 @@ async def heal_missing_deps(
             f"⚙️ self-heal: abri {links} para as dependências que faltavam (nomeadas, sem issue). "
             "Refino (DoR) pendente antes de implementar — destravando a cadeia.",
         )
+        if update_body is not None:  # aresta legível no corpo do pai (não deixa a dep órfã)
+            novo = wire_deps(body, criados)
+            if novo != body:
+                await update_body(repo, parent, novo)
+        if add_label is not None:  # pai depende de esqueletos sem DoR → NÃO está pronto
+            await add_label(repo, parent, "status:blocked")
     return criados

@@ -7,16 +7,20 @@ from roboto.agents.review import (
     Finding,
     IssueReadiness,
     PullRequest,
+    _added_lines,
     _parse_findings,
     aprovado_por_findings,
     check_issue_readiness,
     check_issue_size,
+    dedupe_findings,
     formatar_finding,
     montar_review,
     resumo_review,
     review_issue_semantics,
     review_pr,
     review_pr_findings,
+    review_pr_multi,
+    sweep_sibling_sites,
     validar_issue_semantica,
 )
 from roboto.llm.port import ChatMessage, Completion, Tier
@@ -325,3 +329,97 @@ async def test_review_findings_usa_contexto_previo() -> None:
     prompt = "\n".join(m.content for m in gw.seen if m.role == "user")
     assert "falta teste no login" in prompt
     assert "NÃO repita" in prompt
+
+
+# --- P1b: review 'multi' (lentes em paralelo + dedupe + varredura de invariante) ---
+
+
+def test_dedupe_findings_colapsa_e_promove_bloqueador() -> None:
+    menor = Finding("mesma coisa", "menor", "a.ts", 10, "media")
+    bloq = Finding("Mesma Coisa", "bloqueador", "a.ts", 10, "alta")  # título ~igual, mesma loc
+    outro = Finding("outra", "menor", "b.ts", 5, "media")
+    out = dedupe_findings([menor, bloq, outro])
+    assert len(out) == 2  # os dois de a.ts:10 colapsam
+    a10 = next(f for f in out if f.arquivo == "a.ts")
+    assert a10.severidade == "bloqueador"  # bloqueador venceu o menor
+
+
+def test_added_lines_parseia_diff() -> None:
+    diff = (
+        "diff --git a/x.ts b/x.ts\n--- a/x.ts\n+++ b/x.ts\n"
+        "@@ -1,2 +1,3 @@\n contexto\n+linha nova A\n+linha nova B\n"
+    )
+    linhas = _added_lines(diff)
+    assert linhas == [("x.ts", 2, "linha nova A"), ("x.ts", 3, "linha nova B")]
+
+
+def test_sweep_sibling_sites_acha_o_site_irmao() -> None:
+    # bloqueador num `setnx`; o MESMO identificador aparece noutra linha adicionada → marca o irmão.
+    diff = (
+        "diff --git a/q.ts b/q.ts\n--- a/q.ts\n+++ b/q.ts\n@@ -1,1 +1,4 @@\n ctx\n"
+        "+  await dedupStore.setnx(startKey)\n"
+        "+  const x = 1\n"
+        "+  await dedupStore.setnx(phaseKey)\n"
+    )
+    bloq = Finding("dedup antes do efeito", "bloqueador", "q.ts", 2, "alta")
+    extras = sweep_sibling_sites(diff, [bloq])
+    assert len(extras) == 1
+    assert extras[0].arquivo == "q.ts" and extras[0].linha == 4  # o 2º setnx
+    assert extras[0].severidade == "menor" and "mesmo padrão" in extras[0].titulo.lower()
+
+
+class _LensGateway:
+    """Devolve um finding DISTINTO por lente (detecta a palavra-chave da lente no system)."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def complete(
+        self, messages: list[ChatMessage], tier: Tier
+    ) -> Result[Completion, Error]:
+        self.calls += 1
+        system = "\n".join(m.content for m in messages if m.role == "system")
+        tag, arq, ln = "generico", "g.ts", 1
+        for chave, a, n in (
+            ("IDEMPOTÊNCIA", "queue.ts", 10), ("DADOS", "persist.ts", 20),
+            ("ERRO", "queue.ts", 30), ("CONTRATO", "test.ts", 40),
+        ):
+            if chave in system:
+                tag, arq, ln = chave, a, n
+                break
+        txt = (
+            f"FINDING\nseveridade: bloqueador\narquivo: {arq}\nlinha: {ln}\nconfianca: alta\n"
+            f"titulo: problema {tag}\nevidencia: caso {tag}\nrecomendacao: conserte {tag}\nEND\n"
+        )
+        return Ok(Completion(text=txt, model="lens", tokens_in=0, tokens_out=0))
+
+
+async def test_review_multi_une_as_lentes_numa_passada() -> None:
+    gw = _LensGateway()
+    r = await review_pr_multi(_pr(author="alice"), gw, reviewer="bob")
+    assert isinstance(r, Ok)
+    assert gw.calls == 4  # uma chamada por lente, em paralelo
+    titulos = {f.titulo for f in r.value}
+    # a UNIÃO traz as 4 classes de defeito numa passada só (vs. whack-a-mole)
+    assert any("IDEMPOTÊNCIA" in t for t in titulos)
+    assert any("DADOS" in t for t in titulos)
+    assert any("CONTRATO" in t for t in titulos)
+
+
+async def test_review_multi_bloqueia_autoreview() -> None:
+    r = await review_pr_multi(_pr(author="alice"), _LensGateway(), reviewer="alice")
+    assert isinstance(r, Ok)
+    assert not aprovado_por_findings(r.value)  # reviewer==autor → bloqueado
+
+
+# --- P1c: review não aprova sobre CI vermelha ---
+
+
+def test_ci_blocker_finding_so_quando_vermelho() -> None:
+    from roboto.agents.review import ci_blocker_finding
+
+    assert ci_blocker_finding("") is None  # verde/sem checks → não bloqueia
+    assert ci_blocker_finding("   ") is None
+    b = ci_blocker_finding("tsc: error TS2345 em x.ts")
+    assert b is not None and b.severidade == "bloqueador"
+    assert "tsc" in b.evidencia

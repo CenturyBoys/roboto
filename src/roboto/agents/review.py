@@ -7,6 +7,7 @@ semântico da issue (`review_issue_semantics`, tier judge); (3) review de PR (`r
 
 from __future__ import annotations
 
+import asyncio
 import re
 from dataclasses import dataclass, field
 
@@ -343,11 +344,29 @@ def aprovado_por_findings(findings: list[Finding]) -> bool:
     return not any(f.severidade == "bloqueador" for f in findings)
 
 
+def ci_blocker_finding(ci_err: str) -> Finding | None:
+    """P1c: CI vermelha vira um BLOQUEADOR de review → o review NUNCA aprova sobre CI vermelha
+    (run-1047 chegou a 'aprovado ✅' com o `test` sem rodar). `ci_err` vazio = sem bloqueio (verde
+    ou ainda sem checks); não-vazio = erro REAL da CI (tsc/lint/teste). Determinístico, não LLM."""
+    if not (ci_err or "").strip():
+        return None
+    return Finding(
+        titulo="CI vermelha — não aprovo até o CI ficar verde",
+        severidade="bloqueador", arquivo="-", linha=0, confianca="alta",
+        evidencia=ci_err.strip()[:200],
+        recomendacao="Corrija o erro de CI acima (não é opinião — o pipeline está vermelho).",
+    )
+
+
 async def review_pr_findings(
     pr: PullRequest, gateway: ModelGateway, *, reviewer: str,
     verify_findings: list[str] | None = None, contexto_previo: list[str] | None = None,
+    lente: str = "",
 ) -> Result[list[Finding], Error]:
     """Review ESTRUTURADO (estratégia 'single'): findings tipados. reviewer==autor bloqueia.
+
+    `lente` (P1b): foco extra acoplado ao system — a estratégia 'multi' roda VÁRIAS lentes em
+    paralelo (cada uma caça uma classe de defeito) pra achar tudo numa passada, sem whack-a-mole.
 
     `contexto_previo` (#151): reviews/comentários anteriores do PR — o juiz verifica CADA ponto
     contra o diff atual: resolvido → não repete; não resolvido → MANTÉM (bloqueador segue
@@ -377,14 +396,134 @@ async def review_pr_findings(
     content = (
         f"PR #{pr.number} (autor={pr.author}): {pr.title}\n\n{pr.diff}{bloco_verify}{bloco_previo}"
     )
+    system = REVIEW_PR_STRUCT_SYSTEM + (f"\n\nLENTE (foque SÓ nisto): {lente}" if lente else "")
     messages = [
-        ChatMessage(role="system", content=REVIEW_PR_STRUCT_SYSTEM),
+        ChatMessage(role="system", content=system),
         ChatMessage(role="user", content=content),
     ]
     result = await gateway.complete(messages, Tier.JUDGE)
     if isinstance(result, Err):
         return Err(result.error)
     return Ok(_parse_findings(result.value.text))
+
+
+# P1b: lentes do review 'multi' — cada uma caça UMA classe de defeito; rodam em PARALELO e a UNIÃO
+# dos achados sai numa passada só (vs. o whack-a-mole do run-1047, que achou 1 bloqueador por rodada
+# no MESMO bug de idempotência em 4 sites). São as classes que mais escapam ao juiz único.
+_LENSES: tuple[str, ...] = (
+    "IDEMPOTÊNCIA/CONCORRÊNCIA: efeito exatamente-uma-vez sob retry/crash? a chave de dedup é "
+    "gravada só APÓS o efeito durável (nunca antes)? replay devolve o MESMO estado aplicado? "
+    "CAS/lock/owner-token corretos? corrida entre entregas concorrentes?",
+    "DADOS/PERSISTÊNCIA: campo/coluna que não existe no schema/cliente? migration ausente? no-op "
+    "silencioso disfarçado de sucesso? escrita parcial fora de transação? o efeito durável "
+    "acontece de fato (não só em memória/mock)?",
+    "ERRO/RETRY/RESILIÊNCIA: erro transitório sem retry? job vai pra failed sem reentrega? exceção "
+    "engolida? timeout/caminho de falha não coberto? ordem efeito-vs-commit sob falha no meio?",
+    "CONTRATO×TESTE: o teste cobre o comportamento NOVO (não só o caminho feliz)? o mock reflete a "
+    "PRODUÇÃO (não um atalho que faz o teste passar por acidente)? bordas (vazio, N<2, limite) "
+    "cobertas? alguma asserção passa por coincidência?",
+)
+
+
+def _norm(s: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", s.lower()).strip()
+
+
+def dedupe_findings(findings: list[Finding]) -> list[Finding]:
+    """União determinística: colapsa findings iguais (mesmo arquivo:linha + título ~igual) que
+    lentes distintas acham em paralelo. Em empate, BLOQUEADOR vence o menor (sem rebaixar)."""
+    best: dict[tuple[str, int, str], Finding] = {}
+    ordem: list[tuple[str, int, str]] = []
+    for f in findings:
+        key = (f.arquivo.strip().lower(), f.linha, _norm(f.titulo)[:60])
+        atual = best.get(key)
+        if atual is None:
+            best[key] = f
+            ordem.append(key)
+        elif f.severidade == "bloqueador" and atual.severidade != "bloqueador":
+            best[key] = f  # mantém a posição; promove a severidade
+    return [best[k] for k in ordem]
+
+
+def _added_lines(diff: str) -> list[tuple[str, int, str]]:
+    """Parse enxuto de unified diff → (arquivo, nº da linha NOVA, texto) por linha ADICIONADA."""
+    out: list[tuple[str, int, str]] = []
+    arquivo = ""
+    novo = 0
+    for line in (diff or "").splitlines():
+        if line.startswith("+++ b/"):
+            arquivo = line[6:].strip()
+        elif line.startswith("@@"):
+            m = re.search(r"\+(\d+)", line)
+            novo = int(m.group(1)) if m else 0
+        elif line.startswith("+") and not line.startswith("+++"):
+            out.append((arquivo, novo, line[1:]))
+            novo += 1
+        elif not line.startswith("-"):
+            novo += 1
+    return out
+
+
+_IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]{3,}")
+
+
+def sweep_sibling_sites(diff: str, findings: list[Finding], *, max_extra: int = 6) -> list[Finding]:
+    """Varredura DETERMINÍSTICA de invariante (P1b): quando uma lente aponta um BLOQUEADOR numa
+    linha, procura o MESMO identificador-chave em OUTRAS linhas adicionadas do mesmo arquivo e marca
+    cada site ainda não coberto. É o que falta no whack-a-mole: achado o site 1, varrer 2/3/4 de uma
+    vez (determinismo, não 'lembrar' do LLM). Conservador: emite só `menor` ('mesmo padrão'),
+    nunca bloqueador novo, e limitado por `max_extra`."""
+    adicionadas = _added_lines(diff)
+    por_arquivo: dict[str, list[tuple[int, str]]] = {}
+    for arq, ln, txt in adicionadas:
+        por_arquivo.setdefault(arq, []).append((ln, txt))
+    cobertas = {(f.arquivo.strip(), f.linha) for f in findings}
+    extras: list[Finding] = []
+    for f in findings:
+        if f.severidade != "bloqueador" or f.linha <= 0 or f.arquivo in ("", "-"):
+            continue
+        linha_txt = next(
+            (t for ln, t in por_arquivo.get(f.arquivo, []) if ln == f.linha), ""
+        )
+        idents = {i for i in _IDENT.findall(linha_txt) if not i.isdigit()}
+        for ln, txt in por_arquivo.get(f.arquivo, []):
+            if (f.arquivo, ln) in cobertas or ln == f.linha:
+                continue
+            if any(i in txt for i in idents):
+                extras.append(Finding(
+                    titulo=f"Mesmo padrão de '{f.titulo}' aqui — verifique",
+                    severidade="menor", arquivo=f.arquivo, linha=ln, confianca="media",
+                    evidencia=txt.strip()[:160],
+                    recomendacao=f"Aplicar a mesma correção de '{f.titulo}' neste site.",
+                ))
+                cobertas.add((f.arquivo, ln))
+                if len(extras) >= max_extra:
+                    return extras
+    return extras
+
+
+async def review_pr_multi(
+    pr: PullRequest, gateway: ModelGateway, *, reviewer: str,
+    verify_findings: list[str] | None = None, contexto_previo: list[str] | None = None,
+) -> Result[list[Finding], Error]:
+    """Estratégia 'multi' (P1b): roda as lentes em PARALELO + varredura de invariante. União
+    deduplicada dos achados numa passada só. Erra só se TODAS as lentes errarem."""
+    if reviewer == pr.author:
+        return Ok([Finding("revisão exige par diferente (reviewer≠autor)", "bloqueador", "-", 0,
+                           "alta")])
+    results = await asyncio.gather(*[
+        review_pr_findings(
+            pr, gateway, reviewer=reviewer, verify_findings=verify_findings,
+            contexto_previo=contexto_previo, lente=lente,
+        )
+        for lente in _LENSES
+    ])
+    oks = [r.value for r in results if isinstance(r, Ok)]
+    if not oks:  # todas as lentes erraram → propaga o 1º erro
+        return results[0]
+    todos = [f for sub in oks for f in sub]
+    todos += sweep_sibling_sites(pr.diff, todos)
+    return Ok(dedupe_findings(todos))
 
 
 def formatar_finding(f: Finding) -> str:
@@ -440,8 +579,13 @@ async def revisar_pr(
     strategy: str = "single",
 ) -> Result[list[Finding], Error]:
     """Dispatcher de ESTRATÉGIA de review (plugável, ROBOTO_REVIEW_STRATEGY). 'single' = juiz único
-    estruturado (hoje). 'multi' (multi-dimensão+verificação) = hook futuro; por ora, single."""
-    _ = strategy  # 'multi' ainda não implementado; o dono liga quando existir
+    estruturado; 'multi' (P1b) = lentes em paralelo + varredura de invariante (acha tudo numa
+    passada). Qualquer outro valor cai no 'single' (conservador)."""
+    if strategy == "multi":
+        return await review_pr_multi(
+            pr, gateway, reviewer=reviewer,
+            verify_findings=verify_findings, contexto_previo=contexto_previo,
+        )
     return await review_pr_findings(
         pr, gateway, reviewer=reviewer,
         verify_findings=verify_findings, contexto_previo=contexto_previo,

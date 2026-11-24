@@ -26,3 +26,18 @@ def test_ignores_mere_relation() -> None:
 def test_no_blocker() -> None:
     assert blocked_by("## Contexto\nnada aqui") == []
     assert blocked_by("") == []
+
+
+def test_tolera_markdown_entre_frase_e_ref() -> None:
+    # REGRESSÃO (run-1047): markdown entre a frase e o #N NÃO pode dropar a dependência em silêncio.
+    assert blocked_by("> **Depende de:** #281") == [281]
+    assert blocked_by("**Depende de:** #397, #398") == [397, 398]
+    assert blocked_by("depende de `#5`") == [5]
+    assert blocked_by("Bloqueada por: **#79**") == [79]
+
+
+def test_nao_inventa_dep_de_prosa() -> None:
+    # frase de bloqueio longe do #N (prosa) NÃO vira dependência — limite curto entre frase e ref.
+    assert blocked_by("depende de fazer isso antes de mexer no #9") == []
+    # "independe de" (oposto) não pode casar o "depende de" interno
+    assert blocked_by("Este trabalho independe de #9") == []
