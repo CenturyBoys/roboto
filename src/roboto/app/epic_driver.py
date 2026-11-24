@@ -15,7 +15,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
-from roboto.agents.breakdown import is_epic
+from roboto.agents.breakdown import is_explicit_epic
 from roboto.app.deps import blocked_by, blocking_labels
 from roboto.app.issue_graph import epic_parents
 
@@ -28,7 +28,7 @@ class EpicChild:
     number: int
     deps: list[int]  # #N de que depende ("Depende de #N")
     blocked: bool  # tem label de bloqueio (status:blocked)
-    is_epic: bool = False  # a própria filha é um ÉPICO → subdividir, não implementar
+    is_epic: bool = False  # filha EXPLICITAMENTE épico (título/label) → subdividir, não codar
 
 
 @dataclass(frozen=True)
@@ -54,8 +54,13 @@ def plan_epic(epic: int, open_issues: list[OpenIssue]) -> EpicPlan:
     """Puro: a partir das issues ABERTAS, acha as filhas do ``epic`` ("Parte do épico #N") e separa
     PRONTAS de ESPERANDO. Dep já fechada não aparece nas abertas → conta como resolvida."""
     open_numbers = {n for n, *_ in open_issues}
+    # SÓ subdivide filha EXPLICITAMENTE épico (título/label) — nunca por heurística de corpo. Sem
+    # isso, toda filha refinada (que cita "Parte do épico #N" + o breakdown) virava falso-positivo e
+    # o driver criava épico-dentro-de-épico (bug #322: 7 tasks viraram 63 esqueletos). Um nível só.
     children = [
-        EpicChild(n, blocked_by(body), bool(blocking_labels(labels)), is_epic(title, body))
+        EpicChild(
+            n, blocked_by(body), bool(blocking_labels(labels)), is_explicit_epic(title, labels)
+        )
         for (n, title, body, labels, _state) in open_issues
         if epic in epic_parents(body)
     ]

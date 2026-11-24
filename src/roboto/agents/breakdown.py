@@ -28,16 +28,26 @@ _BREAKDOWN_HINT = re.compile(r"breakdown|sub-?issue|sub-?tarefa|destrinch", re.I
 
 _CHECKBOX_THRESHOLD = 8  # muitos critérios = provável amplitude de épico
 
+# referências ao épico-PAI — NÃO são sinal de "EU sou épico" (são o que marca a issue como FILHA).
+# Toda filha bem-formada diz "Parte do épico #N"/"Epico: #N" e cita o breakdown do pai; sem tirar
+# isso, QUALQUER filha refinada vira falso-positivo de épico (bug do driver #322: subdividia tasks).
+# ``[^#\n]{0,10}`` tolera o markdown entre a palavra e o número (ex.: ">**Epico:** #73").
+_PARENT_EPIC_REF = re.compile(r"\b(?:parte do\s+)?[eé]pico\b[^#\n]{0,10}#\d+", re.IGNORECASE)
+_PARENT_BREAKDOWN_REF = re.compile(
+    r"\bbreakdown\b[^.\n]{0,30}(?:aprovad|docs?/|\.md|do\s+[eé]pico)", re.IGNORECASE
+)
+
 
 def is_epic(title: str, body: str) -> bool:
     """Heurística determinística: esta issue é um ÉPICO que merece ser destrinchado?
 
     Sinal FORTE: "épico" como palavra no título → épico. Senão, soma sinais do corpo (palavra
     épico, muitos checkboxes, múltiplos cenários, menção a breakdown) e decide por ≥2 sinais.
+    Antes de somar, DESPOLUI o corpo das referências ao épico-PAI (ser filha ≠ ser épico).
     """
     if _EPIC_WORD.search(title or ""):
         return True
-    body = body or ""
+    body = _PARENT_BREAKDOWN_REF.sub(" ", _PARENT_EPIC_REF.sub(" ", body or ""))
     sinais = 0
     if _EPIC_WORD.search(body):
         sinais += 1
@@ -48,6 +58,24 @@ def is_epic(title: str, body: str) -> bool:
     if _BREAKDOWN_HINT.search(body):
         sinais += 1
     return sinais >= 2
+
+
+# labels que marcam um épico explicitamente (variações PT/EN comuns nos boards da org).
+_EPIC_LABELS = frozenset(
+    {"epic", "épico", "epico", "type:epic", "tipo:épico", "tipo:epico", "kind:epic"}
+)
+
+
+def is_explicit_epic(title: str, labels: list[str]) -> bool:
+    """Épico DECLARADO (não inferido do corpo): palavra "épico"/"epic" no TÍTULO ou label de épico.
+
+    O DRIVER usa isto para NUNCA subdividir uma filha por heurística de corpo. Uma filha de épico é
+    uma TASK — não deve existir duplo nível de épico (épico dentro de épico); ela só vira sub-épico
+    se marcada EXPLICITAMENTE como épico (título/label), decisão humana e não ruído de texto.
+    """
+    if _EPIC_WORD.search(title or ""):
+        return True
+    return any((label or "").strip().lower() in _EPIC_LABELS for label in labels)
 
 
 # --- dimensões de cobertura (determinísticas) --------------------------------------------------

@@ -118,6 +118,38 @@ async def test_drive_epic_subdivide_filha_epico() -> None:
     assert res.dispatched == [21]  # a #21 (normal) é despachada
 
 
+async def test_drive_epic_nao_subdivide_filha_com_sinais_so_no_corpo() -> None:
+    # REGRESSÃO #322: filha refinada que cita "épico #7" + "breakdown" NÃO pode virar sub-épico —
+    # o driver só subdivide épico EXPLÍCITO (título/label). Antes gerava épico-dentro-de-épico.
+    body = "Parte do épico #7 — ver breakdown aprovado em docs/arch.md.\n\nImplementar o quórum."
+    opens = [
+        (30, "Implementar o quórum 80% e redução de chave", body, [], "open"),  # filha refinada
+        (31, "Épico: fatia realmente grande", "Parte do épico #7.", [], "open"),  # épico explícito
+    ]
+    subdivididas: list[int] = []
+
+    async def list_full(repo: str) -> list:
+        return opens
+
+    async def is_active(n: int) -> bool:
+        return False
+
+    async def dispatch(n: int) -> bool:
+        return True
+
+    async def subdivide(n: int) -> list[int]:
+        subdivididas.append(n)
+        return [401]
+
+    res = await drive_epic(
+        repo="acme/app", epic=7, list_full=list_full, is_active=is_active, dispatch=dispatch,
+        subdivide=subdivide,
+    )
+    assert res.plan.to_subdivide == [31]  # só o épico explícito; a #30 NÃO
+    assert subdivididas == [31]
+    assert res.dispatched == [30]  # a #30 (task) é despachada normalmente, não subdividida
+
+
 async def test_drive_epic_nao_duplica_run_ativo() -> None:
     opens = [_issue(10, "Parte do épico #7.")]
 
