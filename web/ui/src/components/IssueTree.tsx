@@ -115,8 +115,12 @@ export function IssueTree({ onSelect }: { onSelect: (n: number) => void }) {
     const xrefs = idx.xref.get(num) ?? 0
     const roots = idx.rootBlockers.get(num) ?? []
     const unblocks = idx.unblocks.get(num) ?? 0
-    // mostra a RAIZ só quando ela adiciona info (≠ do bloqueador direto ABERTO já no badge ⛔)
+    // só DEPS ABERTAS bloqueiam: uma dep fechada (não é nó aberto) está resolvida — não mostra como
+    // ⛔ (o #286 dependia de #281/#398, ambas fechadas → ele está LIVRE, não travado).
     const directOpen = blockers.filter((b) => idx.byNumber.get(b)?.state === 'open')
+    // "épico" só no TOPO: um nó que é filho de outro épico não é épico (sem épico-dentro-de-épico —
+    // conserta o #286, task refinada que a heurística confundia com épico).
+    const isEpicTop = node.is_epic && !idx.hasParent.has(num)
     const showRoot =
       roots.length > 0 && roots.join(',') !== [...directOpen].sort((a, z) => a - z).join(',')
     return (
@@ -127,7 +131,7 @@ export function IssueTree({ onSelect }: { onSelect: (n: number) => void }) {
       >
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1">
           <span
-            className={`inline-block h-2 w-2 shrink-0 rounded-full ${stateDot(node.is_epic, blockers.length > 0, node.state)}`}
+            className={`inline-block h-2 w-2 shrink-0 rounded-full ${stateDot(isEpicTop, directOpen.length > 0, node.state)}`}
           />
           <button
             type="button"
@@ -136,12 +140,12 @@ export function IssueTree({ onSelect }: { onSelect: (n: number) => void }) {
           >
             #{num}
           </button>
-          {node.is_epic && (
+          {isEpicTop && (
             <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[11px] text-accent">
               📦 épico
             </span>
           )}
-          {node.is_epic && (
+          {isEpicTop && (
             <Button
               variant="outline"
               className="h-6 px-2 py-0 text-[11px]"
@@ -161,9 +165,9 @@ export function IssueTree({ onSelect }: { onSelect: (n: number) => void }) {
               {l}
             </span>
           ))}
-          {blockers.length > 0 && (
+          {directOpen.length > 0 && (
             <span className="text-[11px] text-orange-400" data-testid={`tree-blocked-${num}`}>
-              ⛔ depende de {blockers.map((b) => `#${b}`).join(', ')}
+              ⛔ depende de {directOpen.map((b) => `#${b}`).join(', ')}
             </span>
           )}
           {showRoot && (
