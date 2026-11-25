@@ -79,6 +79,7 @@ nav:
       - Implementação: fluxos/02-implementacao.md
       - Code review: fluxos/03-code-review.md
       - Breakdown de épico: fluxos/04-breakdown-epico.md
+      - Saúde do grafo: fluxos/05-saude-do-grafo.md
   - Operação:
       - Gatilhos: triggers.md
       - Mapa de issues: mapa-issues.md

@@ -5,7 +5,9 @@ os gates. Um documento por etapa:
 
 1. [Refinamento](01-refinamento.md) — ideia → issue acionável (DoR).
 2. [Implementação](02-implementacao.md) — issue → branch → PR.
-3. [Code review](03-code-review.md) — PR → veredito → correção (merge = humano).
+3. [Code review](03-code-review.md) — PR → veredito → correção (escada worker→gerente→humano; merge = humano).
+4. [Breakdown de épico](04-breakdown-epico.md) — épico → sub-issues esqueleto.
+5. [Saúde do grafo](05-saude-do-grafo.md) — auditoria + cura do grafo de issues/deps + transitividade.
 
 Dois princípios atravessam tudo (AGENTS.md): **determinismo primeiro** (código no roteamento; LLM só
 no julgamento/geração) e **output do modelo = proposta; política determinística decide**.
