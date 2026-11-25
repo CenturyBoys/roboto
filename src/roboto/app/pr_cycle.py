@@ -559,22 +559,35 @@ async def run_pr_cycle(
     state: dict[str, int] = {}  # guarda o número do PR entre tentativas
     coder: dict[str, str] = {}  # id NATIVO da sessão do coder, p/ RESUMIR na correção (= contexto)
 
-    async def _engine_turn(prompt: str, resume: str | None, model: str | None = None) -> None:
+    async def _engine_turn(
+        prompt: str, resume: str | None, model: str | None = None, *, resume_forte: bool = False,
+    ) -> None:
         # um turno do motor: edita o repo, alimenta o feed ao vivo (Fatia 2) e mede o token (D10/L).
         # `model` override = degrau de escalonamento (#242): força o modelo forte se o base travar.
         modelo_efetivo = model or modelo_do_motor
         config_hash = session_config_hash(model=modelo_efetivo)
-        # guard de sessão (#266): só retoma se a config bate com a que criou a sessão nativa. O
-        # escalonamento (#242) troca o modelo na correção → NÃO retomar sob modelo diferente (o
-        # contexto/cache da sessão do modelo base não vale pro forte).
+        # guard de sessão (#266): só retoma se a config bate com a que criou a sessão nativa.
         if resume and not may_resume(coder.get("hash"), config_hash):
-            resume = None
-            if store is not None and now is not None:
-                await store.append_session_event(
-                    run.tenant, run.id, "message", now,
-                    text="♻️ sessão não retomada: a config do motor mudou (ex.: modelo "
-                         "escalonado) — começo sessão nova p/ não herdar contexto incompatível.",
-                )
+            if resume_forte:
+                # ESCALADA = RESUME NO FORTE: o gerente RETOMA a sessão do worker trocando SÓ o
+                # modelo. O CONTEXTO (o que foi construído e por quê, os arquivos, as decisões) vale
+                # muito mais que o cache de prompt (por-modelo, que a gente abre mão) — o forte
+                # CONTINUA de onde o worker parou em vez de re-ler/re-gerar tudo. Barato + esperto
+                # (era o "jeito burro": sessão nova = mandar o diff inteiro e reprocessar do zero).
+                if store is not None and now is not None:
+                    await store.append_session_event(
+                        run.tenant, run.id, "message", now,
+                        text="🧑‍💼 gerente RETOMA a sessão do worker (contexto preservado) — só "
+                             "troca o modelo, não recomeça do zero.",
+                    )
+            else:
+                resume = None
+                if store is not None and now is not None:
+                    await store.append_session_event(
+                        run.tenant, run.id, "message", now,
+                        text="♻️ sessão não retomada: a config do motor mudou (ex.: modelo "
+                             "escalonado) — sessão nova p/ não herdar contexto incompatível.",
+                    )
         spec = RunSpec(
             tenant=run.tenant, repo=run.repo, workdir=workdir,
             prompt=prompt, model=modelo_efetivo, resume_session_id=resume,
@@ -666,6 +679,7 @@ async def run_pr_cycle(
         await _engine_turn(
             prompt, coder.get("native") if feedback else None,
             model=modelo_correcao if feedback else None,
+            resume_forte=forte,  # escalada: o gerente RETOMA a sessão do worker (não recomeça)
         )
         await git.prepare_branch(branch)
         # diagnostics HARNESS-DRIVEN (#226): o motor subusa o code-intel p/ entender erro de build
@@ -686,7 +700,8 @@ async def run_pr_cycle(
                             text=f"↻ diagnostics (code-intel): corrigindo build (try {dtries}).",
                         )
                     await _engine_turn(
-                        _diag_fix_prompt(diag), coder.get("native"), model=modelo_correcao
+                        _diag_fix_prompt(diag), coder.get("native"), model=modelo_correcao,
+                        resume_forte=forte,
                     )
                     diag = await asyncio.to_thread(code_intel_diagnostics, workdir, amostra)
             except Exception:  # noqa: BLE001 — diagnostics é best-effort; não derruba o ciclo
@@ -763,7 +778,8 @@ async def run_pr_cycle(
                             text="⚡ hook não cedeu no modelo base → escalando p/ o MODELO FORTE.",
                         )
                     await _engine_turn(
-                        _hook_fix_prompt(str(_exc)), coder.get("native"), model=modelo_forte
+                        _hook_fix_prompt(str(_exc)), coder.get("native"), model=modelo_forte,
+                        resume_forte=True,  # forte RETOMA a sessão do worker (contexto preservado)
                     )
                     await autoformat(workdir)
                     continue
