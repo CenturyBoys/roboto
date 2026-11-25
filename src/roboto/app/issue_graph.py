@@ -23,8 +23,14 @@ from dataclasses import dataclass
 from roboto.agents.breakdown import is_epic
 from roboto.app.deps import blocked_by
 
-# "Parte do épico #N" (como o breakdown_apply grava nas sub-issues) → N é o épico desta filha.
-_EPIC_PARENT = re.compile(r"parte do [eé]pico\s*#(\d+)", re.IGNORECASE)
+# Pai-épico declarado no corpo da filha. DUAS convenções no mundo real (eram inconsistentes — o
+# #286 usava "Epico: #73" e ficava ÓRFÃO da árvore/driver, parecendo épico de topo):
+#   1) "Parte do épico #N"  — como o breakdown_apply grava nas sub-issues.
+#   2) "Epico: #N" / "**Épico:** #N"  — campo declarado (tolera markdown `**` e acento).
+# Exige "parte do" OU o `:` (forma-DECLARAÇÃO) pra não casar prosa solta ("do épico #N — fatia…").
+_EPIC_PARENT = re.compile(
+    r"parte do [eé]pico\s*#(\d+)|[eé]pico\s*:\s*\**\s*#(\d+)", re.IGNORECASE
+)
 
 
 @dataclass(frozen=True)
@@ -62,11 +68,12 @@ class IssueGraph:
 
 
 def epic_parents(body: str) -> list[int]:
-    """Números dos épicos a que este corpo diz pertencer ("Parte do épico #N"), sem repetição."""
+    """Épicos a que este corpo diz pertencer ("Parte do épico #N" OU "Epico: #N"), sem repetição."""
     nums: list[int] = []
-    for n in _EPIC_PARENT.findall(body or ""):
-        if int(n) not in nums:
-            nums.append(int(n))
+    for m in _EPIC_PARENT.finditer(body or ""):
+        n = int(m.group(1) or m.group(2))  # uma das duas convenções casa por match
+        if n not in nums:
+            nums.append(n)
     return nums
 
 
