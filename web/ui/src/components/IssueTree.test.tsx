@@ -59,3 +59,29 @@ test('avisa quando há ciclo de dependências', async () => {
   render(<IssueTree onSelect={vi.fn()} />)
   await waitFor(() => expect(screen.getByText(/ciclo de dependências/)).toBeInTheDocument())
 })
+
+test('dep FECHADA (não é nó) não vira ⛔, e filho-épico não ganha badge de épico', async () => {
+  // #5 depende de #9 (fechado, não é nó) e de #6 (aberto) → só o #6 aparece no ⛔.
+  // #5 é is_epic=true MAS é filho do épico #1 → NÃO mostra 📦 épico (sem épico-dentro-de-épico).
+  const g = {
+    repo: 'acme/app',
+    nodes: [
+      { number: 1, title: 'Épico', labels: ['epic'], is_epic: true, state: 'open' },
+      { number: 5, title: 'task refinada', labels: [], is_epic: true, state: 'open' },
+      { number: 6, title: 'dep aberta', labels: [], is_epic: false, state: 'open' },
+    ],
+    edges: [
+      { from: 1, to: 5, kind: 'epic-child' },
+      { from: 5, to: 9, kind: 'depends-on' }, // #9 fechado (ausente)
+      { from: 5, to: 6, kind: 'depends-on' }, // #6 aberto
+    ],
+    has_cycle: false,
+  }
+  stub(g)
+  render(<IssueTree onSelect={vi.fn()} />)
+  const blocked = await screen.findByTestId('tree-blocked-5')
+  expect(blocked).toHaveTextContent('depende de #6') // só a aberta
+  expect(blocked).not.toHaveTextContent('#9') // a fechada sumiu
+  // #5 (filho de épico) NÃO é badgeado como épico; só o #1 (topo) é
+  expect(screen.getAllByText('📦 épico')).toHaveLength(1)
+})

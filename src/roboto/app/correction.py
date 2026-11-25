@@ -24,15 +24,22 @@ class CycleResult:
 
 async def correction_cycle(
     *,
-    implement: Callable[[list[str]], Awaitable[PullRequest]],
+    implement: Callable[[list[str], bool], Awaitable[PullRequest]],
     review: Callable[[PullRequest], Awaitable[ReviewVerdict]],
     max_attempts: int = 3,
+    forte_na_ultima: bool = True,
 ) -> CycleResult:
-    """implement(feedback)->PR; review(PR)->veredito. Realimenta até aprovar ou estourar o teto."""
+    """implement(feedback, forte)->PR; review(PR)->veredito. Realimenta até aprovar ou estourar.
+
+    ESCADA worker→gerente→humano (fatia 1 do #322, agora também no REVIEW): as primeiras tentativas
+    correm no worker (barato); a ÚLTIMA corre no MODELO FORTE (gerente, `forte=True`) ANTES de
+    escalar pro humano — conserta o que o worker não deu conta (ex.: #1054, bloqueadores triviais
+    pro Sonnet que o qwen não fechou em 3 voltas). Humano vira ÚLTIMO recurso de verdade."""
     feedback: list[str] = []
     pr: PullRequest | None = None
     for attempt in range(1, max_attempts + 1):
-        pr = await implement(feedback)  # 1ª vez sem feedback; depois com os problemas do review
+        forte = forte_na_ultima and attempt == max_attempts and max_attempts > 1
+        pr = await implement(feedback, forte)  # 1ª sem feedback; última no gerente (forte)
         verdict = await review(pr)
         if verdict.approved:
             return CycleResult(approved=True, attempts=attempt, pr=pr)

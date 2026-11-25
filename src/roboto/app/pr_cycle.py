@@ -15,10 +15,11 @@ import re
 import socket
 from collections.abc import Callable
 from datetime import datetime
-from typing import Protocol
+from typing import Any, Protocol
 
 from roboto.agents.refiner import IssueDraft
 from roboto.agents.review import (
+    Finding,
     PullRequest,
     ReviewVerdict,
     check_issue_readiness,
@@ -44,7 +45,7 @@ from roboto.app.codebase_map import build_codebase_map
 from roboto.app.comment_poll import BOT_MARKER
 from roboto.app.correction import CycleResult, correction_cycle
 from roboto.app.deps import blocked_by, blocking_labels
-from roboto.app.engine_loop import guarded_events
+from roboto.app.engine_loop import guarded_events, has_pending_approval
 from roboto.app.git_ops import GitError
 from roboto.app.i18n_assist import apply_i18n_stubs
 from roboto.app.jev_guard import assess as assess_risk
@@ -178,6 +179,11 @@ class GithubPrOps(Protocol):
     async def list_open_issues_rich(
         self, repo: str, *, limit: int = 20
     ) -> Result[list[tuple[int, str, list[str]]], Error]: ...
+
+    # graph doctor / checa-antes-de-criar: PRs (todos os estados) crus p/ achar fundação já mergeada
+    async def list_prs_audit(
+        self, repo: str, *, limit: int = 100
+    ) -> Result[list[dict[str, Any]], Error]: ...
 
     # fleet "levanta a mão": self-assign ao pegar a task (#150) — best-effort
     async def add_assignee(
@@ -553,22 +559,35 @@ async def run_pr_cycle(
     state: dict[str, int] = {}  # guarda o número do PR entre tentativas
     coder: dict[str, str] = {}  # id NATIVO da sessão do coder, p/ RESUMIR na correção (= contexto)
 
-    async def _engine_turn(prompt: str, resume: str | None, model: str | None = None) -> None:
+    async def _engine_turn(
+        prompt: str, resume: str | None, model: str | None = None, *, resume_forte: bool = False,
+    ) -> None:
         # um turno do motor: edita o repo, alimenta o feed ao vivo (Fatia 2) e mede o token (D10/L).
         # `model` override = degrau de escalonamento (#242): força o modelo forte se o base travar.
         modelo_efetivo = model or modelo_do_motor
         config_hash = session_config_hash(model=modelo_efetivo)
-        # guard de sessão (#266): só retoma se a config bate com a que criou a sessão nativa. O
-        # escalonamento (#242) troca o modelo na correção → NÃO retomar sob modelo diferente (o
-        # contexto/cache da sessão do modelo base não vale pro forte).
+        # guard de sessão (#266): só retoma se a config bate com a que criou a sessão nativa.
         if resume and not may_resume(coder.get("hash"), config_hash):
-            resume = None
-            if store is not None and now is not None:
-                await store.append_session_event(
-                    run.tenant, run.id, "message", now,
-                    text="♻️ sessão não retomada: a config do motor mudou (ex.: modelo "
-                         "escalonado) — começo sessão nova p/ não herdar contexto incompatível.",
-                )
+            if resume_forte:
+                # ESCALADA = RESUME NO FORTE: o gerente RETOMA a sessão do worker trocando SÓ o
+                # modelo. O CONTEXTO (o que foi construído e por quê, os arquivos, as decisões) vale
+                # muito mais que o cache de prompt (por-modelo, que a gente abre mão) — o forte
+                # CONTINUA de onde o worker parou em vez de re-ler/re-gerar tudo. Barato + esperto
+                # (era o "jeito burro": sessão nova = mandar o diff inteiro e reprocessar do zero).
+                if store is not None and now is not None:
+                    await store.append_session_event(
+                        run.tenant, run.id, "message", now,
+                        text="🧑‍💼 gerente RETOMA a sessão do worker (contexto preservado) — só "
+                             "troca o modelo, não recomeça do zero.",
+                    )
+            else:
+                resume = None
+                if store is not None and now is not None:
+                    await store.append_session_event(
+                        run.tenant, run.id, "message", now,
+                        text="♻️ sessão não retomada: a config do motor mudou (ex.: modelo "
+                             "escalonado) — sessão nova p/ não herdar contexto incompatível.",
+                    )
         spec = RunSpec(
             tenant=run.tenant, repo=run.repo, workdir=workdir,
             prompt=prompt, model=modelo_efetivo, resume_session_id=resume,
@@ -590,7 +609,12 @@ async def run_pr_cycle(
             )
         tin = tout = 0
         try:
-            async for event in guarded_events(engine.events()):  # deixa o motor editar o repo
+            async for event in guarded_events(  # deixa o motor editar o repo
+                engine.events(),
+                awaiting_human=(
+                    (lambda: has_pending_approval(store, run.id)) if store is not None else None
+                ),
+            ):
                 if store is not None and now is not None:
                     if event.kind is EngineEventKind.MESSAGE and event.text:
                         await store.append_session_event(
@@ -618,9 +642,18 @@ async def run_pr_cycle(
                 cost_usd=(tin + tout) / 1_000_000 * _COST_PER_MTOK, now=now,
             )
 
-    async def implement(feedback: list[str]) -> PullRequest:
+    async def implement(feedback: list[str], forte: bool = False) -> PullRequest:
         prompt = base_prompt
         baseline_red = ""
+        # ESCADA no review (fatia 1, #322): a última correção roda no MODELO FORTE (gerente) — o
+        # worker tentou e não fechou; o forte conserta antes de escalar pro humano.
+        modelo_correcao = modelo_forte if (forte and modelo_forte) else modelo_fin
+        if forte and modelo_forte and store is not None and now is not None:
+            await store.append_session_event(
+                run.tenant, run.id, "message", now,
+                text="🧑‍💼 o worker não fechou o review — GERENTE (modelo forte) assume a correção "
+                     "antes de escalar pro humano.",
+            )
         if feedback:
             prompt += "\nCorrija os pontos do review:\n- " + "\n- ".join(feedback)
         else:
@@ -645,7 +678,8 @@ async def run_pr_cycle(
         # rascunho (sem feedback) no base; correção (feedback) no modelo_fin (forte se FINALIZE).
         await _engine_turn(
             prompt, coder.get("native") if feedback else None,
-            model=modelo_fin if feedback else None,
+            model=modelo_correcao if feedback else None,
+            resume_forte=forte,  # escalada: o gerente RETOMA a sessão do worker (não recomeça)
         )
         await git.prepare_branch(branch)
         # diagnostics HARNESS-DRIVEN (#226): o motor subusa o code-intel p/ entender erro de build
@@ -666,7 +700,8 @@ async def run_pr_cycle(
                             text=f"↻ diagnostics (code-intel): corrigindo build (try {dtries}).",
                         )
                     await _engine_turn(
-                        _diag_fix_prompt(diag), coder.get("native"), model=modelo_fin
+                        _diag_fix_prompt(diag), coder.get("native"), model=modelo_correcao,
+                        resume_forte=forte,
                     )
                     diag = await asyncio.to_thread(code_intel_diagnostics, workdir, amostra)
             except Exception:  # noqa: BLE001 — diagnostics é best-effort; não derruba o ciclo
@@ -743,7 +778,8 @@ async def run_pr_cycle(
                             text="⚡ hook não cedeu no modelo base → escalando p/ o MODELO FORTE.",
                         )
                     await _engine_turn(
-                        _hook_fix_prompt(str(_exc)), coder.get("native"), model=modelo_forte
+                        _hook_fix_prompt(str(_exc)), coder.get("native"), model=modelo_forte,
+                        resume_forte=True,  # forte RETOMA a sessão do worker (contexto preservado)
                     )
                     await autoformat(workdir)
                     continue
@@ -1041,7 +1077,14 @@ async def run_pr_cycle(
         res = await revisar_pr(
             pr, review_gw, reviewer=reviewer, verify_findings=achados, strategy=strategy
         )
-        findings = res.value if isinstance(res, Ok) else []
+        if isinstance(res, Err):
+            # FAIL-CLOSED: review que não rodou (erro/saldo/timeout) NÃO é aprovação — devolve um
+            # bloqueador determinístico pra o ciclo re-tentar/escalar, nunca aprovar no vazio.
+            findings = [Finding("review indisponível — não aprovo", "bloqueador", "-", 0, "alta",
+                                evidencia=str(res.error)[:160],
+                                recomendacao="Rever quando o review rodar (saldo/infra).")]
+        else:
+            findings = res.value
         # P1c: o review NÃO aprova sobre CI vermelha — se os checks do PR estão vermelhos, injeta um
         # bloqueador determinístico (run-1047 chegou a "aprovado ✅" com o `test` sem rodar).
         ci_now = await github.check_failures(run.repo, pr.number)
@@ -1157,6 +1200,13 @@ async def process_pr_run_tick(
             ):
                 _lst = await github.list_open_issues_rich(run.repo, limit=60)
                 _titles = [t for _, t, _ in _lst.value] if isinstance(_lst, Ok) else []
+                # checa-antes-de-criar (graph doctor): títulos de PRs MERGEADOS já satisfazem a
+                # fundação → não abre esqueleto redundante (teria evitado o #397 'T1' vs PR #331).
+                _prs = await github.list_prs_audit(run.repo)
+                _sat = (
+                    [str(p.get("title", "")) for p in _prs.value if p.get("merged_at")]
+                    if isinstance(_prs, Ok) else []
+                )
 
                 async def _create(repo: str, ttl: str, bdy: str) -> int | None:
                     r = await github.create_issue(repo, ttl, bdy)
@@ -1176,7 +1226,7 @@ async def process_pr_run_tick(
                 _criados = await heal_missing_deps(
                     repo=run.repo, parent=int(run.issue_id), body=body, existing_titles=_titles,
                     create_issue=_create, comment=_comment,
-                    add_label=_add_label, update_body=_update_body,
+                    add_label=_add_label, update_body=_update_body, satisfied_titles=_sat,
                 )
                 if _criados:
                     await store.append_session_event(
@@ -1406,7 +1456,13 @@ async def process_correct_tick(
         # foi resolvido, em vez de re-revisar do zero e inventar bloqueadores novos a cada rodada
         # (era por que o loop review→correção→re-review nunca fechava — #254).
         res = await revisar_pr(pr, gateway, reviewer=reviewer, contexto_previo=previas)
-        findings = res.value if isinstance(res, Ok) else []
+        if isinstance(res, Err):
+            # FAIL-CLOSED: review que NÃO RODOU (erro/saldo/timeout) ≠ "sem problemas". NUNCA aprova
+            # — senão, com saldo esgotado, TODO review erra e TODO PR vira falso "aprovado" (#402).
+            return ReviewVerdict(
+                approved=False, issues=[f"review indisponível (não aprovo): {res.error}"]
+            )
+        findings = res.value
         issues = [f"[{f.severidade}] {f.titulo} — {f.recomendacao}" for f in findings]
         from roboto.agents.review import aprovado_por_findings
 
@@ -1424,7 +1480,19 @@ async def process_correct_tick(
         # rodada, corrige, empurra (novo sha) e vira churn. Trata-se SÓ da CI (via triagem abaixo):
         # força o veredito aprovado p/ que apenas a CI decida o que fazer.
         ci_recheck = run.idempotency_key.startswith("poll-correct-ci")
-        verdict = ReviewVerdict(approved=True, issues=[]) if ci_recheck else await _review_now()
+        # MAS não pule o review se o PR foi ESCALADO (label `needs-human`): nesse PR o review NUNCA
+        # aprovou (tem bloqueador em aberto). Forçar approved=True aqui dava um FALSO "✅ aprovado"
+        # com os bloqueadores ainda no código só porque a CI ficou verde (#1054/#402). CI verde ≠
+        # review ok. Pra PR escalado, re-revisa de verdade (e a escada do correct conserta).
+        escalado = False
+        if ci_recheck:
+            _labs = await github.get_issue_labels(run.repo, pr_number)
+            escalado = isinstance(_labs, Ok) and "needs-human" in _labs.value
+        verdict = (
+            ReviewVerdict(approved=True, issues=[])
+            if (ci_recheck and not escalado)
+            else await _review_now()
+        )
         # CI VERMELHA é AUTORITATIVA (#233): lê o erro REAL (tsc/lint) e alimenta a correção — o
         # juiz lê só o diff e pode não ver o erro de tipo (deixou o #252 vermelho e "aprovado").
         cf = await github.check_failures(run.repo, pr_number)
@@ -1541,7 +1609,9 @@ async def process_correct_tick(
             )
         )
         tin = tout = 0
-        async for event in guarded_events(engine.events()):  # feed ao vivo no cockpit
+        async for event in guarded_events(  # feed ao vivo no cockpit
+            engine.events(), awaiting_human=lambda: has_pending_approval(store, run.id)
+        ):
             if event.kind is EngineEventKind.MESSAGE and event.text:
                 await store.append_session_event(
                     run.tenant, run.id, "message", moment, text=event.text

@@ -115,7 +115,8 @@ UpdateBody = Callable[[str, int, str], Awaitable[None]]  # (repo, número, novo_
 async def heal_missing_deps(
     *, repo: str, parent: int, body: str, existing_titles: list[str],
     create_issue: CreateIssue, comment: Comment, add_label: AddLabel | None = None,
-    update_body: UpdateBody | None = None, max_create: int = 6,
+    update_body: UpdateBody | None = None, satisfied_titles: list[str] | None = None,
+    max_create: int = 6,
 ) -> list[int]:
     """Cria um esqueleto p/ cada dependência NOMEADA (não-`#N`) que ainda não é issue, marca
     `status:to-do`+`auto`, comenta no PAI linkando, **grava a aresta `Depende de #N` no corpo do
@@ -123,8 +124,17 @@ async def heal_missing_deps(
     criados ([] = nada a curar). Idempotente via `existing_titles`. Teto `max_create` contra surto.
 
     WIRE + RE-BLOQUEIO são o conserto do #322: antes, a dep nascia órfã (só comentário) e o pai
-    seguia "pronto" aos olhos do gate/driver — rodava impl sobre fundação inexistente (run-1047)."""
-    faltantes = [d for d in named_deps(body) if not already_tracked(d, existing_titles)]
+    seguia "pronto" aos olhos do gate/driver — rodava impl sobre fundação inexistente (run-1047).
+
+    CHECA-ANTES-DE-CRIAR (``satisfied_titles``): títulos de PRs MERGEADOS / issues FECHADAS que já
+    satisfazem a fundação. Se a dep nomeada bate num deles, NÃO cria esqueleto — a fundação já
+    existe (ex.: 'T1 bracket.ts' já estava no PR #331 mergeado; o self-heal abriu o #397 redundante
+    por não checar). Mata o esqueleto redundante na origem."""
+    satisfeitas = satisfied_titles or []
+    faltantes = [
+        d for d in named_deps(body)
+        if not already_tracked(d, existing_titles) and not already_tracked(d, satisfeitas)
+    ]
     criados: list[int] = []
     for dep in faltantes[:max_create]:
         num = await create_issue(repo, dep.title, skeleton_body(parent, dep))

@@ -1045,6 +1045,42 @@ def console_routes(
             "budget_blocked": res.budget_blocked,
         })
 
+    async def graph_audit_action(request: Request) -> JSONResponse:
+        # GRAPH DOCTOR (épico #73): audita o grafo de issues/deps do repo (6 violações de
+        # invariante), REABRE sozinho o que é auto-seguro (protetor: closed-but-reverted /
+        # closed-dep-open) e devolve as demais propostas PENDENTES (fechar redundante / repontar /
+        # refino / ciclo) p/ o gerente/humano. Determinismo acha; heal seguro=auto; resto surfado.
+        if _unauthorized(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        repo = request.query_params.get("repo") or default_repo
+        if not repo or issues is None:
+            return JSONResponse({"error": "repo/GitHub não configurado"}, status_code=409)
+        from roboto.app.graph_loader import doctor_repo
+
+        rep = await doctor_repo(issues, repo, now=datetime.now(UTC))
+        if isinstance(rep, Err):
+            return JSONResponse({"error": str(rep.error)}, status_code=502)
+        r = rep.value
+
+        def _f(x: object) -> dict[str, object]:
+            return {
+                "kind": x.kind, "issue": x.issue, "detail": x.detail,  # type: ignore[attr-defined]
+                "severity": x.severity,  # type: ignore[attr-defined]
+            }
+
+        def _a(x: object) -> dict[str, object]:
+            return {
+                "issue": x.issue, "kind": x.kind, "action": x.action,  # type: ignore[attr-defined]
+                "auto": x.auto, "detail": x.detail,  # type: ignore[attr-defined]
+            }
+
+        return JSONResponse({
+            "repo": repo,
+            "findings": [_f(f) for f in r.findings],
+            "applied": [_a(a) for a in r.applied],  # curas AUTO já aplicadas (reabertas)
+            "pending": [_a(a) for a in r.pending],  # propostas p/ gerente/humano
+        })
+
     async def correct_pr_action(request: Request) -> JSONResponse:
         # B: corrigir um PR JÁ ABERTO conforme o review. Enfileira um run `agent='correct'` que o
         # `process_correct_tick` pega (checkout da branch do PR → review → corrige → force-push →
@@ -1180,6 +1216,7 @@ def console_routes(
         Route("/issues/{number:int}/refine-engine", refine_with_engine, methods=["POST"]),
         Route("/issues/{number:int}/implement", implement_with_engine, methods=["POST"]),
         Route("/epics/{number:int}/drive", drive_epic_action, methods=["POST"]),
+        Route("/graph-audit", graph_audit_action, methods=["POST"]),
         Route("/issues/{number:int}/breakdown", issue_breakdown_propose, methods=["POST"]),
         Route("/issues/{number:int}/breakdown/apply", issue_breakdown_apply, methods=["POST"]),
         Route(

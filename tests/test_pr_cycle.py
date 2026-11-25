@@ -146,6 +146,11 @@ class _FakeGithub:
     ) -> Result[list[tuple[int, str, list[str]]], Error]:
         return Ok([])  # nada rastreado → self-heal cria
 
+    async def list_prs_audit(
+        self, repo: str, *, limit: int = 100
+    ) -> Result[list[dict[str, object]], Error]:
+        return Ok([])  # sem PR mergeado → nada "já satisfeito"
+
     async def find_open_pr(self, repo: str, head_branch: str) -> Result[int | None, Error]:
         return Ok(self._existing)
 
@@ -1222,6 +1227,28 @@ async def test_correct_tick_rereview_recebe_contexto_previo() -> None:
     assert "falta teste" in rereview_txt
 
 
+async def test_ci_recheck_nao_falso_aprova_pr_escalado() -> None:
+    # Fix 2 (#1054/#402): poll-correct-ci NÃO pode FORÇAR "aprovado" num PR ESCALADO (needs-human) —
+    # nesse PR o review nunca aprovou (bloqueador em aberto); CI verde ≠ review ok. Re-revisa.
+    store = InMemoryStore()
+    ev = GithubEvent(
+        tenant="acme", repo="acme/app", issue_id="402", agent="correct",
+        idempotency_key="poll-correct-ci:acme/app:402",
+    )
+    await store.insert_run_if_absent(ev, _T0)
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    github = _FakeGithub()
+    github.labels = ["needs-human"]  # o PR foi escalado pelo impl
+    gw = _SeqGateway([_FIND_REPROVA, "", "", ""])  # o re-review reprova (bloqueador ainda lá)
+    await process_correct_tick(
+        engine, gw, github, store,  # type: ignore[arg-type]
+        tenant="acme", workdir_root="/work", reviewer="review",
+        git_factory=lambda ws: _FakeGit(), now=lambda: _T0,
+    )
+    # não forçou "aprovado" (re-revisou e o bloqueador segue) → NÃO postou o falso "review aprovado"
+    assert not any("review aprovado" in c for c in github.comments)
+
+
 async def test_correct_tick_escala_coder_forte_na_2a_rodada() -> None:
     # #242 Fatia 3: 1ª correção no base; da 2ª em diante (não convergiu) o coder sobe pro FORTE.
     import os
@@ -1523,3 +1550,29 @@ async def test_tick_ci_vermelha_nao_aprova_mesmo_sem_finding_do_juiz() -> None:
     assert (42, "needs-human") in github.pr_labels
     events = await store.session_events(run.id, 0, 50)
     assert any("CI vermelha" in e.text for e in events)
+
+
+async def test_review_que_erra_nao_aprova_fail_closed() -> None:
+    # #402: um review que NÃO RODA (erro de LLM/saldo/timeout) NÃO pode virar "aprovado" (era
+    # fail-OPEN: `res.value if Ok else []` → [] → aprovado). Fail-CLOSED: o run NÃO aprova → o PR
+    # fica draft + needs-human (não vira um falso "✅ aprovado").
+    from roboto.orchestrator.model import RunState
+
+    class _ErrGateway:
+        async def complete(
+            self, messages: list[ChatMessage], tier: Tier
+        ) -> Result[Completion, Error]:
+            return Err(Error("llm", "402 insufficient credits"))
+
+    store = InMemoryStore()
+    run = await _run(store)  # type: ignore[assignment]
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    github = _FakeGithub()
+    await process_pr_run_tick(
+        engine, _ErrGateway(), github, store,  # type: ignore[arg-type]
+        tenant="acme", workdir_root="/work", reviewer="review",
+        git_factory=lambda ws: _FakeGit(), now=lambda: _T0,
+    )
+    assert store._runs[run.id].state is RunState.FAILED  # type: ignore[attr-defined]
+    assert github.readied == []  # NÃO promovido (review não aprovou)
+    assert (42, "needs-human") in github.pr_labels

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { driveEpic, getIssueTree, type DriveResult } from '@/lib/api'
+import { driveEpic, getIssueTree, graphAudit, type DoctorResult, type DriveResult } from '@/lib/api'
+import { rootOpenBlockers, unblockCounts } from '@/lib/graph'
 import type { IssueGraph } from '@/types'
 import { Card } from './ui/card'
 import { Button } from './ui/button'
@@ -24,6 +25,19 @@ export function IssueTree({ onSelect }: { onSelect: (n: number) => void }) {
   const [error, setError] = useState<string | null>(null)
   // driver de épico: por épico, 'loading' enquanto roda, ou o resultado (prontas/despachadas/etc).
   const [drive, setDrive] = useState<Record<number, 'loading' | DriveResult>>({})
+  // graph doctor (repo todo): 'loading', o relatório, ou null (não rodado).
+  const [doctor, setDoctor] = useState<'loading' | DoctorResult | null>(null)
+
+  async function doDoctor() {
+    setDoctor('loading')
+    try {
+      const r = await graphAudit()
+      setDoctor(r)
+      getIssueTree().then(setGraph).catch(() => {}) // recarrega: o doctor pode ter reaberto issues
+    } catch {
+      setDoctor(null)
+    }
+  }
 
   async function doDrive(epic: number) {
     setDrive((d) => ({ ...d, [epic]: 'loading' }))
@@ -66,7 +80,13 @@ export function IssueTree({ onSelect }: { onSelect: (n: number) => void }) {
         xref.set(e.to, (xref.get(e.to) ?? 0) + 1)
       }
     }
-    return { byNumber, children, hasParent, blockers, xref }
+    // transitividade (derivada, não materializada): bloqueador-raiz aberto + quantas destrava.
+    // "resolvido" = fechado OU ausente do grafo (o mapa só traz issues ABERTAS como nós; um
+    // bloqueador que não é nó — ex.: o #281 fechado — já está resolvido e não trava a cadeia).
+    const isResolved = (n: number) => byNumber.get(n)?.state !== 'open'
+    const rootBlockers = rootOpenBlockers(blockers, isResolved)
+    const unblocks = unblockCounts(blockers, isResolved)
+    return { byNumber, children, hasParent, blockers, xref, rootBlockers, unblocks }
   }, [graph])
 
   if (error) return <p className="text-muted">{error}</p>
@@ -93,6 +113,16 @@ export function IssueTree({ onSelect }: { onSelect: (n: number) => void }) {
       .sort((a, b) => a - b)
     const blockers = idx.blockers.get(num) ?? []
     const xrefs = idx.xref.get(num) ?? 0
+    const roots = idx.rootBlockers.get(num) ?? []
+    const unblocks = idx.unblocks.get(num) ?? 0
+    // só DEPS ABERTAS bloqueiam: uma dep fechada (não é nó aberto) está resolvida — não mostra como
+    // ⛔ (o #286 dependia de #281/#398, ambas fechadas → ele está LIVRE, não travado).
+    const directOpen = blockers.filter((b) => idx.byNumber.get(b)?.state === 'open')
+    // "épico" só no TOPO: um nó que é filho de outro épico não é épico (sem épico-dentro-de-épico —
+    // conserta o #286, task refinada que a heurística confundia com épico).
+    const isEpicTop = node.is_epic && !idx.hasParent.has(num)
+    const showRoot =
+      roots.length > 0 && roots.join(',') !== [...directOpen].sort((a, z) => a - z).join(',')
     return (
       <div
         key={`${depth}:${num}`}
@@ -101,7 +131,7 @@ export function IssueTree({ onSelect }: { onSelect: (n: number) => void }) {
       >
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1">
           <span
-            className={`inline-block h-2 w-2 shrink-0 rounded-full ${stateDot(node.is_epic, blockers.length > 0, node.state)}`}
+            className={`inline-block h-2 w-2 shrink-0 rounded-full ${stateDot(isEpicTop, directOpen.length > 0, node.state)}`}
           />
           <button
             type="button"
@@ -110,12 +140,12 @@ export function IssueTree({ onSelect }: { onSelect: (n: number) => void }) {
           >
             #{num}
           </button>
-          {node.is_epic && (
+          {isEpicTop && (
             <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[11px] text-accent">
               📦 épico
             </span>
           )}
-          {node.is_epic && (
+          {isEpicTop && (
             <Button
               variant="outline"
               className="h-6 px-2 py-0 text-[11px]"
@@ -135,9 +165,27 @@ export function IssueTree({ onSelect }: { onSelect: (n: number) => void }) {
               {l}
             </span>
           ))}
-          {blockers.length > 0 && (
+          {directOpen.length > 0 && (
             <span className="text-[11px] text-orange-400" data-testid={`tree-blocked-${num}`}>
-              ⛔ depende de {blockers.map((b) => `#${b}`).join(', ')}
+              ⛔ depende de {directOpen.map((b) => `#${b}`).join(', ')}
+            </span>
+          )}
+          {showRoot && (
+            <span
+              className="text-[11px] text-red-400"
+              data-testid={`tree-root-${num}`}
+              title="bloqueador-raiz: a issue ABERTA no fundo da cadeia que de fato trava esta (transitivo)"
+            >
+              🔒 raiz: {roots.map((b) => `#${b}`).join(', ')}
+            </span>
+          )}
+          {unblocks > 0 && (
+            <span
+              className="text-[11px] text-green-400"
+              data-testid={`tree-unblocks-${num}`}
+              title="quantas issues abertas esta destrava em cascata quando fechar (transitivo)"
+            >
+              🔓 destrava {unblocks}
             </span>
           )}
           {xrefs > 0 && (
@@ -209,7 +257,45 @@ export function IssueTree({ onSelect }: { onSelect: (n: number) => void }) {
         <span className="flex items-center gap-1">
           <span className="inline-block h-2 w-2 rounded-full bg-green-400" /> livre
         </span>
+        <Button
+          variant="outline"
+          className="ml-auto h-6 px-2 py-0 text-[11px]"
+          disabled={doctor === 'loading'}
+          onClick={() => void doDoctor()}
+          title="Graph doctor: audita o grafo (deps, done confiável, redundância, órfãos, ciclos), reabre sozinho o que é seguro e lista o resto p/ você"
+        >
+          {doctor === 'loading' ? '🩺 auditando…' : '🩺 doctor'}
+        </Button>
       </div>
+      {doctor && doctor !== 'loading' && (
+        <Card className="flex flex-col gap-2 text-xs">
+          <span className="text-sm">
+            🩺 Graph doctor — {doctor.findings.length} achado(s) ·{' '}
+            <span className="text-green-400">{doctor.applied.length} curado(s)</span> ·{' '}
+            <span className="text-orange-300">{doctor.pending.length} pendente(s)</span>
+          </span>
+          {doctor.applied.length > 0 && (
+            <div className="text-green-400">
+              ✅ reabri sozinho (protetor):{' '}
+              {doctor.applied.map((a) => `#${a.issue}`).join(', ')}
+            </div>
+          )}
+          {doctor.pending.length > 0 && (
+            <div className="flex flex-col gap-1">
+              <span className="text-orange-300">⚠️ precisa de você / do gerente:</span>
+              {doctor.pending.map((a) => (
+                <div key={`${a.kind}:${a.issue}`} className="ml-3 text-muted">
+                  <span className="font-mono text-accent">#{a.issue}</span>{' '}
+                  <span className="text-orange-300">[{a.action}]</span> {a.detail}
+                </div>
+              ))}
+            </div>
+          )}
+          {doctor.findings.length === 0 && (
+            <span className="text-green-400">grafo saudável — nenhuma inconsistência 🎉</span>
+          )}
+        </Card>
+      )}
       {graph.has_cycle && (
         <p className="rounded-lg border border-orange-400/40 bg-orange-400/10 px-3 py-2 text-xs text-orange-300">
           ⚠️ há um ciclo de dependências — o mapa é best-effort e pode repetir um ramo.

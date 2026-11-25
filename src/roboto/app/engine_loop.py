@@ -13,15 +13,22 @@ from __future__ import annotations
 
 import asyncio
 import os
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import datetime
 from enum import StrEnum
 
 from roboto.app.human import request_human_input
 from roboto.engines.port import CodingEngine, EngineEvent, EngineEventKind, RunSpec
-from roboto.orchestrator.model import Error, InteractionKind, Run, RunState
+from roboto.orchestrator.model import Error, InteractionKind, InteractionStatus, Run, RunState
 from roboto.orchestrator.store import Store
 from roboto.result import Err, Ok, Result
+
+
+async def has_pending_approval(store: Store, run_id: int) -> bool:
+    """O run está BLOQUEADO esperando um humano aprovar uma permissão? (interação `pending`). Usado
+    pelo watchdog p/ não matar o motor enquanto ele legitimamente espera a pessoa."""
+    itens = await store.interactions_for_execution(run_id)
+    return any(i.status == InteractionStatus.PENDING for i in itens)
 
 # watchdog: segundos sem NENHUM evento do motor antes de considerar o turno TRAVADO (subprocesso
 # morto/pendurado sem FINISHED/FAILED). Sem isto o run fica preso em RUNNING até o lease expirar —
@@ -32,19 +39,37 @@ _COST_PER_MTOK = 0.4  # custo aprox. Qwen/OpenRouter ($/milhão de tokens) — m
 
 
 async def guarded_events(
-    events: AsyncIterator[EngineEvent], idle_timeout: float | None = None
+    events: AsyncIterator[EngineEvent], idle_timeout: float | None = None,
+    *, awaiting_human: Callable[[], Awaitable[bool]] | None = None,
 ) -> AsyncIterator[EngineEvent]:
     """Repassa os eventos do motor com watchdog de INATIVIDADE: se passar `idle_timeout`s sem
     nenhum evento, levanta `TimeoutError` em vez de pendurar o turno. O chamador trata como FAILED,
     então o run sai de RUNNING (destrava o lock por issue e permite retry). `idle_timeout=None` lê
-    `ENGINE_IDLE_TIMEOUT` em call-time (monkeypatchável em teste)."""
+    `ENGINE_IDLE_TIMEOUT` em call-time (monkeypatchável em teste).
+
+    ``awaiting_human``: se o motor está BLOQUEADO num gate humano (aprovação de permissão pendente),
+    ele NÃO emite eventos — mas NÃO está travado, está esperando a pessoa (de propósito). Sem isto o
+    watchdog matava o run no meio da espera e a resposta tardia não tinha o que retomar (run-1050:
+    aprovação criada 18:56, respondida 2,5h depois → run já `failed`). Quando o silêncio bate o
+    timeout, consultamos ``awaiting_human``: se há aprovação pendente, RE-ESPERA (não é stall)."""
     timeout = ENGINE_IDLE_TIMEOUT if idle_timeout is None else idle_timeout
     it = events.__aiter__()
+    pending: asyncio.Task[EngineEvent] | None = None
     while True:
+        if pending is None:
+            pending = asyncio.ensure_future(it.__anext__())
         try:
-            event = await asyncio.wait_for(it.__anext__(), timeout)
+            # `shield`: o timeout do watchdog NÃO cancela a busca do próximo evento (senão o async
+            # gen do motor fecha no 1º silêncio). Em stall real cancelamos explicitamente abaixo.
+            event = await asyncio.wait_for(asyncio.shield(pending), timeout)
         except StopAsyncIteration:
             return
+        except TimeoutError:
+            if awaiting_human is not None and await awaiting_human():
+                continue  # bloqueado num humano (aprovação pendente) → não é stall; segue esperando
+            pending.cancel()
+            raise
+        pending = None
         yield event
 
 
@@ -81,7 +106,9 @@ async def drive_turn(
     await store.set_state(run.id, RunState.RUNNING, now)
 
     try:
-        async for event in guarded_events(engine.events()):
+        async for event in guarded_events(
+            engine.events(), awaiting_human=lambda: has_pending_approval(store, run.id)
+        ):
             if event.kind is EngineEventKind.MESSAGE and event.text:  # feed ao vivo (Fatia 2)
                 await store.append_session_event(
                     run.tenant, run.id, "message", now, text=event.text, session_id=session.id

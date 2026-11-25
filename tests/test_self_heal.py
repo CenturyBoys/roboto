@@ -83,6 +83,27 @@ async def test_heal_cria_esqueleto_comenta_wire_e_rebloqueia() -> None:
     assert (286, "status:blocked") in labels
 
 
+async def test_heal_nao_cria_se_fundacao_ja_mergeada() -> None:
+    # CHECA-ANTES-DE-CRIAR: T1 (bracket.ts) já está num PR mergeado → NÃO abre esqueleto (teria
+    # evitado o #397 redundante). T2 não está satisfeita → essa sim é criada.
+    criadas: list[tuple[str, str]] = []
+
+    async def create_issue(repo: str, title: str, body: str) -> int | None:
+        criadas.append((title, body))
+        return 601
+
+    async def comment(repo: str, parent: int, text: str) -> None:
+        pass
+
+    criados = await heal_missing_deps(
+        repo="acme/app", parent=286, body=_286, existing_titles=[],
+        create_issue=create_issue, comment=comment,
+        satisfied_titles=["feat(core): bracket.ts puro em packages/core (sorteio seedado)"],
+    )
+    assert criados == [601]  # só a T2
+    assert len(criadas) == 1 and "migration" in criadas[0][0].lower()  # T1 pulada (já feita)
+
+
 async def test_heal_idempotente_nao_duplica() -> None:
     async def create_issue(repo: str, title: str, body: str) -> int | None:
         raise AssertionError("não deveria criar — já rastreada")

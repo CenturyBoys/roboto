@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import httpx
 
-from roboto.app.issue_graph import RawIssue, build_graph
+from roboto.app.issue_graph import RawIssue, build_graph, epic_parents
 from roboto.orchestrator.model import Error
 from roboto.orchestrator.store import InMemoryStore
 from roboto.result import Err, Ok, Result
@@ -34,6 +34,21 @@ def test_epic_child_and_depends_on_from_body() -> None:
     assert (1, 3, "epic-child") in _edges(graph)
     assert (3, 2, "depends-on") in _edges(graph)  # filha → bloqueadora
     assert graph.has_cycle is False
+
+
+def test_epic_parent_reconhece_forma_Epico_dois_pontos() -> None:
+    # REGRESSÃO #286: o corpo usava "> **Epico:** #73" (não "Parte do épico #73") e ficava ÓRFÃO —
+    # sem aresta epic-child, aparecia como raiz/épico de topo. Agora as duas convenções casam.
+    assert epic_parents("> **Epico:** #73 (Matchmaking) — fatia T3") == [73]
+    assert epic_parents("Épico: #42") == [42]
+    assert epic_parents("Parte do épico #7") == [7]
+    assert epic_parents("texto solto sobre o épico #9 sem dois-pontos") == []  # prosa não casa
+    issues = [
+        RawIssue(73, "Épico: Matchmaking", "guarda-chuva", [], "open"),
+        RawIssue(286, "scheduler", "> **Epico:** #73 — fatia T3", [], "open"),
+    ]
+    graph = build_graph(issues)
+    assert (73, 286, "epic-child") in _edges(graph)  # #286 aninha sob o #73 (não mais raiz)
 
 
 def test_merge_nossas_e_nativas_dedup() -> None:

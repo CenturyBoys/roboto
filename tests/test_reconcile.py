@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from roboto.app.reconcile import reconcile_verifying
+from roboto.app.reconcile import reconcile_active_runs, reconcile_verifying
 from roboto.orchestrator.model import Error, GithubEvent, RunState
 from roboto.orchestrator.store import InMemoryStore
 from roboto.result import Ok, Result
@@ -83,3 +83,30 @@ async def test_non_verifying_untouched() -> None:
     r, _ = await store.insert_run_if_absent(ev, _T0)  # fica QUEUED
     await reconcile_verifying(store, _Github({238}, set()), tenant="acme", now=_T0)
     assert store._runs[r.id].state is RunState.QUEUED  # type: ignore[attr-defined]
+
+
+async def test_zumbi_running_com_issue_fechada_vira_done() -> None:
+    # REGRESSÃO run-1051: impl morreu em RUNNING (sem PR linkado), mas a issue #398 FECHOU (entregue
+    # por fora). Antes ficava "running" pra sempre; agora reconcilia pra DONE.
+    store = InMemoryStore()
+    ev = GithubEvent(
+        tenant="acme", repo="acme/app", issue_id="398", agent="impl", idempotency_key="k-zumbi"
+    )
+    r, _ = await store.insert_run_if_absent(ev, _T0)
+    await store.set_state(r.id, RunState.RUNNING, _T0)  # preso em RUNNING, sem execution_pr
+    n = await reconcile_active_runs(store, _Github(set(), {398}), tenant="acme", now=_T0)
+    assert n == 1
+    assert store._runs[r.id].state is RunState.DONE  # type: ignore[attr-defined]
+
+
+async def test_running_com_issue_aberta_fica_quieto() -> None:
+    # run legitimamente ativo (issue aberta) NÃO é tocado — sem chute por tempo (zero falso-pos).
+    store = InMemoryStore()
+    ev = GithubEvent(
+        tenant="acme", repo="acme/app", issue_id="500", agent="impl", idempotency_key="k-vivo"
+    )
+    r, _ = await store.insert_run_if_absent(ev, _T0)
+    await store.set_state(r.id, RunState.RUNNING, _T0)
+    n = await reconcile_active_runs(store, _Github(set(), set()), tenant="acme", now=_T0)
+    assert n == 0
+    assert store._runs[r.id].state is RunState.RUNNING  # type: ignore[attr-defined]

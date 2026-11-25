@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from typing import Any
 
 import httpx
 import jwt
@@ -675,6 +676,62 @@ class GithubAppClient:
             return Ok(items)
         except httpx.HTTPError as exc:
             return Err(Error("github", f"list_open_issues_full {repo}: {exc}"))
+        finally:
+            if owns:
+                await client.aclose()
+
+    async def list_issues_audit(
+        self, repo: str, *, limit: int = 100
+    ) -> Result[list[dict[str, Any]], Error]:
+        """Issues (ABERTAS **e FECHADAS**) cruas p/ o graph doctor — inclui body, labels, state,
+        state_reason, created_at, closed_at. Diferente dos outros listers (só abertos): o doctor
+        PRECISA das fechadas (ex.: issue fechada-mas-revertida, fechada dependendo de aberta)."""
+        owns = self._client is None
+        client = (
+            self._client if self._client is not None else httpx.AsyncClient(timeout=self._timeout)
+        )
+        try:
+            token = await self._installation_token(client)
+            resp = await client.get(
+                f"{self._api}/repos/{repo}/issues",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                },
+                params={"state": "all", "per_page": limit},
+            )
+            resp.raise_for_status()
+            out = [x for x in resp.json() if isinstance(x, dict) and "pull_request" not in x]
+            return Ok(out)
+        except httpx.HTTPError as exc:
+            return Err(Error("github", f"list_issues_audit {repo}: {exc}"))
+        finally:
+            if owns:
+                await client.aclose()
+
+    async def list_prs_audit(
+        self, repo: str, *, limit: int = 100
+    ) -> Result[list[dict[str, Any]], Error]:
+        """PRs (todos os estados) crus p/ o graph doctor — número, título, body, state, merged_at.
+        Usado p/ casar esqueleto redundante com PR mergeado e detectar revert."""
+        owns = self._client is None
+        client = (
+            self._client if self._client is not None else httpx.AsyncClient(timeout=self._timeout)
+        )
+        try:
+            token = await self._installation_token(client)
+            resp = await client.get(
+                f"{self._api}/repos/{repo}/pulls",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                },
+                params={"state": "all", "per_page": limit},
+            )
+            resp.raise_for_status()
+            return Ok([p for p in resp.json() if isinstance(p, dict)])
+        except httpx.HTTPError as exc:
+            return Err(Error("github", f"list_prs_audit {repo}: {exc}"))
         finally:
             if owns:
                 await client.aclose()
