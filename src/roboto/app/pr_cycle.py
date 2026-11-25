@@ -19,6 +19,7 @@ from typing import Any, Protocol
 
 from roboto.agents.refiner import IssueDraft
 from roboto.agents.review import (
+    Finding,
     PullRequest,
     ReviewVerdict,
     check_issue_readiness,
@@ -1060,7 +1061,14 @@ async def run_pr_cycle(
         res = await revisar_pr(
             pr, review_gw, reviewer=reviewer, verify_findings=achados, strategy=strategy
         )
-        findings = res.value if isinstance(res, Ok) else []
+        if isinstance(res, Err):
+            # FAIL-CLOSED: review que não rodou (erro/saldo/timeout) NÃO é aprovação — devolve um
+            # bloqueador determinístico pra o ciclo re-tentar/escalar, nunca aprovar no vazio.
+            findings = [Finding("review indisponível — não aprovo", "bloqueador", "-", 0, "alta",
+                                evidencia=str(res.error)[:160],
+                                recomendacao="Rever quando o review rodar (saldo/infra).")]
+        else:
+            findings = res.value
         # P1c: o review NÃO aprova sobre CI vermelha — se os checks do PR estão vermelhos, injeta um
         # bloqueador determinístico (run-1047 chegou a "aprovado ✅" com o `test` sem rodar).
         ci_now = await github.check_failures(run.repo, pr.number)
@@ -1432,7 +1440,13 @@ async def process_correct_tick(
         # foi resolvido, em vez de re-revisar do zero e inventar bloqueadores novos a cada rodada
         # (era por que o loop review→correção→re-review nunca fechava — #254).
         res = await revisar_pr(pr, gateway, reviewer=reviewer, contexto_previo=previas)
-        findings = res.value if isinstance(res, Ok) else []
+        if isinstance(res, Err):
+            # FAIL-CLOSED: review que NÃO RODOU (erro/saldo/timeout) ≠ "sem problemas". NUNCA aprova
+            # — senão, com saldo esgotado, TODO review erra e TODO PR vira falso "aprovado" (#402).
+            return ReviewVerdict(
+                approved=False, issues=[f"review indisponível (não aprovo): {res.error}"]
+            )
+        findings = res.value
         issues = [f"[{f.severidade}] {f.titulo} — {f.recomendacao}" for f in findings]
         from roboto.agents.review import aprovado_por_findings
 

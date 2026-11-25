@@ -1550,3 +1550,29 @@ async def test_tick_ci_vermelha_nao_aprova_mesmo_sem_finding_do_juiz() -> None:
     assert (42, "needs-human") in github.pr_labels
     events = await store.session_events(run.id, 0, 50)
     assert any("CI vermelha" in e.text for e in events)
+
+
+async def test_review_que_erra_nao_aprova_fail_closed() -> None:
+    # #402: um review que NÃO RODA (erro de LLM/saldo/timeout) NÃO pode virar "aprovado" (era
+    # fail-OPEN: `res.value if Ok else []` → [] → aprovado). Fail-CLOSED: o run NÃO aprova → o PR
+    # fica draft + needs-human (não vira um falso "✅ aprovado").
+    from roboto.orchestrator.model import RunState
+
+    class _ErrGateway:
+        async def complete(
+            self, messages: list[ChatMessage], tier: Tier
+        ) -> Result[Completion, Error]:
+            return Err(Error("llm", "402 insufficient credits"))
+
+    store = InMemoryStore()
+    run = await _run(store)  # type: ignore[assignment]
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    github = _FakeGithub()
+    await process_pr_run_tick(
+        engine, _ErrGateway(), github, store,  # type: ignore[arg-type]
+        tenant="acme", workdir_root="/work", reviewer="review",
+        git_factory=lambda ws: _FakeGit(), now=lambda: _T0,
+    )
+    assert store._runs[run.id].state is RunState.FAILED  # type: ignore[attr-defined]
+    assert github.readied == []  # NÃO promovido (review não aprovou)
+    assert (42, "needs-human") in github.pr_labels
