@@ -1227,6 +1227,28 @@ async def test_correct_tick_rereview_recebe_contexto_previo() -> None:
     assert "falta teste" in rereview_txt
 
 
+async def test_ci_recheck_nao_falso_aprova_pr_escalado() -> None:
+    # Fix 2 (#1054/#402): poll-correct-ci NÃO pode FORÇAR "aprovado" num PR ESCALADO (needs-human) —
+    # nesse PR o review nunca aprovou (bloqueador em aberto); CI verde ≠ review ok. Re-revisa.
+    store = InMemoryStore()
+    ev = GithubEvent(
+        tenant="acme", repo="acme/app", issue_id="402", agent="correct",
+        idempotency_key="poll-correct-ci:acme/app:402",
+    )
+    await store.insert_run_if_absent(ev, _T0)
+    engine = StubEngine([EngineEvent(EngineEventKind.FINISHED)])
+    github = _FakeGithub()
+    github.labels = ["needs-human"]  # o PR foi escalado pelo impl
+    gw = _SeqGateway([_FIND_REPROVA, "", "", ""])  # o re-review reprova (bloqueador ainda lá)
+    await process_correct_tick(
+        engine, gw, github, store,  # type: ignore[arg-type]
+        tenant="acme", workdir_root="/work", reviewer="review",
+        git_factory=lambda ws: _FakeGit(), now=lambda: _T0,
+    )
+    # não forçou "aprovado" (re-revisou e o bloqueador segue) → NÃO postou o falso "review aprovado"
+    assert not any("review aprovado" in c for c in github.comments)
+
+
 async def test_correct_tick_escala_coder_forte_na_2a_rodada() -> None:
     # #242 Fatia 3: 1ª correção no base; da 2ª em diante (não convergiu) o coder sobe pro FORTE.
     import os

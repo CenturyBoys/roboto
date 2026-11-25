@@ -38,8 +38,11 @@ _BY_AGENT_STATE: dict[tuple[str, RunState], str] = {
     ("correct", RunState.DONE): "status:done",
 }
 _BY_STATE: dict[RunState, str] = {
-    RunState.WAITING: "status:blocked",
-    RunState.FAILED: "status:blocked",
+    RunState.WAITING: "status:blocked",  # esperando dep/humano → bloqueio real (gate recusa)
+    # FAILED NÃO é "status:blocked": bloqueio = "dep não-resolvida"; run que falhou é RE-TENTÁVEL.
+    # Projetar `status:blocked` dava DEADLOCK (falhou→blocked→gate recusa retry→preso, #286).
+    # `status:to-do` = voltou pro backlog, pode ser retentado (driver/humano).
+    RunState.FAILED: "status:to-do",
 }
 
 STATUS_PREFIX = "status:"

@@ -628,9 +628,18 @@ async def run_pr_cycle(
                 cost_usd=(tin + tout) / 1_000_000 * _COST_PER_MTOK, now=now,
             )
 
-    async def implement(feedback: list[str]) -> PullRequest:
+    async def implement(feedback: list[str], forte: bool = False) -> PullRequest:
         prompt = base_prompt
         baseline_red = ""
+        # ESCADA no review (fatia 1, #322): a última correção roda no MODELO FORTE (gerente) — o
+        # worker tentou e não fechou; o forte conserta antes de escalar pro humano.
+        modelo_correcao = modelo_forte if (forte and modelo_forte) else modelo_fin
+        if forte and modelo_forte and store is not None and now is not None:
+            await store.append_session_event(
+                run.tenant, run.id, "message", now,
+                text="🧑‍💼 o worker não fechou o review — GERENTE (modelo forte) assume a correção "
+                     "antes de escalar pro humano.",
+            )
         if feedback:
             prompt += "\nCorrija os pontos do review:\n- " + "\n- ".join(feedback)
         else:
@@ -655,7 +664,7 @@ async def run_pr_cycle(
         # rascunho (sem feedback) no base; correção (feedback) no modelo_fin (forte se FINALIZE).
         await _engine_turn(
             prompt, coder.get("native") if feedback else None,
-            model=modelo_fin if feedback else None,
+            model=modelo_correcao if feedback else None,
         )
         await git.prepare_branch(branch)
         # diagnostics HARNESS-DRIVEN (#226): o motor subusa o code-intel p/ entender erro de build
@@ -676,7 +685,7 @@ async def run_pr_cycle(
                             text=f"↻ diagnostics (code-intel): corrigindo build (try {dtries}).",
                         )
                     await _engine_turn(
-                        _diag_fix_prompt(diag), coder.get("native"), model=modelo_fin
+                        _diag_fix_prompt(diag), coder.get("native"), model=modelo_correcao
                     )
                     diag = await asyncio.to_thread(code_intel_diagnostics, workdir, amostra)
             except Exception:  # noqa: BLE001 — diagnostics é best-effort; não derruba o ciclo
@@ -1441,7 +1450,19 @@ async def process_correct_tick(
         # rodada, corrige, empurra (novo sha) e vira churn. Trata-se SÓ da CI (via triagem abaixo):
         # força o veredito aprovado p/ que apenas a CI decida o que fazer.
         ci_recheck = run.idempotency_key.startswith("poll-correct-ci")
-        verdict = ReviewVerdict(approved=True, issues=[]) if ci_recheck else await _review_now()
+        # MAS não pule o review se o PR foi ESCALADO (label `needs-human`): nesse PR o review NUNCA
+        # aprovou (tem bloqueador em aberto). Forçar approved=True aqui dava um FALSO "✅ aprovado"
+        # com os bloqueadores ainda no código só porque a CI ficou verde (#1054/#402). CI verde ≠
+        # review ok. Pra PR escalado, re-revisa de verdade (e a escada do correct conserta).
+        escalado = False
+        if ci_recheck:
+            _labs = await github.get_issue_labels(run.repo, pr_number)
+            escalado = isinstance(_labs, Ok) and "needs-human" in _labs.value
+        verdict = (
+            ReviewVerdict(approved=True, issues=[])
+            if (ci_recheck and not escalado)
+            else await _review_now()
+        )
         # CI VERMELHA é AUTORITATIVA (#233): lê o erro REAL (tsc/lint) e alimenta a correção — o
         # juiz lê só o diff e pode não ver o erro de tipo (deixou o #252 vermelho e "aprovado").
         cf = await github.check_failures(run.repo, pr_number)

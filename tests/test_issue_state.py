@@ -19,7 +19,8 @@ def test_mapping_basics() -> None:
     assert issue_state_label("correct", RunState.VERIFYING) == "status:in-review"
     assert issue_state_label("impl", RunState.DONE) == "status:done"
     assert issue_state_label("impl", RunState.WAITING) == "status:blocked"
-    assert issue_state_label("impl", RunState.FAILED) == "status:blocked"
+    # FAILED é RE-TENTÁVEL, não bloqueado (senão deadlock: falhou→blocked→gate recusa retry, #286)
+    assert issue_state_label("impl", RunState.FAILED) == "status:to-do"
     assert issue_state_label("triage", RunState.QUEUED) is None
 
 
