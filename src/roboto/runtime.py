@@ -318,9 +318,9 @@ async def _run_daemon(config: Config, store: Store) -> None:
             # Sem webhook local: nada avisa que o PR foi mergeado/fechado, então o run fica preso
             # em VERIFYING (ATIVO → segura lock/WIP). Reconcilia contra o PR real: mergeado → DONE,
             # fechado-sem-merge → ABANDONED. Cobre impl (execution_pr) E correct (issue_id = PR).
-            from roboto.app.reconcile import reconcile_verifying
+            from roboto.app.reconcile import reconcile_active_runs
 
-            await reconcile_verifying(store, adapters.github, tenant=config.tenant, now=_now())
+            await reconcile_active_runs(store, adapters.github, tenant=config.tenant, now=_now())
 
         async def _run_correct() -> None:
             # B: corrige um PR já aberto conforme o review (no branch do PR). reviewer≠autor.
